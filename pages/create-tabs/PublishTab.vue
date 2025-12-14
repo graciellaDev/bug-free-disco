@@ -8,7 +8,7 @@
             </p>
             <div class="w-full gap-x-25px flex">
               <div
-                class="grid grid-cols-[repeat(auto-fit,minmax(234px,1fr))] gap-15px mb-35px max-w-[875px] w-full"
+                class="grid grid-cols-[repeat(auto-fit,minmax(234px,1fr))] gap-15px mb-35px w-full"
               >
                 <!-- Динамический рендеринг карточек -->
                 <div
@@ -16,22 +16,30 @@
                   :key="card.id"
                   class="p-25px bg-white rounded-fifteen flex flex-col min-w-56"
                 >
-                  <div class="flex items-center gap-2.5 mb-3.5">
-                    <CardIcon
-                      :icon="card.icon"
-                      :isPng="card.isPng"
-                      :imagePath="card.imagePath"
+                  <div class="flex items-center justify-between mb-3.5">
+                    <div class="flex items-center gap-2.5">
+                      <CardIcon
+                        :icon="card.icon"
+                        :isPng="card.isPng"
+                        :imagePath="card.imagePath"
+                      />
+                      <p class="text-sm font-medium text-slate-custom">{{ card.name }}</p>
+                    </div>
+                    <DotsDropdown 
+                      v-if="isPlatformAuthenticated(card.name)"
+                      :items="platformDropdownOptions" 
+                      @select-item="(item) => handlePlatformDropdown(item, card.name)"
                     />
-                    <p class="text-sm font-medium text-slate-custom">{{ card.name }}</p>
                   </div>
                   <div class="w-full h-[1px] bg-athens mb-3.5"></div>
                   <UiButton
-                    :variant="cartStore.isInCart(card.id) ? 'success' : 'action'"
+                    :variant="isPlatformAuthenticated(card.name) ? 'success' : 'action'"
                     size="action"
+                    @click="handlePlatformButtonClick(card.name)"
                   >
-                    Подключить аккаунт
+                    {{ isPlatformAuthenticated(card.name) ? 'Опубликовать' : 'Подключить аккаунт' }}
                     <svg-icon
-                      v-if="cartStore.isInCart(card.id)"
+                      v-if="isPlatformAuthenticated(card.name)"
                       name="check-success"
                       width="16"
                       height="16"
@@ -39,7 +47,7 @@
                   </UiButton>
                 </div>
               </div>
-              <div class="max-w-[275px] w-full">
+              <!-- <div class="max-w-[275px] w-full">
                 <div
                   v-if="Object.keys(cartStore.cartItems).length > 0"
                   class="flex flex-col p-25px bg-white rounded-fifteen"
@@ -102,7 +110,7 @@
                       >
                         <svg-icon name="basket-basket" width="20" height="20" />
                       </button>
-                    </div>
+              </div>
           </div>
           <div class="mt-4">
             <div class="flex justify-between">
@@ -121,10 +129,199 @@
               Перейти к оформлению
             </UiButton>
           </div>
+        </div> -->
+        <!-- <div v-else class="p-25px bg-white rounded-fifteen">
+          <p class="text-xl font-medium text-space mb-15px">Ваша корзина</p>
+          <p class="text-sm font-normal text-slate-custom">
+            Пока что здесь пусто
+          </p>
         </div>
-      </div>
+      </div> -->
     </div>
         </div>
+
+        <!-- Попап публикации вакансии -->
+        <Popup
+            :isOpen="isPublishPopupOpen"
+            @close="closePublishPopup"
+            :showCloseButton="false"
+            :width="'540px'"
+            :height="'fit-content'"
+            :disableOverflowHidden="true"
+        >
+            <div>
+                <p class="text-xl font-semibold text-space mb-2.5">Публикация вакансии</p>
+                <p class="text-sm font-normal text-slate-custom mb-25px">
+                    Вы собираетесь опубликовать вакансию на платформе <span class="font-medium text-space">{{ selectedPlatformForPublish }}</span>
+                </p>
+                
+                <div v-if="currentVacancy" class="bg-athens-gray rounded-fifteen p-20px mb-25px">
+                    <div class="mb-15px">
+                        <p class="text-xs font-normal text-slate-custom mb-1">Название вакансии</p>
+                        <p class="text-sm font-medium text-space">{{ currentVacancy.title || 'Не указано' }}</p>
+                    </div>
+                    <div class="mb-15px">
+                        <p class="text-xs font-normal text-slate-custom mb-1">Регион</p>
+                        <p class="text-sm font-medium text-space">{{ currentVacancy.location || 'Не указано' }}</p>
+                    </div>
+                    <div class="mb-15px">
+                        <p class="text-xs font-normal text-slate-custom mb-1">Зарплата</p>
+                        <p class="text-sm font-medium text-space">
+                            <template v-if="currentVacancy.salary_from || currentVacancy.salary_to">
+                                {{ currentVacancy.salary_from ? `от ${currentVacancy.salary_from}` : '' }}
+                                {{ currentVacancy.salary_to ? `до ${currentVacancy.salary_to}` : '' }}
+                                {{ currentVacancy.currency || '₽' }}
+                            </template>
+                            <template v-else>Не указана</template>
+                        </p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-normal text-slate-custom mb-1">Тип занятости</p>
+                        <p class="text-sm font-medium text-space">{{ currentVacancy.employment || 'Не указано' }}</p>
+                    </div>
+                </div>
+                <div v-else class="bg-athens-gray rounded-fifteen p-20px mb-25px">
+                    <p class="text-sm font-normal text-slate-custom">Загрузка данных вакансии...</p>
+                </div>
+
+                <div class="flex gap-x-15px">
+                    <UiButton variant="action" size="action" @click="confirmPublish" :disabled="!currentVacancy">
+                        Опубликовать
+                    </UiButton>
+                    <UiButton variant="back" size="back" @click="closePublishPopup">
+                        Отмена
+                    </UiButton>
+                </div>
+            </div>
+        </Popup>
+
+        <!-- Попап отвязки профиля -->
+        <Popup
+            :isOpen="isUnlinkPopupOpen"
+            @close="closeUnlinkPopup"
+            :showCloseButton="false"
+            :width="'490px'"
+            :height="'fit-content'"
+            :disableOverflowHidden="true"
+        >
+            <div>
+                <p class="text-xl font-semibold text-space mb-2.5">Отвязка профиля</p>
+                <p class="text-sm font-normal text-slate-custom mb-25px">
+                    Вы действительно хотите отвязать профиль <span class="font-medium text-space">{{ platformToUnlink }}</span>?
+                    После отвязки вам потребуется повторная авторизация для публикации вакансий на этой платформе.
+                </p>
+                
+                <div class="flex gap-x-15px">
+                    <UiButton variant="delete" size="delete" @click="confirmUnlink" :disabled="isUnlinking">
+                        {{ isUnlinking ? 'Отвязка...' : 'Отвязать' }}
+                    </UiButton>
+                    <UiButton variant="back" size="back" @click="closeUnlinkPopup">
+                        Отмена
+                    </UiButton>
+                </div>
+                <p class="text-red-500 text-xs mt-3" v-if="unlinkError">
+                    {{ unlinkError }}
+                </p>
+            </div>
+        </Popup>
+
+        <!-- Попап импорта публикаций -->
+        <Popup
+            :isOpen="isImportPopupOpen"
+            @close="closeImportPopup"
+            :showCloseButton="false"
+            :width="'740px'"
+            :height="'fit-content'"
+            :disableOverflowHidden="true"
+            maxHeight
+        >
+            <div>
+                <div class="flex items-center justify-between mb-25px">
+                    <div>
+                        <p class="text-xl font-semibold text-space mb-1">Импорт публикаций</p>
+                        <p class="text-sm font-normal text-slate-custom">
+                            Публикации с платформы {{ selectedImportPlatform }}
+                        </p>
+                    </div>
+                    <button @click="closeImportPopup" class="text-slate-custom hover:text-space transition-colors">
+                        <svg-icon name="close" width="20" height="20" />
+                    </button>
+                </div>
+
+                <!-- Прелоадер -->
+                <div v-if="isLoadingImport" class="flex flex-col items-center justify-center py-60px">
+                    <div class="loader mb-15px"></div>
+                    <p class="text-sm font-normal text-slate-custom">Загрузка публикаций...</p>
+                </div>
+
+                <!-- Ошибка -->
+                <div v-else-if="importError" class="py-40px text-center">
+                    <p class="text-sm font-normal text-red-500 mb-15px">{{ importError }}</p>
+                    <UiButton variant="action" size="action" @click="openImportPopup(selectedImportPlatform)">
+                        Повторить
+                    </UiButton>
+                </div>
+
+                <!-- Список публикаций -->
+                <div v-else-if="importedPublications.length > 0" class="max-h-[400px] overflow-y-auto">
+                    <div class="import-table">
+                        <!-- Хедер таблицы -->
+                        <div class="import-table-header">
+                            <div class="px-2.5">Название</div>
+                            <div class="px-2.5">Регион</div>
+                            <div class="px-2.5">Зарплата</div>
+                            <div class="px-2.5">Статус</div>
+                            <div></div>
+                        </div>
+                        <!-- Строки таблицы -->
+                        <div 
+                            v-for="pub in importedPublications" 
+                            :key="pub.id" 
+                            class="import-table-row"
+                        >
+                            <div class="text-sm font-medium text-space px-2.5 truncate">{{ pub.name }}</div>
+                            <div class="text-sm font-normal text-slate-custom px-2.5">{{ pub.area?.name || '—' }}</div>
+                            <div class="text-sm font-normal text-slate-custom px-2.5">
+                                <template v-if="pub.salary">
+                                    {{ pub.salary.from ? `от ${pub.salary.from}` : '' }}
+                                    {{ pub.salary.to ? `до ${pub.salary.to}` : '' }}
+                                    {{ pub.salary.currency || '' }}
+                                </template>
+                                <template v-else>Не указана</template>
+                            </div>
+                            <div class="px-2.5">
+                                <span 
+                                    class="text-xs font-medium px-2 py-1 rounded-md"
+                                    :class="pub.status === 'published' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-slate-custom'"
+                                >
+                                    {{ pub.status === 'published' ? 'Активна' : pub.status }}
+                                </span>
+                            </div>
+                            <div class="flex justify-end">
+                                <UiButton 
+                                    variant="action" 
+                                    size="small"
+                                    @click="importPublication(pub)"
+                                >
+                                    Импорт
+                                </UiButton>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Пустой список -->
+                <div v-else class="py-40px text-center">
+                    <p class="text-sm font-normal text-slate-custom">Публикации не найдены</p>
+                </div>
+
+                <div class="flex justify-end mt-25px pt-25px border-t border-athens">
+                    <UiButton variant="back" size="back" @click="closeImportPopup">
+                        Закрыть
+                    </UiButton>
+                </div>
+            </div>
+        </Popup>
     
         <!-- Заголовок -->
         <div class="flex justify-between bg-white rounded-fifteen p-25px items-center mb-15px">
@@ -222,10 +419,12 @@ import CardIcon from '~/components/custom/CardIcon.vue';
 import Popup from '~/components/custom/Popup.vue';
 import AddPublication from "~/components/platforms/AddPublication.vue";
 import MultiDropdown from "~/components/custom/MultiDropdown.vue";
-import { getPublications } from "~/utils/hhAccount";
+import { getPublications, getProfile, auth as authHh, unlinkProfile } from "~/utils/hhAccount";
 import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
+import ratesData from '~/src/data/rates-data.json'
+import { getVacancy } from '@/utils/getVacancies'
 
 const data = ref([
     { id: 1, vacancy: "Менеджер по продажам не детских игрушек", region: "Санкт-Петербург", tariff: "Стандарт", site: "SJ", icon: "sj20", isPng: false, imagePath: "", views: 3250, responses: 492, expires: "18.12" },
@@ -249,7 +448,40 @@ const isOpenPopup = ref(false);
 const publicationsHh = ref([]);
 const publications = await getPublications()
 const cartStore = useCartStore()
-publicationsHh.value = publications.roles?.items
+
+if (publications && !publications.error && !publications.errorRoles) {
+    publicationsHh.value = publications.roles?.items || [];
+}
+
+// Статус авторизации платформ
+const platformsAuth = ref({
+    'hh.ru': false,
+    'avito.ru': false,
+    'rabota.ru': false,
+    'superjob': false,
+});
+const authError = ref(null);
+const platformDropdownOptions = ["Импорт публикаций", "Отвязать профиль"];
+
+// Попап публикации вакансии
+const isPublishPopupOpen = ref(false);
+const currentVacancy = ref(null);
+const selectedPlatformForPublish = ref(null);
+const route = useRoute();
+const currentVacancyId = route.query.id;
+
+// Попап отвязки профиля
+const isUnlinkPopupOpen = ref(false);
+const platformToUnlink = ref(null);
+const isUnlinking = ref(false);
+const unlinkError = ref(null);
+
+// Попап импорта публикаций
+const isImportPopupOpen = ref(false);
+const isLoadingImport = ref(false);
+const importedPublications = ref([]);
+const importError = ref(null);
+const selectedImportPlatform = ref(null);
 console.log('publicationsHh.value', publicationsHh.value)
 const sortedData = computed(() => {
     if (!sortKey.value) return publicationsHh.value;
@@ -262,11 +494,168 @@ const sortedData = computed(() => {
 });
 
 //////////////////////////////////////////////
+
+function setCookie(name, value, days) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
+}
+
+async function authPlatform(platformName) {
+    authError.value = null;
+    
+    if (platformName === 'hh.ru') {
+        const config = useRuntimeConfig();
+        const tokenCookie = useCookie('auth_user');
+        setCookie('process_auth', 'true', 1);
+        window.location.href = config.public.apiBase + `/code-hh?customerToken=${tokenCookie.value}`;
+    } else {
+        authError.value = `Платформа ${platformName} пока не поддерживается`;
+    }
+}
+
+function isPlatformAuthenticated(platformName) {
+    return platformsAuth.value[platformName] || false;
+}
+
+async function handlePlatformButtonClick(platformName) {
+    if (isPlatformAuthenticated(platformName)) {
+        // Платформа авторизована - открываем попап публикации
+        await openPublishPopup(platformName);
+    } else {
+        // Платформа не авторизована - начинаем авторизацию
+        await authPlatform(platformName);
+    }
+}
+
+async function openPublishPopup(platformName) {
+    selectedPlatformForPublish.value = platformName;
+    
+    // Загружаем данные текущей вакансии
+    if (currentVacancyId && !currentVacancy.value) {
+        currentVacancy.value = await getVacancy(currentVacancyId);
+    }
+    
+    isPublishPopupOpen.value = true;
+}
+
+function closePublishPopup() {
+    isPublishPopupOpen.value = false;
+    selectedPlatformForPublish.value = null;
+}
+
+function confirmPublish() {
+    // TODO: Реализовать логику публикации вакансии
+    alert(`Вакансия "${currentVacancy.value?.title}" будет опубликована на ${selectedPlatformForPublish.value}`);
+    closePublishPopup();
+}
+
+function handlePlatformDropdown(item, platformName) {
+    if (item === 'Импорт публикаций') {
+        openImportPopup(platformName);
+    } else if (item === 'Отвязать профиль') {
+        openUnlinkPopup(platformName);
+    }
+}
+
+async function openImportPopup(platformName) {
+    selectedImportPlatform.value = platformName;
+    importError.value = null;
+    importedPublications.value = [];
+    isImportPopupOpen.value = true;
+    isLoadingImport.value = true;
+
+    try {
+        const result = await getPublications();
+        
+        if (result?.error || result?.errorRoles) {
+            importError.value = result?.error || result?.errorRoles || 'Ошибка при загрузке публикаций';
+            return;
+        }
+
+        importedPublications.value = result?.roles?.items || [];
+    } catch (err) {
+        console.error('Ошибка при импорте публикаций:', err);
+        importError.value = 'Ошибка при загрузке публикаций';
+    } finally {
+        isLoadingImport.value = false;
+    }
+}
+
+function closeImportPopup() {
+    isImportPopupOpen.value = false;
+    importedPublications.value = [];
+    importError.value = null;
+    selectedImportPlatform.value = null;
+}
+
+function importPublication(publication) {
+    // Добавляем публикацию в список активных
+    if (!publicationsHh.value.find(p => p.id === publication.id)) {
+        publicationsHh.value.push(publication);
+    }
+    alert(`Публикация "${publication.name}" импортирована`);
+}
+
+function openUnlinkPopup(platformName) {
+    platformToUnlink.value = platformName;
+    unlinkError.value = null;
+    isUnlinkPopupOpen.value = true;
+}
+
+function closeUnlinkPopup() {
+    isUnlinkPopupOpen.value = false;
+    platformToUnlink.value = null;
+    unlinkError.value = null;
+}
+
+async function confirmUnlink() {
+    if (!platformToUnlink.value) return;
+
+    isUnlinking.value = true;
+    unlinkError.value = null;
+
+    try {
+        const result = await unlinkProfile();
+
+        if (result?.error) {
+            unlinkError.value = result.error;
+            return;
+        }
+
+        // Успешно отвязали профиль
+        platformsAuth.value[platformToUnlink.value] = false;
+        closeUnlinkPopup();
+    } catch (err) {
+        console.error('Ошибка при отвязке профиля:', err);
+        unlinkError.value = 'Ошибка при отвязке профиля';
+    } finally {
+        isUnlinking.value = false;
+    }
+}
+
 onMounted(async () => {
     await Promise.all([
       cartStore.setCardsData(cardsData),
       cartStore.setRatesData(ratesData),
     ])
+
+    // Проверяем авторизацию hh.ru
+    const { data, error } = await getProfile();
+    if (!error && data) {
+        platformsAuth.value['hh.ru'] = true;
+    }
+
+    // Обработка редиректа после авторизации hh.ru
+    const query = useRoute().query;
+    if (query.popup_account === 'true' && query.platform === 'hh' && query.message === 'success') {
+        const processAuth = useCookie('process_auth');
+        if (processAuth.value) {
+            const response = await authHh();
+            if (response && response.data) {
+                platformsAuth.value['hh.ru'] = true;
+            }
+        }
+    }
   })
 
   function getCardName(id) {
@@ -422,5 +811,58 @@ const openPopupNewPublication = () => {
 
 .table-row:last-child {
     border-radius: 0 0 15px 15px;
+}
+
+/* Стили для таблицы импорта */
+.import-table {
+    display: grid;
+    grid-template-rows: auto;
+    gap: 1px;
+}
+
+.import-table-header,
+.import-table-row {
+    display: grid;
+    grid-template-columns: 30% 20% 20% 15% 15%;
+    gap: 10px;
+    padding: 15px 20px;
+    align-items: center;
+}
+
+.import-table-header {
+    background-color: #f5f7fa;
+    border-radius: 10px 10px 0 0;
+    font-weight: 500;
+    font-size: 13px;
+    color: #79869a;
+}
+
+.import-table-row {
+    background-color: #ffffff;
+    border-bottom: 1px solid #f4f6f8;
+}
+
+.import-table-row:last-child {
+    border-radius: 0 0 10px 10px;
+    border-bottom: none;
+}
+
+.import-table-row:hover {
+    background-color: #f9fafb;
+}
+
+/* Прелоадер */
+.loader {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0052d0;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 </style>

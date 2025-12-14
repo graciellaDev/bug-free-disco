@@ -26,20 +26,5 @@
     "icon": "superjob",
     "isPng": false,
     "selectedRate": null
-  },
-  {
-    "id": "basket-6",
-    "name": "youla.ru",
-    "icon": false,
-    "isPng": true,
-    "imagePath": "/img/logo.png",
-    "selectedRate": null
-  },
-  {
-    "id": "basket-7",
-    "name": "careerist.ru",
-    "icon": "careerist",
-    "isPng": false,
-    "selectedRate": null
   }
 ]

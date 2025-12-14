@@ -21,7 +21,7 @@
                     <div class="text-sm font-medium text-space px-2.5">{{ item.email }}</div>
                     <div class="text-sm font-medium text-space px-2.5">{{ item.role }} </div>
                     <div>
-                        <DotsDropdonw :items="dropdownOptions" />
+                        <DotsDropdonw :items="dropdownOptions" @select-item="(selectedItem) => handleDropdownSelect(selectedItem, item)" />
                     </div>
                 </div>
             </div>
@@ -42,7 +42,15 @@ const props = defineProps({
         default: []
     }
 })
-console.log('users', props.users);
+
+const emit = defineEmits(['delete-user']);
+
+const handleDropdownSelect = (item, user) => {
+    if (item === 'Удалить') {
+        emit('delete-user', user);
+    }
+};
+
 const hoveredIndex = ref(null);
 </script>
 

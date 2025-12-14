@@ -204,4 +204,45 @@ export async function  teamList(id: string) {
 
         return employees;
 }
+
+export async function removeFromTeam(id: string | number, customerId: number) {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+
+    if (!authToken || !authUser) {
+        return { data: null, error: 'Токен авторизации не найден' };
+    }
+
+    const params = new URLSearchParams();
+    params.append('customer_id', String(customerId));
+
+    try {
+        const response = await $fetch(`${config.public.apiBase}/team/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Bearer ${authToken}`,
+                'X-Auth-User': `${authUser}`
+            },
+            body: params.toString()
+        });
+
+        return { data: response, error: null };
+    } catch (err: any) {
+        console.error('Ошибка при удалении сотрудника из команды:', err);
+        
+        if (err.response?.status === 401) {
+            return { data: null, error: 'Срок сессии истек. Пожалуйста, авторизуйтесь снова.' };
+        }
+
+        if (err.response?.status === 422) {
+            const validationErrors = err.response._data?.errors || err.response._data?.message;
+            return { data: null, error: validationErrors || 'Ошибка валидации данных' };
+        }
+
+        return { data: null, error: err.response?._data?.message || 'Ошибка при удалении сотрудника из команды' };
+    }
+}
     
