@@ -1,23 +1,99 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
-  import ButtonSelector from '~/components/custom/ButtonSelector.vue';
-  import DotsDropdown from '~/components/custom/DotsDropdown.vue';
-  import MyTooltip from '~/components/custom/MyTooltip.vue';
-  import BtnIcon from '~/components/custom/BtnIcon.vue';
+  import { ref, onMounted, toRef } from 'vue';
   import { getVacancyName } from '@/src/api/vacancies';
-
+  import { usePopups } from '@/composables/usePopup';
+  import { normalizeUsername } from '@/helpers/messengers';
+  import CandidateInfoHeader from './candidate/CandidateInfoHeader.vue';
+  import CandidateEditPopup from './candidate/popups/CandidateEditPopup.vue';
+  import CandidateEmailPopup from './candidate/popups/CandidateEmailPopup.vue';
+  import CandidateInfoContent from './candidate/CandidateInfoContent.vue';
+  import CandidateDeletePopup from './candidate/popups/CandidateDeletePopup.vue';
+  import { useCandidateActions } from './composables/useCandidateActions';
+  import { useCandidateActionsUI } from './composables/useCandidateActionsUI';
   import type { Candidate } from '@/types/candidates';
-  import type { ApiResponseVacancy, Vacancy } from '@/types/vacancy';
 
   const props = defineProps<{
     candidate: Candidate;
+    isFunnel: boolean;
+  }>();
+
+  const emit = defineEmits<{
+    'candidate-updated': [candidate: Candidate];
+    'candidate-deleted': [id: number];
+    'update:selectedLabel': [label: string];
   }>();
 
   const vacancyName = ref<string>('');
 
-  vacancyName.value = await getVacancyName(
-    props.candidate?.vacancy?.toString() || '0'
+  const selectedLabel = ref<string>('Подумать');
+  const candidateEditForm = ref<Record<string, any>>({});
+
+  const popups = usePopups({
+    deleteCandidate: {
+      manageBodyScroll: true,
+      onClose: () => {
+        console.log('Попап удаления закрыт');
+      },
+    },
+    editCandidate: {
+      manageBodyScroll: true,
+      onClose: () => {
+        candidateEditForm.value = {};
+        candidateActions.resetFormState();
+        console.log('Попап редактирования данных кандидата закрыт');
+      },
+    },
+    mailToCandidate: {
+      manageBodyScroll: true,
+      onClose: () => {
+        console.log('Попап отправки почты закрыт');
+      },
+    },
+  });
+
+  // Открытие попапа удаления
+  const handleDeleteCandidate = () => {
+    popups.deleteCandidate.open();
+  };
+
+  //  Открытие попапа редактирования
+  const handleEditCandidate = () => {
+    // Инициализация формы текущими данными кандидата
+    candidateEditForm.value = {
+      firstname: props.candidate.firstname || '',
+      surname: props.candidate.surname || '',
+      patronymic: props.candidate.patronymic || '',
+      email: props.candidate.email || '',
+      phone: props.candidate.phone || '',
+      resume: props.candidate.resume || '',
+      messengerMax: normalizeUsername(props.candidate.messengerMax),
+      telegram: normalizeUsername(props.candidate.telegram),
+      photo: props.candidate.imagePath || null,
+    };
+
+    // Сброс состояния формы
+    resetFormState();
+
+    // Открытие попапа
+    popups.editCandidate.open();
+  };
+
+  const candidateActions = useCandidateActions(
+    toRef(props.candidate),
+    updated => emit('candidate-updated', updated),
+    id => emit('candidate-deleted', id),
+    () => popups.editCandidate.close()
   );
+
+  const {
+    isSubmitting,
+    serverErrors,
+    isSuccess,
+    successMessage,
+    handleDelete,
+    handleUpdate,
+    resetFormState,
+  } = candidateActions;
 
   const options = [
     'Все',
@@ -39,209 +115,102 @@
     'Удалить',
   ];
 
-  const selectedLabel = ref<string>('Подумать');
-
-  const handleSelectItem = (item: string) => {
-    console.log(item);
+  //  Подтверждение удаления кандидата
+  const confirmDelete = async () => {
+    try {
+      await handleDelete();
+    } catch (error) {}
   };
 
-  const handleClickAddComment = () => {
-    console.log('click add comment');
+  //  Обработчик отправки формы редактирования
+  const handleFormSubmit = async (formData: Record<string, any>) => {
+    await handleUpdate(formData, () => popups.editCandidate.isOpen.value);
   };
 
-  const handleClickNewTask = () => {
-    console.log('click new task');
+  //  Отмена редактирования
+  const handleFormCancel = () => {
+    popups.editCandidate.close();
   };
 
-  const handleClickEmail = () => {
-    console.log('click email');
+  //  Отправка письма кандидату
+  const sendEmail = (data: Record<string, any>) => {
+    console.log('send email', data);
+    // TODO: Реализовать отправку письма
   };
 
-  const handleClickStop = () => {
-    console.log('click stop');
-  };
+  const candidateActionsUI = useCandidateActionsUI(toRef(props.candidate), {
+    onEdit: () => handleEditCandidate(),
+    onDelete: () => handleDeleteCandidate(),
+    onEmail: () => popups.mailToCandidate.open(),
+  });
 
-  const handleClickAddTag = () => {
-    console.log('click add tag');
-  };
-
-  const handleClickTelegram = () => {
-    if (props.candidate?.telegram) {
-      window.open(`https://t.me/${props.candidate?.telegram}`, '_blank');
+  onMounted(async () => {
+    // Загрузка названия вакансии
+    if (props.candidate?.vacancy) {
+      vacancyName.value = await getVacancyName(
+        props.candidate.vacancy.toString()
+      );
+    } else {
+      vacancyName.value = 'Вакансия не определена';
     }
-  };
+  });
 </script>
-
 <template>
   <div class="relative mb-15px rounded-fifteen bg-white p-25px pt-15px">
-    <div class="mb-[41px] flex justify-between">
-      <ButtonSelector :options="options" v-model="selectedLabel" />
-      <div class="flex gap-x-2.5">
-        <BtnIcon
-          icon="message20"
-          tooltipText="Добавить комментарий"
-          @click="handleClickAddComment"
-        />
-        <BtnIcon
-          icon="calendar20"
-          tooltipText="Новая задача"
-          @click="handleClickNewTask"
-        />
-        <BtnIcon
-          icon="email20"
-          tooltipText="Написать письмо"
-          @click="handleClickEmail"
-        />
-        <BtnIcon
-          icon="stop20"
-          tooltipText="Отказать кандидату"
-          classes="flex-center cursor-pointer rounded-ten border p-10.5px transition-colors"
-          isHoveredClasses="border-red-custom bg-red-custom text-white"
-          isNotHoveredClasses="border-border-pink bg-pink text-red-custom"
-          @click="handleClickStop"
-        />
-        <div>
-          <MyTooltip text="Еще действия" />
-          <DotsDropdown
-            :items="dropdownOptions"
-            @select-item="handleSelectItem"
-          />
-        </div>
-      </div>
-    </div>
+    <CandidateInfoHeader
+      :isFunnel="isFunnel"
+      :options="options"
+      :selectedLabel="selectedLabel"
+      :dropdownOptions="dropdownOptions"
+      @select-item="candidateActionsUI.handleSelectItem"
+      @add-comment="candidateActionsUI.handleClickAddComment"
+      @new-task="candidateActionsUI.handleClickNewTask"
+      @email="candidateActionsUI.handleClickEmail"
+      @refuse="candidateActionsUI.handleClickRefuse"
+      @update:selectedLabel="emit('update:selectedLabel', $event)"
+    />
     <div class="absolute left-0 top-[70px] h-[1px] w-full bg-athens-gray"></div>
-    <div class="flex justify-between">
-      <div>
-        <div class="mb-2 text-25px font-bold leading-normal text-space">
-          {{ candidate.surname }} {{ candidate.firstname }}
-          {{ candidate?.patronymic }}
-        </div>
-        <div class="mb-6px text-15px font-medium leading-normal text-space">
-          {{ vacancyName }}
-        </div>
-        <div class="mb-6 text-13px text-slate-custom">
-          {{
-            candidate.location ? 'г. ' + candidate.location : 'Город не указан'
-          }}
-        </div>
-        <div v-if="candidate.phone" class="flex">
-          <div
-            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-          >
-            Телефон:
-          </div>
-          <div class="mr-2.5 flex">
-            <span class="mr-4 text-sm font-medium text-space">
-              <a :href="`tel:${candidate.phone}`">
-                <!-- <svg-icon name="phone20" width="21" height="21" /> -->
-                {{
-                  candidate.phone.slice(0, 2) +
-                  '-' +
-                  candidate.phone.slice(2, 5) +
-                  '-' +
-                  candidate.phone.slice(5, 8) +
-                  '-' +
-                  candidate.phone.slice(8, 12)
-                }}
-              </a>
-            </span>
-            <div v-if="candidate.telegram">
-              <button class="mr-1" @click="handleClickTelegram">
-                <svg-icon
-                  class="pointer-events-none [&_use]:pointer-events-none"
-                  name="tg20"
-                  width="21"
-                  height="21"
-                />
-              </button>
-              <!-- <button class="mr-1">
-                <svg-icon
-                  class="pointer-events-none"
-                  name="viber20"
-                  width="21"
-                  height="21"
-                />
-              </button>
-              <button>
-                <svg-icon
-                  class="pointer-events-none"
-                  name="wh20"
-                  width="21"
-                  height="21"
-                />
-              </button> -->
-            </div>
-          </div>
-        </div>
-        <div class="flex">
-          <span
-            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-          >
-            Почта:
-          </span>
-          <span class="text-sm font-medium text-space">
-            {{ candidate.email }}
-          </span>
-        </div>
-        <div class="flex">
-          <span
-            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-          >
-            Скайп:
-          </span>
-          <span class="text-sm font-medium text-space">
-            {{ candidate.skype }}
-          </span>
-        </div>
-        <div class="flex">
-          <span
-            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-          >
-            Telegram:
-          </span>
-          <span class="text-sm font-medium text-space">
-            {{ candidate.telegram ? '@' + candidate.telegram : '' }}
-          </span>
-        </div>
-        <div class="flex">
-          <span
-            class="mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-          >
-            Теги:
-          </span>
-          <div class="flex">
-            <span
-              v-for="(tag, index) in candidate?.tags"
-              :key="index"
-              class="mr-2 text-sm font-medium text-dodger"
-            >
-              {{ tag }}
-            </span>
-            <button
-              :class="{
-                'ml-2.5': candidate?.tags && candidate?.tags?.length > 0,
-              }"
-              class="flex items-center text-slate-custom"
-              @click="handleClickAddTag"
-            >
-              <svg-icon
-                name="plus-gray20"
-                width="18"
-                height="17"
-                class="mr-5px"
-              />
-              <span class="text-sm font-medium">Добавить</span>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="h-[200px] w-[200px]">
-        <img
-          :src="candidate.imagePath || '/img/default-avatar.png'"
-          alt="Фото кандидата"
-          class="h-full w-full rounded-fifteen bg-catskill object-contain"
-        />
-      </div>
-    </div>
+    <CandidateInfoContent
+      :candidate="candidate"
+      :vacancyName="vacancyName"
+      @telegram="candidateActionsUI.handleClickTelegram"
+      @messengerMax="candidateActionsUI.handleClickMessengerMax"
+      @add-tag="candidateActionsUI.handleClickAddTag"
+    />
+    <CandidateEmailPopup
+      :isOpen="popups.mailToCandidate.isOpen"
+      @close="popups.mailToCandidate.close"
+      @submit="sendEmail"
+    />
+    <CandidateEditPopup
+      :isOpen="popups.editCandidate.isOpen"
+      :candidate="candidate"
+      :modelValue="candidateEditForm"
+      :serverErrors="serverErrors"
+      :loading="isSubmitting"
+      :isSuccess="isSuccess"
+      :successMessage="successMessage"
+      @close="popups.editCandidate.close"
+      @submit="handleFormSubmit"
+      @cancel="handleFormCancel"
+      @clear-error="candidateActions.resetFormState()"
+    />
+    <CandidateDeletePopup
+      :isOpen="popups.deleteCandidate.isOpen"
+      :candidate="candidate"
+      @close="popups.deleteCandidate.close"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
+
+<style>
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 0.3s;
+  }
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+  }
+</style>

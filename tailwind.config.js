@@ -1,4 +1,4 @@
-const animate = require('tailwindcss-animate')
+const animate = require('tailwindcss-animate');
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -61,6 +61,7 @@ module.exports = {
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
+          border: 'hsl(var(--destructive-border))',
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
@@ -89,6 +90,7 @@ module.exports = {
         seven: '7px',
         ten: '10px',
         fifteen: '15px',
+        sixteen: '16px',
         twentyfive: '25px',
       },
       keyframes: {
@@ -132,6 +134,7 @@ module.exports = {
         '17px': '17px',
         '18px': '18px',
         '19px': '19px',
+        '20px': '20px',
         '22px': '22px',
         '23px': '23px',
         '25px': '25px',
@@ -145,9 +148,10 @@ module.exports = {
         '60px': '60px',
         '70px': '70px',
         '75px': '75px',
-        128: '32rem',
+        '128px': '32rem',
         '275px': '275px',
         '300px': '300px',
+        border: 'hsl(var(--destructive-border))',
         '330px': '330px',
         '400px': '400px',
       },
@@ -159,6 +163,7 @@ module.exports = {
         '13px': '13px',
         '15px': '15px',
         '18px': '18px',
+        '20px': '20px',
         '25px': '25px',
       },
       padding: {
@@ -238,4 +243,4 @@ module.exports = {
     },
   },
   plugins: [animate, require('@tailwindcss/typography')],
-}
+};

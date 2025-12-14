@@ -2,7 +2,7 @@
   import { ref, watch, nextTick } from 'vue';
   import { useRouter } from 'vue-router';
   import { getCandidates, createCandidate } from '@/src/api/candidates';
-  import { disableBodyScroll, enableBodyScroll } from '@/utils/bodyScoll';
+  // import { disableBodyScroll, enableBodyScroll } from '@/utils/bodyScoll';
   import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
   import MyInput from '~/components/custom/MyInput.vue';
   import MyCheckbox from '~/components/custom/MyCheckbox.vue';
@@ -11,6 +11,7 @@
   import Pagination from '@/components/custom/Pagination.vue';
   import DynamicForm from '@/components/custom/DynamicForm.vue';
   import BtnIcon from '@/components/custom/BtnIcon.vue';
+  import { usePopup } from '@/composables/usePopup';
 
   import type { Candidate } from '@/types/candidates';
   import type { UserRole } from '@/types/roles';
@@ -30,7 +31,7 @@
   const userRole = ref<UserRole>('admin');
   const lastPage = ref(1);
   const loadingCandidates = ref(false);
-  const isAddCandidatePopup = ref(false);
+  // const isAddCandidatePopup = ref(false);
   const actionSort = ref<'Включить сортировку' | 'Отключить сортировку'>(
     'Включить сортировку'
   );
@@ -114,6 +115,21 @@
     showCancelButton: true,
   };
 
+  const addCandidatePopup = usePopup('addCandidate', {
+    manageBodyScroll: true,
+    onClose: () => {
+      ((candidateFormData.value = {}),
+        (serverErrors.value = {}),
+        (isSuccess.value = false),
+        (successMessage.value = ''));
+      isSubmitting.value = false;
+
+      if (data.value) {
+        data.value = [];
+      }
+    },
+  });
+
   const handlePageChange = async (page: number) => {
     currentPage.value = page;
     // TODO: Разобрать
@@ -143,17 +159,7 @@
   };
 
   const closeAddCandidatePopup = () => {
-    // Сброс всех данных формы
-    candidateFormData.value = {};
-    serverErrors.value = {};
-    isSuccess.value = false;
-    successMessage.value = '';
-    isSubmitting.value = false;
-
-    if (data.value) {
-      data.value = [];
-    }
-    isAddCandidatePopup.value = false;
+    addCandidatePopup.close();
   };
 
   function goToCandidate(id: number) {
@@ -219,7 +225,7 @@
 
   // Обработка отправки формы (получаем валидированные данные)
   const handleFormSubmit = async (formData: Record<string, any>) => {
-    if (!isAddCandidatePopup.value) {
+    if (!addCandidatePopup.isOpen.value) {
       console.warn('[handleFormSubmit] Попап закрыт, прерываем обработку');
       return;
     }
@@ -243,7 +249,7 @@
       if (response && typeof response === 'object' && response.data) {
         await getCandidatesData();
 
-        closeAddCandidatePopup();
+        addCandidatePopup.close();
       } else {
         // Если ответ не является объектом с data, это ошибка
         console.warn('[handleFormSubmit] Неожиданный формат ответа:', response);
@@ -274,7 +280,7 @@
 
   // Обработка отмены формы
   const handleFormCancel = () => {
-    closeAddCandidatePopup();
+    addCandidatePopup.close();
   };
 
   getCandidatesData();
@@ -294,19 +300,19 @@
     { deep: true }
   );
 
-  watch(
-    isAddCandidatePopup,
-    newValue => {
-      if (newValue) {
-        disableBodyScroll();
-      } else {
-        nextTick(() => {
-          enableBodyScroll();
-        });
-      }
-    },
-    { immediate: false }
-  );
+  // watch(
+  //   isAddCandidatePopup,
+  //   newValue => {
+  //     if (newValue) {
+  //       disableBodyScroll();
+  //     } else {
+  //       nextTick(() => {
+  //         enableBodyScroll();
+  //       });
+  //     }
+  //   },
+  //   { immediate: false }
+  // );
 </script>
 
 <template>
@@ -325,7 +331,7 @@
           v-if="userRole === 'admin'"
           size="semiaction"
           variant="action"
-          @click="isAddCandidatePopup = true"
+          @click="addCandidatePopup.open()"
         >
           Добавить кандидата
         </UiButton>
@@ -450,9 +456,9 @@
     <div v-if="userRole === 'admin'">
       <transition name="fade">
         <Popup
-          :isOpen="isAddCandidatePopup"
-          @close="closeAddCandidatePopup"
-          :width="'740px'"
+          :isOpen="addCandidatePopup.isOpen"
+          @close="addCandidatePopup.close"
+          :width="'490px'"
           :showCloseButton="false"
           :disableOverflowHidden="true"
           :overflowContainer="true"
@@ -464,7 +470,6 @@
             Новый кандидат
           </p>
 
-          <!-- Сообщение об успехе -->
           <div
             v-if="isSuccess"
             class="border-green-200 bg-green-50 text-green-700 mb-4 rounded-ten border p-4"
@@ -472,7 +477,6 @@
             {{ successMessage }}
           </div>
 
-          <!-- Общая ошибка -->
           <div
             v-if="serverErrors._general"
             class="mb-4 rounded-ten border border-red-200 bg-red-50 p-4 text-red-700"
@@ -480,7 +484,6 @@
             {{ serverErrors._general }}
           </div>
 
-          <!-- Форма -->
           <DynamicForm
             :config="candidateFormConfig"
             :model-value="candidateFormData"

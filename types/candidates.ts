@@ -1,8 +1,8 @@
+import type { ApiSuccessResponse } from './clients';
+
 export type SkillCandidate = {
   id: number;
   name: string;
-  created_at?: string;
-  updated_at?: string;
 };
 
 export type TagCandidate = {
@@ -63,62 +63,56 @@ export interface Candidate {
 }
 
 // Успешный ответ запроса списка кандидатов
-export interface ApiCandidatesResponse {
-  message: 'Success';
-  data: {
-    data: Candidate[];
-    current_page: number;
-    per_page: number;
-    total: number;
-    last_page: number;
-    from: number | null;
-    to: number | null;
-    path: string;
-    first_page_url: string;
-    last_page_url: string;
-    prev_page_url: string | null;
-    next_page_url: string | null;
-  };
-}
+export type ApiCandidatesResponse = ApiSuccessResponse<{
+  data: Candidate[];
+  current_page: number;
+  per_page: number;
+  total: number;
+  last_page: number;
+  from: number | null;
+  to: number | null;
+  path: string;
+  first_page_url: string;
+  last_page_url: string;
+  prev_page_url: string | null;
+  next_page_url: string | null;
+}>;
 
 // Успешный ответ запроса по id кандидата
-export interface ApiCandidateByIdResponse {
-  message: string;
-  data: Candidate & {
+export type ApiCandidateByIdResponse = ApiSuccessResponse<
+  Candidate & {
     attachments?: AttachmentCandidate[];
     skills?: SkillCandidate[];
     tags?: TagCandidate[];
     customFields?: CustomFieldCandidate[];
-  };
-}
+  }
+>;
 
 // Успешный ответ создания кандидата
-export interface CandidateCreateResponse {
-  message: string;
-  data: Candidate & {
+export type CandidateCreateResponse = ApiSuccessResponse<
+  Candidate & {
     customer: number;
     skills?: SkillCandidate[];
     tags?: TagCandidate[];
     customFields?: CustomFieldCandidate[];
     attachments?: AttachmentCandidate[];
-  };
-}
+  }
+>;
 
 // Успешный ответ обновления данных кандидата
-export interface CandidateUpdateResponse {
-  message: 'Success';
+export type CandidateUpdateResponse = ApiSuccessResponse<{
   data: Candidate & {
-    attachments: AttachmentCandidate[];
-    skills: SkillCandidate[];
-    tags: TagCandidate[];
-    customFields: CustomFieldCandidate[];
+    attachments?: AttachmentCandidate[];
+    skills?: SkillCandidate[];
+    tags?: TagCandidate[];
+    customFields?: CustomFieldCandidate[];
   };
-}
+}>;
 
-// Успешный ответ
-export interface CandidateDeleteResponse {
-  message: string;
-}
+// Успешный ответ удаления кандидата
+export type CandidateDeleteResponse = ApiSuccessResponse<{
+  data: null;
+}>;
 
 // Для создания кандидата
 export interface CandidateCreateRequest {
@@ -152,27 +146,17 @@ export interface CandidateCreateRequest {
 // Для запроса на обновление данных кандидата
 export interface CandidateUpdateRequest extends Partial<Candidate> {}
 
-// Общий тип успешного ответа
-export type ApiSuccessResponse<T> = {
-  message: string;
-  data: T;
-};
-
-// Общий тип ошибки
-export type ApiErrorResponse = {
-  message: string;
-  data?: null;
+export type ApiResponseCandidatesData = {
+  data: Candidate[];
+  total: number;
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  firstName?: string;
 };
 
 export interface ApiResponseCandidates {
-  data: {
-    data: Candidate[];
-    total: number;
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    firstName?: string;
-  };
+  data: ApiResponseCandidatesData;
 }
 
 export interface Pagination {

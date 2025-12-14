@@ -33,12 +33,14 @@
   const formsStore = useForms();
 
   const activeTab = ref('resume'); // Начальный таб
+  
   const tabs = [
     { label: 'Резюме', value: 'resume' },
     { label: 'Поля', value: 'fields' },
     { label: 'Общение', value: 'chat', notification: '+1' },
     { label: 'Рассмотрения', value: 'review' },
   ];
+
   const positions = [
     {
       id: 'position_1',
@@ -64,7 +66,198 @@
 
   const dropdownOptions = ['Опция 1', 'Опция 2', 'Опция 3'];
 
+  // const timelineGroups = ref<TimelineGroup[]>([]);
   const timelineGroups = ref([]);
+
+  // const timelineGroups = ref([
+  //   {
+  //     date: '13/12/2025',
+  //     events: [
+  //       {
+  //         id: 1,
+  //         type: 'system',
+  //         time: '18.01.2024 15:04',
+  //         content: 'создан кандидат Анатольев Дмитрий Корсаров',
+  //       },
+  //       {
+  //         id: 2,
+  //         type: 'system',
+  //         time: '18.01.2024 15:04',
+  //         content:
+  //           'кандидат Анатольев Дмитрий Корсаров откликнулся на вакансию Консультант продавцов',
+  //       },
+  //       {
+  //         id: 3,
+  //         type: 'system',
+  //         time: '18.01.2024 15:04',
+  //         content:
+  //           'Перемещение на этап Подумать пользователем Анатолий Семенов',
+  //       },
+  //     ],
+  //   },
+  //   {
+  //     date: 'Сегодня',
+  //     events: [
+  //       {
+  //         id: 4,
+  //         type: 'call',
+  //         calls: [
+  //           {
+  //             time: '18.01.2024 15:04',
+  //             candidateName: 'Марго Роби',
+  //           },
+  //           {
+  //             time: '18.01.2024 15:04',
+  //             candidateName: 'Марго Роби',
+  //           },
+  //         ],
+  //       },
+  //       {
+  //         id: 5,
+  //         type: 'note',
+  //         time: '18.01.2024 15:04',
+  //         author: 'Анатолий Семенов',
+  //         content:
+  //           'Кандидат утверждает что у него есть знакомые которые работали в компании и отзываются не очень хорошо, но самому ему все нравится. Ему нужно время подумать.',
+  //       },
+  //       {
+  //         id: 6,
+  //         type: 'task',
+  //         time: '18.01.2024 15:04',
+  //         user: 'Анатолий Семенов',
+  //         title: 'Интервью с кандидатом',
+  //         scheduled: '13/02/2024 в 13:30',
+  //       },
+  //       {
+  //         id: 7,
+  //         type: 'email',
+  //         emails: [
+  //           {
+  //             time: '18.01.2024 15:04',
+  //             direction: 'входящее',
+  //             from: 'Анатолий Семенов',
+  //             to: 'Марго Роби',
+  //             subject: 'Реквизиты компании',
+  //             content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
+  //           },
+  //           {
+  //             time: '18.01.2024 15:04',
+  //             direction: 'входящее',
+  //             from: 'Марго Роби',
+  //             to: 'Анатолий Семенов',
+  //             status: 'Доставлено',
+  //             subject: 'Реквизиты компании',
+  //             content: `Благодарю за обращение. Вот реквизиты нашей компании: Название организации: [Название] ИНН: [Ваш ИНН] КПП: [Ваш КПП] Расчётный счёт: [Ваш счёт] Банк: [Название банка] БИК: [Ваш БИК] Корреспондентский счёт: [Ваш корр. счёт] Если потребуется дополнительная информация, пожалуйста, дайте знать. С уважением, [Имя клиента] [Должность, если есть] [Контактные данные] [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
+  //           },
+  //         ],
+  //       },
+  //       {
+  //         id: 8,
+  //         type: 'email',
+  //         emails: [
+  //           {
+  //             time: '18.01.2024 15:04',
+  //             direction: 'входящее',
+  //             from: 'Марго Роби',
+  //             to: 'Анатолий Семенов',
+  //             subject: 'Другая тема письма',
+  //             content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
+  //           },
+  //         ],
+  //       },
+  //       {
+  //         id: 9,
+  //         type: 'hh_chat',
+  //         time: '18.01.2024 15:04',
+  //         author: 'Марго Роби',
+  //         company: 'ООО КОМПАНИЯ',
+  //         content: 'Здравствуйте! Посмотрите пожалуйста мой отклик',
+  //         initials: 'СК',
+  //       },
+  //       {
+  //         id: 10,
+  //         type: 'telegram',
+  //         time: '18.01.2024 15:04',
+  //         author: 'Марго Роби',
+  //         content:
+  //           'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
+  //         initials: 'МР',
+  //       },
+  //       {
+  //         id: 11,
+  //         type: 'whatsapp',
+  //         time: '18.01.2024 15:04',
+  //         author: 'Марго Роби',
+  //         content:
+  //           'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
+  //         initials: 'МР',
+  //       },
+  //       {
+  //         id: 12,
+  //         type: 'comment',
+  //         time: '18.01.2024 15:04',
+  //         author: 'Марго Роби',
+  //         content:
+  //           'Коллеги, кандидат не плохой, давайте рассмотрим его под микроскопом?',
+  //         initials: 'АС',
+  //       },
+  //     ],
+  //   },
+  // ]);
+
+  // function sanitazeCandidate(data) {
+  //   if (!data) return null;
+
+  //   let address = data?.area.name ? `г. ${data?.area.name}` : '';
+  //   address += data?.metro?.name ? `, м. ${data.metro.name}` : '';
+
+  //   return {
+  //     id: data.id ?? null,
+  //     created: data.created_at ?? null,
+  //     age: data.age ?? null,
+  //     firstName: data.first_name ?? '',
+  //     surname: data.last_name ?? '',
+  //     patronymic: data.patronymic ?? '',
+  //     email: data.contact
+  //       ? data.contact.find(function (value) {
+  //           return value.kind === 'email';
+  //         })?.contact_value
+  //       : '',
+  //     phone: data.contact
+  //       ? data.contact.find(function (value) {
+  //           return value.kind === 'phone';
+  //         })?.contact_value
+  //       : '',
+  //     location: data?.area.name ?? '',
+  //     vacancy: data.title ?? '',
+  //     gender: data.gender.name ?? '',
+  //     status: data.status ?? '',
+  //     skills: data.skill_set ?? [],
+  //     experience: data.experience ?? '',
+  //     skype: data.skype ?? '',
+  //     telegram: data.telegram ?? '',
+  //     tags: data.tags ?? '',
+  //     quickInfo: data.quickInfo ?? '',
+  //     education: data.education ?? '',
+  //     attachedFiles: data.attachments ?? [],
+  //     links: [
+  //       // 'www.testlink-null.com',
+  //       // 'www.testlink-one.com',
+  //       // 'www.testlink-second.com',
+  //     ],
+  //     header: data.title ?? '',
+  //     locationFull: address,
+  //     educationLevel: data.education.level.name ?? '',
+  //     resumeDownloadLink: data.resumeDownloadLink ?? '',
+  //     coverLetter: data.coverPath ?? '',
+  //     comments: data.comments ?? [],
+  //     timeline: data.timeline ?? [],
+  //     customFields: data.customFields ?? null,
+  //     customer: data.customer ?? null,
+  //     icon: data.icon ?? null,
+  //     photo: data.photo?.medium !== null ? data.photo?.medium : null,
+  //   };
+  // }
 
   const props = defineProps<{
     candidate: Candidate;

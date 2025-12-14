@@ -192,14 +192,8 @@
       event.preventDefault();
     }
 
-    console.log('[DynamicForm] handleSubmit вызван');
-    console.log('[DynamicForm] Данные формы:', formData.value);
-
     // Валидируем форму
     const isValid = validateForm();
-    console.log('[DynamicForm] Валидация прошла:', isValid);
-    console.log('[DynamicForm] Ошибки валидации:', formErrors.value);
-    console.log('[DynamicForm] Серверные ошибки:', props.serverErrors);
 
     if (isValid) {
       console.log('[DynamicForm] Эмитим submit с данными:', {

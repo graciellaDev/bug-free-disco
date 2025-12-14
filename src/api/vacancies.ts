@@ -1,23 +1,13 @@
-import type { ApiResponseVacancy, Vacancy } from '@/types/vacancy';
+import { apiGet } from './client';
 
-// interface Vacancies {
-//   vacancies: Vacancy[];
-// }
+import type { Vacancy } from '@/types/vacancy';
 
 export const getVacancyName = async (id: string): Promise<string> => {
-  const config = useRuntimeConfig();
-  const authToken = useCookie('auth_token').value;
-  const authUser = useCookie('auth_user').value;
-
-  const response = await fetch(`${config.public.apiBase}/vacancies/${id}`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${authToken}`,
-      'X-Auth-User': `${authUser}`,
-    },
-  });
-
-  const dataVacancy = await response.json();
-  return dataVacancy?.data?.name || 'Неизвестная вакансия';
+  try {
+    const response = await apiGet<Vacancy>(`/vacancies/${id}`);
+    return response.data.name || 'Неизвестная вакансия';
+  } catch (error) {
+    console.error('Ошибка при получении названия вакансии:', error);
+    return 'Неизвестная вакансия';
+  }
 };
