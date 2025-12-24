@@ -3,13 +3,13 @@
   import { getVacancyName } from '@/src/api/vacancies';
   import { usePopups } from '@/composables/usePopup';
   import { normalizeUsername } from '@/helpers/messengers';
-  import CandidateInfoHeader from './candidate/CandidateInfoHeader.vue';
-  import CandidateEditPopup from './candidate/popups/CandidateEditPopup.vue';
-  import CandidateEmailPopup from './candidate/popups/CandidateEmailPopup.vue';
-  import CandidateInfoContent from './candidate/CandidateInfoContent.vue';
-  import CandidateDeletePopup from './candidate/popups/CandidateDeletePopup.vue';
-  import { useCandidateActions } from './composables/useCandidateActions';
-  import { useCandidateActionsUI } from './composables/useCandidateActionsUI';
+  import CandidateInfoHeader from './CandidateInfoHeader.vue';
+  import CandidateEditPopup from './popups/CandidateEditPopup.vue';
+  import CandidateEmailPopup from './popups/CandidateEmailPopup.vue';
+  import CandidateInfoContent from './CandidateInfoContent.vue';
+  import CandidateDeletePopup from './popups/CandidateDeletePopup.vue';
+  import { useCandidateActions } from '../composables/useCandidateActions';
+  import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
   import type { Candidate } from '@/types/candidates';
 
   const props = defineProps<{
@@ -32,7 +32,7 @@
     deleteCandidate: {
       manageBodyScroll: true,
       onClose: () => {
-        console.log('Попап удаления закрыт');
+        // console.log('Попап удаления закрыт');
       },
     },
     editCandidate: {
@@ -40,13 +40,13 @@
       onClose: () => {
         candidateEditForm.value = {};
         candidateActions.resetFormState();
-        console.log('Попап редактирования данных кандидата закрыт');
+        // console.log('Попап редактирования данных кандидата закрыт');
       },
     },
     mailToCandidate: {
       manageBodyScroll: true,
       onClose: () => {
-        console.log('Попап отправки почты закрыт');
+        // console.log('Попап отправки почты закрыт');
       },
     },
   });

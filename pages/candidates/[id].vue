@@ -3,8 +3,8 @@
   import { useRoute, useRouter } from 'vue-router';
   import { getCandidateById } from '@/src/api/candidates';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
-  import BlockCandidateInfo from '~/components/custom/page-parts/BlockCandidateInfo.vue';
-  import BlockCandidateTabsInfo from '~/components/custom/page-parts/BlockCandidateTabsInfo.vue';
+  import BlockCandidateInfo from '@/components/custom/page-parts/candidate/BlockCandidateInfo.vue';
+  import BlockCandidateTabsInfo from '@/components/custom/page-parts/candidate/BlockCandidateTabsInfo.vue';
 
   import type { ApiResponseById, Candidate } from '@/types/candidates';
   // import type { SelectedLabel } from '@/types/ui-components';
@@ -35,6 +35,20 @@
     });
   }
 
+  const getCandidateId = (): string => {
+    const candidateId = Array.isArray(route.params.id)
+      ? route.params.id[0]
+      : route.params.id;
+
+    if (!candidateId) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Не указан ID кандидата',
+      });
+    }
+    return candidateId;
+  };
+
   const loadCandidate = async (id: number) => {
     if (!id || isNaN(id)) {
       throw createError({
@@ -56,15 +70,7 @@
     }
   };
 
-  const candidateId = Array.isArray(route.params.id)
-    ? route.params.id[0]
-    : route.params.id;
-  if (!candidateId) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'Не указан ID кандидата',
-    });
-  }
+  // const candidateId = getCandidateId();
 
   const goToPrevious = () => {
     if (candidate.value) {
@@ -93,18 +99,7 @@
   };
 
   onMounted(async () => {
-    const candidateId = Array.isArray(route.params.id)
-      ? route.params.id[0]
-      : route.params.id;
-
-    if (!candidateId) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Не указан ID кандидата',
-      });
-    }
-
-    await loadCandidate(parseInt(candidateId));
+    await loadCandidate(parseInt(getCandidateId()));
   });
 </script>
 

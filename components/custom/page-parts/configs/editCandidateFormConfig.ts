@@ -6,6 +6,18 @@ import type { FormConfig } from '@/types/form';
 export const editCandidateFormConfig: FormConfig = {
   fields: [
     {
+      name: 'surname',
+      label: 'Фамилия',
+      type: 'text',
+      placeholder: 'Введите фамилию',
+      required: false,
+      row: 1,
+      colSpan: 4,
+      validation: {
+        required: false,
+      },
+    },
+    {
       name: 'firstname',
       label: 'Имя',
       type: 'text',
@@ -17,18 +29,6 @@ export const editCandidateFormConfig: FormConfig = {
         required: true,
         message: 'Имя обязательно для заполнения',
         minLength: 3,
-      },
-    },
-    {
-      name: 'surname',
-      label: 'Фамилия',
-      type: 'text',
-      placeholder: 'Введите фамилию',
-      required: false,
-      row: 1,
-      colSpan: 4,
-      validation: {
-        required: false,
       },
     },
     {

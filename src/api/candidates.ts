@@ -14,27 +14,32 @@ import type {
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
-export async function getCandidates(page = 1) {
+export async function getCandidates(page = 1, filters?: Record<string, any>) {
   try {
+    const queryParams: Record<string, any> = { page };
+
+    if (filters) {
+      Object.assign(queryParams, filters);
+    }
     const response = await apiGet<ApiCandidatesResponse['data']>(
       '/candidates',
-      { page }
+      { queryParams }
     );
 
     return {
       candidates: response.data.data || [],
       pagination: {
         total: response.data.total,
-        currentPage: response.data.current_page,
-        lastPage: response.data.last_page,
-        perPage: response.data.per_page,
+        current_page: response.data.current_page,
+        last_page: response.data.last_page,
+        per_page: response.data.per_page,
       },
     };
   } catch (error) {
     console.error('Ошибка при получении кандидатов:', error);
     return {
       candidates: [],
-      pagination: { total: 0, currentPage: 1, lastPage: 1, perPage: 15 },
+      pagination: { total: 0, current_page: 1, last_page: 1, per_page: 15 },
     };
   }
 }
@@ -163,6 +168,33 @@ export async function uploadCandidatePhoto(
   }
 }
 
+export async function getCandidatesByVacancy(vacancyId: number, page = 1) {
+  try {
+    const response = await apiGet<ApiCandidatesResponse['data']>(
+      '/candidates',
+      {
+        page,
+        vacancy: vacancyId, // или filters[vacancy]=vacancyId
+      }
+    );
+
+    return {
+      candidates: response.data.data || [],
+      pagination: {
+        total: response.data.total,
+        currentPage: response.data.current_page,
+        lastPage: response.data.last_page,
+        perPage: response.data.per_page,
+      },
+    };
+  } catch (error) {
+    console.error('Ошибка при получении кандидатов по вакансии:', error);
+    return {
+      candidates: [],
+      pagination: { total: 0, currentPage: 1, lastPage: 1, perPage: 15 },
+    };
+  }
+}
 // export async function fetchCandidatesMin(page = 1) {
 //   const { candidates, pagination } = await fetchCandidatesFull(page);
 

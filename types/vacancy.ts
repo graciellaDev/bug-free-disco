@@ -7,6 +7,7 @@ export type Phrase = string | Option[];
 export interface Vacancy {
   id?: number;
   name: string;
+  title?: string;
   code?: number;
   description: string;
   dateEnd?: string;
@@ -22,6 +23,7 @@ export interface Vacancy {
   currency?: string;
   place?: Number;
   location?: string;
+  city?: string;
   customer_id?: number;
   executor_name?: string;
   executor_id?: number;
@@ -39,10 +41,18 @@ export interface Vacancy {
   updated_at?: string;
 }
 
-// type Data = {
-//   id: number;
-//   name: string;
-// };
+export type ApiResponseVacanciesData = {
+  data: Vacancy[];
+  total: number;
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  firstName?: string;
+};
+
+export interface ApiResponseVacancies {
+  data: ApiResponseVacanciesData;
+}
 
 export interface ResponseVacancy {
   name: string;

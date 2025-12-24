@@ -1,4 +1,5 @@
 import type { FormConfig } from '@/types/form';
+import TiptapEditor from '@/components/TiptapEditor.vue';
 
 export const emailToCandidateFormConfig: FormConfig = {
   fields: [
@@ -7,6 +8,7 @@ export const emailToCandidateFormConfig: FormConfig = {
       label: 'Тема письма',
       type: 'text',
       placeholder: 'Например: Приглашаем на вакансию',
+      required: true,
       validation: {
         required: true,
         message: 'Тема письма обязательна для заполнения',
@@ -15,7 +17,10 @@ export const emailToCandidateFormConfig: FormConfig = {
     {
       name: 'body',
       label: 'Содержание письма',
-      type: 'textarea',
+      type: 'custom',
+      component: TiptapEditor,
+      required: true,
+      row: 5,
       placeholder: 'Начните вводить...',
       validation: {
         required: true,
