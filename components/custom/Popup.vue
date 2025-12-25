@@ -21,6 +21,9 @@
       overflowVisible?: boolean;
       topActive?: boolean;
       maxHeight?: boolean;
+      maxHeightValue?: string;
+      allowDropdownOverflow?: boolean;
+      adaptiveHeight?: boolean;
       lgSize?: boolean;
       parentRounded?: boolean;
     }>(),
@@ -33,6 +36,9 @@
       overflowVisible: false,
       topActive: false,
       maxHeight: false,
+      maxHeightValue: '80vh',
+      allowDropdownOverflow: false,
+      adaptiveHeight: false,
       lgSize: false,
       parentRounded: false,
     }
@@ -110,11 +116,11 @@
   >
     <div
       @click.self="closePopup"
-      class="absolute w-full"
+      class="absolute w-full rounded-fifteen bg-white p-25px"
       :style="{
         maxWidth: width,
         top: lgSize ? '10%' : 'auto',
-        paddingBottom: lgSize ? '7.86%' : '0',
+        paddingBottom: allowDropdownOverflow ? '11%' : lgSize ? '7.86%' : '0',
       }"
     >
       <div
@@ -122,19 +128,31 @@
         :style="{
           maxWidth: width,
           height: height === 'auto' ? 'auto' : lgSize ? 'auto' : height,
-          overflow: disableOverflowHidden ? 'visible' : 'hidden',
+          overflow: allowDropdownOverflow
+            ? 'visible'
+            : disableOverflowHidden
+              ? 'visible'
+              : 'hidden',
           top: topActive ? '-10%' : 'auto',
-          maxHeight: maxHeight ? 'none' : '80vh',
+          maxHeight: maxHeight ? 'none' : maxHeightValue,
         }"
         :class="{ 'pr-2.5': customStyles }"
       >
         <div
           ref="scrollContainer"
           class="h-full overflow-y-auto pr-[15px]"
+          :class="{
+            'overflow-y-auto': !allowDropdownOverflow,
+            'overtlow-visible': allowDropdownOverflow,
+          }"
           :style="{
             ...customStyles,
             maxHeight: height === 'auto' ? '100%' : height,
-            overflow: disableOverflowHidden ? 'visible' : 'auto',
+            overflow: allowDropdownOverflow
+              ? 'visible'
+              : disableOverflowHidden
+                ? 'visible'
+                : 'auto',
           }"
         >
           <button

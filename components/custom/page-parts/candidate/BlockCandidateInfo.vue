@@ -8,9 +8,14 @@
   import CandidateEmailPopup from './popups/CandidateEmailPopup.vue';
   import CandidateInfoContent from './CandidateInfoContent.vue';
   import CandidateDeletePopup from './popups/CandidateDeletePopup.vue';
+  import CandidateMoveToVacancyPopup from './popups/CandidateMoveToVacancyPopup.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
   import type { Candidate } from '@/types/candidates';
+  import {
+    getCandidateById,
+    moveCandidateToVacancy,
+  } from '@/src/api/candidates';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -49,6 +54,12 @@
         // console.log('Попап отправки почты закрыт');
       },
     },
+    moveToVacancy: {
+      manageBodyScroll: true,
+      onClose: () => {
+        // console.log('Попап переноса кандидата в другую вакансию закрыт');
+      },
+    },
   });
 
   // Открытие попапа удаления
@@ -76,6 +87,10 @@
 
     // Открытие попапа
     popups.editCandidate.open();
+  };
+
+  const handleMoveToVacancy = () => {
+    popups.moveToVacancy.open();
   };
 
   const candidateActions = useCandidateActions(
@@ -138,17 +153,31 @@
     // TODO: Реализовать отправку письма
   };
 
+  const handleConfirmMove = async (vacancyId: number) => {
+    try {
+      await moveCandidateToVacancy(vacancyId, props.candidate);
+      const updated = await getCandidateById(props.candidate.id);
+      emit('candidate-updated', updated.candidateData);
+
+      popups.moveToVacancy.close();
+      // TODO: Сообщение об успехе при необходимости
+    } catch (err) {
+      console.error('Ошибка при перемещении кандидата: ', err);
+    }
+  };
+
   const candidateActionsUI = useCandidateActionsUI(toRef(props.candidate), {
     onEdit: () => handleEditCandidate(),
     onDelete: () => handleDeleteCandidate(),
     onEmail: () => popups.mailToCandidate.open(),
+    onMoveToVacancy: () => handleMoveToVacancy(),
   });
 
   onMounted(async () => {
     // Загрузка названия вакансии
-    if (props.candidate?.vacancy) {
+    if (props.candidate?.vacancy_id) {
       vacancyName.value = await getVacancyName(
-        props.candidate.vacancy.toString()
+        props.candidate.vacancy_id.toString()
       );
     } else {
       vacancyName.value = 'Вакансия не определена';
@@ -200,6 +229,12 @@
       :candidate="candidate"
       @close="popups.deleteCandidate.close"
       @confirm="confirmDelete"
+    />
+    <CandidateMoveToVacancyPopup
+      :isOpen="popups.moveToVacancy.isOpen"
+      :candidate="candidate"
+      @close="popups.moveToVacancy.close"
+      @confirm="handleConfirmMove"
     />
   </div>
 </template>

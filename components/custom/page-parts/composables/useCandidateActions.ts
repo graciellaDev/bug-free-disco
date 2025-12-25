@@ -162,6 +162,7 @@ export function useCandidateActions(
 
       // Подготовка данных для обновления
       const updateData: CandidateUpdateRequest = {
+        id: currentCandidate.id,
         firstname: formData.firstname,
         surname: formData.surname || '',
         patronymic: formData.patronymic || null,
@@ -175,13 +176,13 @@ export function useCandidateActions(
       };
 
       // Отправка запроса на обновление
-      const response = await updateCandidate(currentCandidate.id, updateData);
+      const response = await updateCandidate(updateData);
 
       if (response && typeof response === 'object' && response.data) {
         isSuccess.value = true;
         successMessage.value = 'Данные кандидата успешно обновлены';
 
-        const updatedCandidate = response.data.data as Candidate;
+        const updatedCandidate = response.data as Candidate;
 
         // Вызываем callback при успешном обновлении
         onUpdated?.(updatedCandidate);

@@ -93,6 +93,7 @@ export function useCandidateAddForm(options?: {
         phone:
           formData.phone && formData.phone !== '+7' ? formData.phone : null,
         resume: formData.resume || null,
+        vacancy: formData.vacancy || null,
       };
 
       const response = await createCandidate(candidateData);

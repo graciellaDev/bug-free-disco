@@ -96,12 +96,11 @@ export async function createCandidate(
 }
 
 export async function updateCandidate(
-  id: number,
-  data: CandidateUpdateRequest
+  candidate: CandidateUpdateRequest
 ): Promise<CandidateUpdateResponse> {
   return await apiPut<CandidateUpdateResponse['data']>(
-    `/candidates/${id}`,
-    data
+    `/candidates/${candidate.id}`,
+    candidate
   );
 }
 
@@ -110,12 +109,16 @@ export async function deleteCandidate(id: number): Promise<void> {
 }
 
 export async function moveCandidateToVacancy(
-  candidateId: number,
-  vacancyId: number
-): Promise<void> {
-  await apiPut(`/candidates/${candidateId}`, {
-    vacancy: vacancyId,
-  });
+  vacancyId: number,
+  candidate: Pick<Candidate, 'id' | 'firstname' | 'email' | 'phone'>
+): Promise<CandidateUpdateResponse> {
+  const updateData: CandidateUpdateRequest = {
+    firstname: candidate.firstname,
+    email: candidate.email,
+    phone: candidate.phone,
+    vacancy_id: vacancyId,
+  };
+  return await apiPut(`/candidates/${candidate.id}`, updateData);
 }
 
 /**
