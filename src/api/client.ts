@@ -83,8 +83,10 @@ export async function apiFetch<T>(
         headers,
       }
     );
+    const parsedResponse =
+      typeof response === 'string' ? JSON.parse(response) : response;
 
-    return response;
+    return parsedResponse as ApiSuccessResponse<T>;
   } catch (error: unknown) {
     await handleApiError(error);
     throw error;

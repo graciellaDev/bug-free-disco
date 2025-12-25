@@ -30,7 +30,7 @@ export type AttachmentCandidate = {
 export interface Candidate {
   id: number;
   firstname?: string;
-  surname: string;
+  surname?: string;
   patronymic?: string | null;
   email: string;
   age?: number | null;
@@ -52,7 +52,7 @@ export interface Candidate {
   source?: string | null;
   isReserve?: boolean | null;
   customer?: number | null;
-  vacancy?: number | null;
+  vacancy_id?: number | null;
   stage?: number | null;
   attachments?: AttachmentCandidate[] | null;
   skills?: SkillCandidate[] | null;
@@ -100,14 +100,14 @@ export type CandidateCreateResponse = ApiSuccessResponse<
 >;
 
 // Успешный ответ обновления данных кандидата
-export type CandidateUpdateResponse = ApiSuccessResponse<{
-  data: Candidate & {
+export type CandidateUpdateResponse = ApiSuccessResponse<
+  Candidate & {
     attachments?: AttachmentCandidate[];
     skills?: SkillCandidate[];
     tags?: TagCandidate[];
     customFields?: CustomFieldCandidate[];
-  };
-}>;
+  }
+>;
 
 // Успешный ответ удаления кандидата
 export type CandidateDeleteResponse = ApiSuccessResponse<{
@@ -157,13 +157,6 @@ export type ApiResponseCandidatesData = {
 
 export interface ApiResponseCandidates {
   data: ApiResponseCandidatesData;
-}
-
-export interface Pagination {
-  total: number;
-  current_page: number;
-  last_page: number;
-  per_page: number;
 }
 
 // Успешный ответ запроса по id кандидата

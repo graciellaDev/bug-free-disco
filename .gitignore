@@ -29,3 +29,4 @@ temp/
 !.env.example
 
 *constants.ts
+public/img/

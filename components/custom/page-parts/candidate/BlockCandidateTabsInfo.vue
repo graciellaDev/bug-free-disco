@@ -33,12 +33,12 @@
   const formsStore = useForms();
 
   const activeTab = ref('resume'); // Начальный таб
-  
+
   const tabs = [
     { label: 'Резюме', value: 'resume' },
-    { label: 'Поля', value: 'fields' },
+    // { label: 'Поля', value: 'fields' },
     { label: 'Общение', value: 'chat', notification: '+1' },
-    { label: 'Рассмотрения', value: 'review' },
+    // { label: 'Рассмотрения', value: 'review' },
   ];
 
   const positions = [

@@ -17,6 +17,7 @@ export function useCandidateActionsUI(
     onEdit?: () => void;
     onDelete?: () => void;
     onEmail?: () => void;
+    onMoveToVacancy?: () => void;
   }
 ) {
   const router = useRouter();
@@ -60,8 +61,7 @@ export function useCandidateActionsUI(
    * Переместить в вакансию
    */
   const handleMoveToVacancy = () => {
-    // TODO: Открыть диалог выбора вакансии
-    console.log('Переместить в вакансию');
+    callbacks?.onMoveToVacancy?.();
   };
 
   /**
