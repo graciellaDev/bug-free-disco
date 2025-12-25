@@ -47,7 +47,7 @@ export interface DraftDataHh extends Record<string, FormDataValue> {
     [key: string]: any;
   } | null>;
   salary_range?: Record<string, any>;
-  platform?: Record<string, any>;
+  platform?: Record<string, any> | null;
   industry?: Record<string, any>;
   employment_form?: { id: string; name: string; [key: string]: any } | null;
   work_schedule_by_days?: {

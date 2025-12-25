@@ -2,7 +2,7 @@
     <div class="flex items-center">
         <label :for="id" class="flex items-center cursor-pointer check-wrapper">
             <!-- Скрытый чекбокс -->
-            <input type="checkbox" :id="id" :checked="isChecked" @change="$event => toggleChange($event.target.value)" class="hidden" />
+            <input type="checkbox" :id="id" :checked="isChecked === 'on'" @change="handleChange" class="hidden" />
             <!-- Визуальный элемент чекбокса -->
             <div class="w-5 h-5 flex items-center justify-center border rounded-md check-item" :class="{
                 'bg-dodger border-dodger': isChecked == 'on',
@@ -71,9 +71,16 @@ const props = defineProps({
 const isChecked = ref(props.modelValue ? 'on' : 'off')
 
 const emit = defineEmits(['update:modelValue'])
-const toggleChange = (event) => {
-    isChecked.value = event == 'on' ? 'off' : 'on'
-    emit('update:modelValue', isChecked.value == 'on')
+
+// Синхронизация с внешним modelValue
+watch(() => props.modelValue, (newValue) => {
+    isChecked.value = newValue ? 'on' : 'off'
+})
+
+const handleChange = (event) => {
+    const checked = event.target.checked
+    isChecked.value = checked ? 'on' : 'off'
+    emit('update:modelValue', checked)
 }
 </script>
 

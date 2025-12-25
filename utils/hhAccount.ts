@@ -110,7 +110,7 @@ export const getCode = async () => {
   }
 };
 
-export const getPublications = async () => {
+export const getPublications = async (includeArchived: boolean = false) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -119,6 +119,11 @@ export const getPublications = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
+    const params: Record<string, any> = {};
+    if (includeArchived) {
+      params.archived = true;
+    }
+
     const response = await $fetch<PlatformHhResponse>('/hh/publications', {
       baseURL: config.public.apiBase as string, // https://admin.job-ly.ru/api
       headers: {
@@ -126,9 +131,99 @@ export const getPublications = async () => {
         'Authorization': `Bearer ${serverToken}`,
         'X-Auth-User': userToken,
       },
+      params,
     });
 
     result.value.roles = response.data;
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      result.value.errorRoles = err.response._data.message;
+    }
+    if (err.response?.status === 401) {
+      handle401Error();
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+export const getAllPublications = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return null;
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    // Получаем активные публикации
+    const activeResponse = await $fetch<PlatformHhResponse>('/hh/publications', {
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    const activeItems = activeResponse.data?.items || [];
+    
+    // Помечаем активные публикации, если статус не указан
+    const activeWithStatus = activeItems.map((item: any) => ({
+      ...item,
+      status: item.status || 'published',
+    }));
+
+    let allItems = [...activeWithStatus];
+
+    // Пытаемся получить архивные публикации
+    try {
+      const archivedResponse = await $fetch<PlatformHhResponse>('/hh/publications', {
+        baseURL: config.public.apiBase as string,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+        params: { archived: true },
+      });
+
+      const archivedItems = archivedResponse.data?.items || [];
+      
+      // Помечаем архивные публикации
+      const archivedWithStatus = archivedItems.map((item: any) => ({
+        ...item,
+        status: 'archived',
+      }));
+
+      allItems = [...activeWithStatus, ...archivedWithStatus];
+    } catch (archivedErr: any) {
+      // Если запрос архивных публикаций не поддерживается, 
+      // проверяем статус в активных публикациях
+      console.log('Архивные публикации не доступны через отдельный запрос, проверяем статус в активных');
+      
+      // Фильтруем публикации по статусу, если он есть в ответе
+      const itemsWithStatus = activeItems.map((item: any) => {
+        // Если статус уже есть и он архивный, оставляем его
+        if (item.status && (item.status === 'archived' || item.status === 'closed')) {
+          return {
+            ...item,
+            status: 'archived',
+          };
+        }
+        return {
+          ...item,
+          status: item.status || 'published',
+        };
+      });
+      
+      allItems = itemsWithStatus;
+    }
+
+    result.value.roles = {
+      ...activeResponse.data,
+      items: allItems,
+    };
   } catch (err: any) {
     if (err.response?.status === 404) {
       result.value.errorRoles = err.response._data.message;
@@ -420,6 +515,53 @@ export const getData = async (url: any) => {
     }
     if (err.response?.status === 401) {
       handle401Error(true);
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
+ * Публикация вакансии на hh.ru
+ * @param draftData - Данные вакансии в формате DraftDataHh
+ * @returns Результат публикации
+ */
+export const publishVacancyToHh = async (draftData: DraftDataHh) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    // Сначала создаем черновик
+    const draftResult = await addDraft(draftData);
+    
+    if (draftResult?.errorDraft) {
+      result.value.error = draftResult.errorDraft;
+      return result.value;
+    }
+
+    // Если черновик создан успешно, публикуем его
+    // TODO: Добавить эндпоинт для публикации, если он есть в API
+    // const publishResponse = await $fetch<PlatformHhResponse>('/hh/vacancies/publish', {
+    //   method: 'POST',
+    //   baseURL: config.public.apiBase as string,
+    //   headers: {
+    //     'Accept': 'application/json',
+    //     'Authorization': `Bearer ${serverToken}`,
+    //     'X-Auth-User': userToken,
+    //   },
+    //   body: { vacancy_id: draftResult.draft?.id },
+    // });
+
+    result.value.data = draftResult.draft;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при публикации вакансии';
     }
   } finally {
     return result.value;

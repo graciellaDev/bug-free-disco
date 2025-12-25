@@ -86,6 +86,7 @@ export const getVacancies = async (params: any = '') => {
 export const getVacancy = async (id: String) => {
   const config = useRuntimeConfig();
 
+
   // Токен сервера из cookie
   const serverTokenCookie = useCookie('auth_token');
   const serverToken = serverTokenCookie.value;
@@ -162,7 +163,7 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
     }
 
     const params = new URLSearchParams();
-    
+
     Object.entries(data).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
             params.append(key, String(value));
@@ -185,7 +186,7 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
         return { data: response || null, error: null };
     } catch (err: any) {
         console.error('Ошибка при обновлении вакансии:', err);
-        
+
         if (err.response?.status === 401) {
             const userStore = useUserStore();
             userStore.clearUserData();
@@ -210,6 +211,49 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
 export const getPhrases = async () => {
   const config = useRuntimeConfig();
 
+<<<<<<< HEAD
+    // Токен сервера из cookie
+    const serverTokenCookie = useCookie('auth_token');
+    const serverToken = serverTokenCookie.value;
+    if (!serverToken) {
+        console.error('Токен сервера не найден в cookie');
+        return null;
+    }
+
+    // Токен пользователя из cookie
+    const userTokenCookie = useCookie('auth_user');
+    const userToken = userTokenCookie.value;
+    if (!userToken) {
+        console.error('Токен пользователя не найден в cookie');
+        return null;
+    }
+
+    try {
+        const response = await $fetch<VacancyResponse>('/phrases', {
+            method: 'GET',
+            baseURL: config.public.apiBase as string,
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${serverToken}`,
+                'X-Auth-User': userToken,
+            },
+        });
+
+        return { data: response?.data || null, error: null };
+    } catch (err: any) {
+        console.error('Ошибка при запросе:', err);
+        if (err.response?.status === 401) {
+            const userStore = useUserStore();
+            userStore.clearUserData();
+
+            serverTokenCookie.value = null;
+            userTokenCookie.value = null;
+            // Middleware сработает автоматически при следующем роутинге
+            alert('Срок сессии истек. Пожалуйста, авторизуйтесь снова.');
+            navigateTo('/auth');
+        }
+        return { data: null, error: 'Срок сессии истек. Пожалуйста, авторизуйтесь снова.'};
+=======
   // Токен сервера из cookie
   const serverTokenCookie = useCookie('auth_token');
   const serverToken = serverTokenCookie.value;
@@ -249,6 +293,7 @@ export const getPhrases = async () => {
       // Middleware сработает автоматически при следующем роутинге
       alert('Срок сессии истек. Пожалуйста, авторизуйтесь снова.');
       navigateTo('/auth');
+>>>>>>> 0b4d8514082338df61ddf65c7a1c8442c8d8c234
     }
     return {
       data: null,
