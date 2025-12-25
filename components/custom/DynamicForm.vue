@@ -196,18 +196,17 @@
     const isValid = validateForm();
 
     if (isValid) {
-      console.log('[DynamicForm] Эмитим submit с данными:', {
-        ...formData.value,
-      });
+      // console.log('[DynamicForm] Эмитим submit с данными:', {
+      //   ...formData.value,
+      // });
       // Если валидация прошла - возвращаем данные родителю
       emit('submit', { ...formData.value });
     } else {
-      console.log(
+      console.warn(
         '[DynamicForm] Валидация не прошла, ошибки:',
         formErrors.value
       );
     }
-    // Если валидация не прошла - ошибки уже показаны в полях
   }
 
   // Обработка отмены

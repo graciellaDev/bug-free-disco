@@ -12,7 +12,7 @@
 
   import type { Vacancy } from '@/types/vacancy';
   import type { UserRole } from '@/types/roles';
-  import type { ApiResponseById, Candidate } from '@/types/candidates';
+  import type { Candidate } from '@/types/candidates';
   import type { FormConfig } from '@/types/form';
   import { getCandidateById } from '@/src/api/candidates';
 
@@ -190,6 +190,63 @@
     }
   };
 
+  /**
+   * Переключается на следующего кандидата после перемещения текущего
+   * @param movedCandidateId - ID перемещённого кандидата
+   */
+  const switchToNextCandidate = async (movedCandidateId: number) => {
+    await refreshCandidates();
+
+    const currentList = filteredCandidatesList.value || [];
+
+    // Если список пуст, очищаем выбранного кандидата
+    if (currentList.length === 0) {
+      selectedCandidate.value = null;
+      return;
+    }
+
+    // Находим индекс перемещённого кандидата в старом списке
+    // (до обновления, но это уже после refreshCandidates)
+    // Нужно найти индекс в текущем списке, если кандидат ещё там
+    const currentIndex = currentList.findIndex(c => c.id === movedCandidateId);
+
+    let nextCandidate: Candidate | null = null;
+
+    if (currentIndex >= 0) {
+      // Берём следующего
+      if (currentIndex < currentList.length - 1) {
+        nextCandidate = currentList[currentIndex + 1];
+      } else {
+        // Это был последний - берём первого
+        nextCandidate = currentList[0];
+      }
+    } else {
+      // Кандидата уже нет в списке (перемещён)
+      // Находим его позицию в старом списке через selectedCandidate
+      if (selectedCandidate.value) {
+        // Ищем индекс в старом списке (до обновления)
+        // Но у нас уже обновлённый список, поэтому просто берём первого
+        nextCandidate = currentList[0];
+      } else {
+        // Если selectedCandidate уже null, берём первого из списка
+        nextCandidate = currentList[0];
+      }
+    }
+
+    // Загружаем данные следующего кандидата
+    if (nextCandidate) {
+      try {
+        await loadCandidate(nextCandidate.id);
+      } catch (error) {
+        console.error('Ошибка при загрузке следующего кандидата:', error);
+        // Если не удалось загрузить, берём первого доступного
+        if (currentList.length > 0) {
+          await loadCandidate(currentList[0].id);
+        }
+      }
+    }
+  };
+
   const addCandidatePopup = usePopup('addCandidate', {
     manageBodyScroll: true,
     onClose: () => {
@@ -213,7 +270,7 @@
     }
 
     return candidatesList.value.filter(
-      candidate => candidate.vacancy === vacancy.value?.id
+      candidate => candidate.vacancy_id === vacancy.value?.id
     );
   });
 
@@ -267,14 +324,48 @@
 
   // Обработчик обновления кандидата
   const handleCandidateUpdated = async (updatedCandidate: Candidate) => {
+    if (!updatedCandidate || !updatedCandidate.id) {
+      console.error(
+        '[handleCandidateUpdated] Получен некорректный кандидат:',
+        updatedCandidate
+      );
+      await refreshCandidates();
+
+      if (selectedCandidate.value?.id) {
+        try {
+          const result = await getCandidateById(selectedCandidate.value.id);
+
+          selectedCandidate.value = result.candidateData;
+        } catch (error) {
+          console.error('Ошибка при обновлении кандидата:', error);
+        }
+      }
+      return;
+    }
+
+    const movedCandidateId = updatedCandidate.id;
+
+    const wasMovedToAnotherVacancy =
+      updatedCandidate.vacancy_id !== vacancy.value?.id;
+
     await refreshCandidates();
 
-    if (selectedCandidate.value?.id === updatedCandidate.id) {
-      try {
-        const result = await getCandidateById(updatedCandidate.id);
-        selectedCandidate.value = result.candidateData;
-      } catch (error) {
-        console.error('Ошибка при обновлении кандидата:', error);
+    if (wasMovedToAnotherVacancy) {
+      if (selected.value[movedCandidateId]) {
+        delete selected.value[movedCandidateId];
+      }
+    }
+
+    if (selectedCandidate.value?.id === movedCandidateId) {
+      await switchToNextCandidate(movedCandidateId);
+    } else {
+      if (selectedCandidate.value?.id === updatedCandidate.id) {
+        try {
+          const result = await getCandidateById(updatedCandidate.id);
+          selectedCandidate.value = result.candidateData;
+        } catch (error) {
+          console.error('Ошибка при обновлении кандидата:', error);
+        }
       }
     }
   };
