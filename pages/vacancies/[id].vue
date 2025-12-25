@@ -229,7 +229,7 @@
     }
     const formDataWithVacancy = {
       ...formData,
-      vacancy_id: vacancy.value?.id?.toString() || null,
+      vacancy: vacancy.value?.id?.toString() || null,
     };
     await handleFormSubmitBase(formDataWithVacancy, addCandidatePopup.isOpen);
   };

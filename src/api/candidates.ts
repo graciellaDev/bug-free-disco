@@ -88,6 +88,7 @@ export async function getCandidateById(id: number): Promise<ApiResponseById> {
 export async function createCandidate(
   candidate: CandidateCreateRequest
 ): Promise<CandidateCreateResponse> {
+  console.log('createCandidate', candidate);
   // Ошибки пробрасываются автоматически для обработки в компоненте
   return await apiPost<CandidateCreateResponse['data']>(
     '/candidates',
