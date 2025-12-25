@@ -25,9 +25,9 @@
                       />
                       <p class="text-sm font-medium text-slate-custom">{{ card.name }}</p>
                     </div>
-                    <DotsDropdown 
+                    <DotsDropdown
                       v-if="isPlatformAuthenticated(card.name)"
-                      :items="platformDropdownOptions" 
+                      :items="platformDropdownOptions"
                       @select-item="(item) => handlePlatformDropdown(item, card.name)"
                     />
                   </div>
@@ -145,52 +145,244 @@
             :isOpen="isPublishPopupOpen"
             @close="closePublishPopup"
             :showCloseButton="false"
-            :width="'540px'"
+            :width="'900px'"
             :height="'fit-content'"
             :disableOverflowHidden="true"
+            maxHeight
         >
-            <div>
-                <p class="text-xl font-semibold text-space mb-2.5">Публикация вакансии</p>
-                <p class="text-sm font-normal text-slate-custom mb-25px">
-                    Вы собираетесь опубликовать вакансию на платформе <span class="font-medium text-space">{{ selectedPlatformForPublish }}</span>
-                </p>
-                
-                <div v-if="currentVacancy" class="bg-athens-gray rounded-fifteen p-20px mb-25px">
-                    <div class="mb-15px">
-                        <p class="text-xs font-normal text-slate-custom mb-1">Название вакансии</p>
-                        <p class="text-sm font-medium text-space">{{ currentVacancy.title || 'Не указано' }}</p>
-                    </div>
-                    <div class="mb-15px">
-                        <p class="text-xs font-normal text-slate-custom mb-1">Регион</p>
-                        <p class="text-sm font-medium text-space">{{ currentVacancy.location || 'Не указано' }}</p>
-                    </div>
-                    <div class="mb-15px">
-                        <p class="text-xs font-normal text-slate-custom mb-1">Зарплата</p>
-                        <p class="text-sm font-medium text-space">
-                            <template v-if="currentVacancy.salary_from || currentVacancy.salary_to">
-                                {{ currentVacancy.salary_from ? `от ${currentVacancy.salary_from}` : '' }}
-                                {{ currentVacancy.salary_to ? `до ${currentVacancy.salary_to}` : '' }}
-                                {{ currentVacancy.currency || '₽' }}
-                            </template>
-                            <template v-else>Не указана</template>
+            <div class="p-25px max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-25px">
+                    <div>
+                        <p class="text-xl font-semibold text-space mb-1">Публикация вакансии на hh.ru</p>
+                        <p class="text-sm font-normal text-slate-custom">
+                            Заполните форму для публикации вакансии на платформе HeadHunter
                         </p>
                     </div>
-                    <div>
-                        <p class="text-xs font-normal text-slate-custom mb-1">Тип занятости</p>
-                        <p class="text-sm font-medium text-space">{{ currentVacancy.employment || 'Не указано' }}</p>
-                    </div>
-                </div>
-                <div v-else class="bg-athens-gray rounded-fifteen p-20px mb-25px">
-                    <p class="text-sm font-normal text-slate-custom">Загрузка данных вакансии...</p>
+                    <button @click="closePublishPopup" class="text-slate-custom hover:text-space transition-colors" :disabled="isPublishing">
+                        <svg-icon name="close" width="20" height="20" />
+                    </button>
                 </div>
 
-                <div class="flex gap-x-15px">
-                    <UiButton variant="action" size="action" @click="confirmPublish" :disabled="!currentVacancy">
-                        Опубликовать
-                    </UiButton>
-                    <UiButton variant="back" size="back" @click="closePublishPopup">
-                        Отмена
-                    </UiButton>
+                <!-- Прелоадер -->
+                <div v-if="isLoadingPublishForm" class="flex flex-col items-center justify-center py-60px">
+                    <div class="loader mb-15px"></div>
+                    <p class="text-sm font-normal text-slate-custom">Загрузка формы...</p>
+                </div>
+
+                <!-- Форма публикации -->
+                <div v-else-if="currentVacancy" class="space-y-25px">
+                    <!-- Название и код -->
+                    <div class="flex gap-25px">
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                <span class="text-red-custom">*</span>
+                                Название должности
+                            </p>
+                            <MyInput
+                                placeholder="Например, Менеджер по продажам"
+                                :model-value="publishFormData.name"
+                                @update:model-value="publishFormData.name = $event"
+                            />
+                        </div>
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Код вакансии
+                            </p>
+                            <MyInput
+                                placeholder="Код вакансии"
+                                :model-value="publishFormData.code"
+                                @update:model-value="publishFormData.code = $event"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Описание -->
+                    <div>
+                        <p class="text-sm font-medium text-space mb-4">
+                            <span class="text-red-custom">*</span>
+                            Описание вакансии
+                        </p>
+                        <TiptapEditor
+                            :model-value="publishFormData.description"
+                            @update:model-value="publishFormData.description = $event"
+                        />
+                    </div>
+
+                    <!-- Отрасль и специализация -->
+                    <div class="flex gap-25px">
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Отрасль компании
+                            </p>
+                            <DropDownRoles
+                                v-if="hhRolesData"
+                                :options="hhRolesData.categories || []"
+                                :selected="publishFormData.industry"
+                                @update:model-value="handleIndustryChange"
+                                placeholder="Выберите отрасль"
+                            />
+                        </div>
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Выберите специализацию
+                            </p>
+                            <DropDownRoles
+                                v-if="publishFormData.industry && publishFormData.industry.roles"
+                                :options="publishFormData.industry.roles"
+                                :selected="publishFormData.professional_role"
+                                @update:model-value="publishFormData.professional_role = $event"
+                                placeholder="Выберите специализацию"
+                            />
+                            <div v-else class="text-sm text-slate-custom py-9px px-15px bg-athens-gray border border-athens rounded-ten">
+                                Сначала выберите отрасль
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Тип занятости и график -->
+                    <div class="flex gap-25px">
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Тип занятости
+                            </p>
+                            <DropDownTypes
+                                :options="HH_EMPLOYMENT_TYPES"
+                                :selected="publishFormData.employment_form"
+                                @update:model-value="publishFormData.employment_form = $event"
+                                placeholder="Выберите тип занятости"
+                            />
+                        </div>
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                График работы
+                            </p>
+                            <DropDownTypes
+                                :options="HH_WORK_SCHEDULE_BY_DAYS"
+                                :selected="publishFormData.work_schedule_by_days"
+                                @update:model-value="publishFormData.work_schedule_by_days = $event"
+                                placeholder="Выберите график работы"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Образование и опыт -->
+                    <div class="flex gap-25px">
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Образование
+                            </p>
+                            <DropDownTypes
+                                :options="HH_EDUCATION_LAVEL"
+                                :selected="publishFormData.education_level"
+                                @update:model-value="publishFormData.education_level = $event"
+                                placeholder="Выберите образование"
+                            />
+                        </div>
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Опыт работы
+                            </p>
+                            <DropDownTypes
+                                :options="experienceData"
+                                :selected="publishFormData.experience"
+                                @update:model-value="publishFormData.experience = $event"
+                                placeholder="Выберите опыт работы"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Зарплата -->
+                    <div class="flex gap-25px">
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Зарплата от
+                            </p>
+                            <MyInput
+                                placeholder="От"
+                                type="number"
+                                :model-value="publishFormData.salary_from"
+                                @update:model-value="publishFormData.salary_from = $event"
+                            />
+                        </div>
+                        <div class="w-full">
+                            <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                Зарплата до
+                            </p>
+                            <MyInput
+                                placeholder="До"
+                                type="number"
+                                :model-value="publishFormData.salary_to"
+                                @update:model-value="publishFormData.salary_to = $event"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Место работы -->
+                    <div>
+                        <p class="text-sm font-medium mb-4 leading-normal text-space">
+                            Место работы
+                        </p>
+                        <RadioGroup :model-value="publishFormData.workSpace" @update:model-value="publishFormData.workSpace = $event" class="flex gap-x-15px w-full">
+                            <CardOption
+                                v-for="card in workSpaceCards"
+                                :key="card.id"
+                                :id="card.id"
+                                :title="card.title"
+                                :description="card.description"
+                                :selectedCard="publishFormData.workSpace"
+                                @update:selected="publishFormData.workSpace = $event"
+                            />
+                        </RadioGroup>
+                    </div>
+
+                    <!-- Локация -->
+                    <div>
+                        <p class="text-sm font-medium mb-4 leading-normal text-space">
+                            Локация офиса
+                        </p>
+                        <GeoInput
+                            :model-value="publishFormData.location"
+                            @update:model-value="publishFormData.location = $event"
+                        />
+                    </div>
+
+                    <!-- Тариф и кнопки -->
+                    <div class="pt-25px border-t border-athens">
+                        <div class="flex items-end gap-x-15px">
+                            <div class="w-[300px]">
+                                <p class="text-sm font-medium mb-4 leading-normal text-space">
+                                    Тариф публикации
+                                </p>
+                                <MyDropdown
+                                    v-if="hhBillingTypes.length > 0"
+                                    :defaultValue="'Выберите тариф'"
+                                    :options="hhBillingTypes"
+                                    :model-value="selectedBillingType"
+                                    @update:model-value="selectedBillingType = $event"
+                                    placeholder="Выберите тариф"
+                                />
+                                <div v-else class="text-sm text-slate-custom py-9px px-15px bg-athens-gray border border-athens rounded-ten">
+                                    Загрузка тарифов...
+                                </div>
+                            </div>
+                            <div class="flex gap-x-15px">
+                                <UiButton variant="action" size="action" @click="confirmPublish" :disabled="isPublishing || !selectedBillingType">
+                                    {{ isPublishing ? 'Публикация...' : 'Опубликовать' }}
+                                </UiButton>
+                                <UiButton variant="back" size="back" @click="closePublishPopup" :disabled="isPublishing">
+                                    Отмена
+                                </UiButton>
+                            </div>
+                        </div>
+                        <p class="text-red-500 text-xs mt-3" v-if="publishError">
+                            {{ publishError }}
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Сообщение об ошибке загрузки вакансии -->
+                <div v-else class="bg-athens-gray rounded-fifteen p-20px mb-25px text-center">
+                    <p class="text-sm font-normal text-red-500">Не удалось загрузить данные вакансии.</p>
                 </div>
             </div>
         </Popup>
@@ -210,7 +402,7 @@
                     Вы действительно хотите отвязать профиль <span class="font-medium text-space">{{ platformToUnlink }}</span>?
                     После отвязки вам потребуется повторная авторизация для публикации вакансий на этой платформе.
                 </p>
-                
+
                 <div class="flex gap-x-15px">
                     <UiButton variant="delete" size="delete" @click="confirmUnlink" :disabled="isUnlinking">
                         {{ isUnlinking ? 'Отвязка...' : 'Отвязать' }}
@@ -230,7 +422,7 @@
             :isOpen="isImportPopupOpen"
             @close="closeImportPopup"
             :showCloseButton="false"
-            :width="'740px'"
+            :width="'1100px'"
             :height="'fit-content'"
             :disableOverflowHidden="true"
             maxHeight
@@ -271,12 +463,12 @@
                             <div class="px-2.5">Регион</div>
                             <div class="px-2.5">Зарплата</div>
                             <div class="px-2.5">Статус</div>
-                            <div></div>
+                            <div>Действие</div>
                         </div>
                         <!-- Строки таблицы -->
-                        <div 
-                            v-for="pub in importedPublications" 
-                            :key="pub.id" 
+                        <div
+                            v-for="pub in importedPublications"
+                            :key="pub.id"
                             class="import-table-row"
                         >
                             <div class="text-sm font-medium text-space px-2.5 truncate">{{ pub.name }}</div>
@@ -290,16 +482,27 @@
                                 <template v-else>Не указана</template>
                             </div>
                             <div class="px-2.5">
-                                <span 
+                                <span
                                     class="text-xs font-medium px-2 py-1 rounded-md"
-                                    :class="pub.status === 'published' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-slate-custom'"
+                                    :class="{
+                                        'bg-green-100 text-green-600': pub.status === 'published' || pub.status === 'active',
+                                        'bg-orange-100 text-orange-600': pub.status === 'archived',
+                                        'bg-gray-100 text-slate-custom': !pub.status || (pub.status !== 'published' && pub.status !== 'active' && pub.status !== 'archived')
+                                    }"
                                 >
-                                    {{ pub.status === 'published' ? 'Активна' : pub.status }}
+                                    {{
+                                        pub.status === 'published' || pub.status === 'active'
+                                            ? 'Активна'
+                                            : pub.status === 'archived'
+                                                ? 'Архивная'
+                                                : pub.status || 'Неизвестно'
+                                    }}
                                 </span>
                             </div>
                             <div class="flex justify-end">
-                                <UiButton 
-                                    variant="action" 
+                                <UiButton
+                                    class="p-btn"
+                                    variant="action"
                                     size="small"
                                     @click="importPublication(pub)"
                                 >
@@ -322,7 +525,7 @@
                 </div>
             </div>
         </Popup>
-    
+
         <!-- Заголовок -->
         <div class="flex justify-between bg-white rounded-fifteen p-25px items-center mb-15px">
             <div>
@@ -354,8 +557,7 @@
             <!-- Хедер -->
             <div class="table-header">
                 <div>
-                    <MyCheckbox id="select-all" :label="''" v-model="allSelected" @update:modelValue="toggleAll"
-                      :emptyLabel="true" />
+                    <MyCheckbox id="select-all" :label="''" v-model="allSelected" :emptyLabel="true" />
                 </div>
                 <div class="px-2.5">Вакансия</div>
                 <div class="px-2.5">Регион</div>
@@ -412,19 +614,31 @@
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent } from "vue";
+import { ref, computed, defineAsyncComponent, watch, onMounted } from "vue";
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdown from '~/components/custom/DotsDropdown.vue';
 import CardIcon from '~/components/custom/CardIcon.vue';
 import Popup from '~/components/custom/Popup.vue';
 import AddPublication from "~/components/platforms/AddPublication.vue";
 import MultiDropdown from "~/components/custom/MultiDropdown.vue";
-import { getPublications, getProfile, auth as authHh, unlinkProfile } from "~/utils/hhAccount";
+import MyInput from '~/components/custom/MyInput.vue';
+import TiptapEditor from '~/components/TiptapEditor.vue';
+import DropDownRoles from '~/components/platforms/DropDownRoles.vue';
+import DropDownTypes from '~/components/platforms/DropDownTypes.vue';
+import CardOption from '~/components/custom/CardOption.vue';
+import GeoInput from '~/components/custom/GeoInput.vue';
+import MyDropdown from '~/components/custom/MyDropdown.vue';
+import { RadioGroup } from '@/components/ui/radio-group';
+import { getPublications, getAllPublications, getProfile, auth as authHh, unlinkProfile, publishVacancyToHh, getRoles, getAvailableTypes } from "~/utils/hhAccount";
 import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
 import { getVacancy } from '@/utils/getVacancies'
+import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
+import { HH_EMPLOYMENT_TYPES, HH_WORK_SCHEDULE_BY_DAYS, HH_EDUCATION_LAVEL } from '@/src/constants'
+import experience from '~/src/data/experience.json'
+import schedule from '~/src/data/work-schedule.json'
 
 const data = ref([
     { id: 1, vacancy: "Менеджер по продажам не детских игрушек", region: "Санкт-Петербург", tariff: "Стандарт", site: "SJ", icon: "sj20", isPng: false, imagePath: "", views: 3250, responses: 492, expires: "18.12" },
@@ -469,6 +683,39 @@ const currentVacancy = ref(null);
 const selectedPlatformForPublish = ref(null);
 const route = useRoute();
 const currentVacancyId = route.query.id;
+const isPublishing = ref(false);
+const publishError = ref(null);
+const isLoadingPublishForm = ref(false);
+const hhRolesData = ref(null);
+const experienceData = ref(experience);
+const hhBillingTypes = ref([]);
+const selectedBillingType = ref(null);
+const hhBillingTypesRaw = ref([]); // Исходные объекты тарифов для отправки
+
+// Данные формы публикации
+const publishFormData = ref({
+    name: '',
+    code: '',
+    description: '',
+    industry: null,
+    professional_role: null,
+    employment_form: null,
+    work_schedule_by_days: null,
+    education_level: null,
+    experience: null,
+    salary_from: null,
+    salary_to: null,
+    workSpace: '1',
+    location: '',
+    phrases: [],
+});
+
+// Данные для карточек места работы
+const workSpaceCards = ref([
+    { id: '1', title: 'Офис', description: 'Сотрудники работают в офисе' },
+    { id: '2', title: 'Гибрид', description: 'Сотрудники работают как в офисе, так и дома' },
+    { id: '3', title: 'Удаленно', description: 'Сотрудники работают из дома' },
+]);
 
 // Попап отвязки профиля
 const isUnlinkPopupOpen = ref(false);
@@ -502,7 +749,7 @@ function setCookie(name, value, days) {
 
 async function authPlatform(platformName) {
     authError.value = null;
-    
+
     if (platformName === 'hh.ru') {
         const config = useRuntimeConfig();
         const tokenCookie = useCookie('auth_user');
@@ -529,13 +776,159 @@ async function handlePlatformButtonClick(platformName) {
 
 async function openPublishPopup(platformName) {
     selectedPlatformForPublish.value = platformName;
-    
-    // Загружаем данные текущей вакансии
-    if (currentVacancyId && !currentVacancy.value) {
-        currentVacancy.value = await getVacancy(currentVacancyId);
+    isLoadingPublishForm.value = true;
+    publishError.value = null;
+
+    try {
+        // Загружаем данные текущей вакансии
+        if (currentVacancyId && !currentVacancy.value) {
+            currentVacancy.value = await getVacancy(currentVacancyId);
+        }
+
+        // Загружаем данные о ролях и индустриях для hh.ru
+        if (!hhRolesData.value) {
+            const { roles, errorRoles } = await getRoles();
+            if (errorRoles) {
+                publishError.value = 'Ошибка при загрузке данных для публикации';
+                return;
+            }
+            hhRolesData.value = roles;
+        }
+
+        // Загружаем тарифы hh.ru
+        if (hhBillingTypes.value.length === 0) {
+            const profileResult = await getProfile();
+            if (profileResult?.data?.data) {
+                const profile = profileResult.data.data;
+                if (profile.employer?.id && profile.manager?.id) {
+                    const typesResult = await getAvailableTypes(profile.employer.id, profile.manager.id);
+                    if (typesResult?.types) {
+                        // Сохраняем исходные объекты тарифов
+                        hhBillingTypesRaw.value = typesResult.types;
+                        // Преобразуем тарифы в формат для dropdown
+                        hhBillingTypes.value = typesResult.types.map(type => ({
+                            name: type.name || type.id || String(type),
+                            value: type.id || type,
+                        }));
+                        // Устанавливаем первый тариф по умолчанию, если есть
+                        if (hhBillingTypes.value.length > 0) {
+                            selectedBillingType.value = hhBillingTypes.value[0].value;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Заполняем форму данными вакансии
+        if (currentVacancy.value) {
+            fillPublishForm(currentVacancy.value);
+        }
+
+        isPublishPopupOpen.value = true;
+    } catch (err) {
+        console.error('Ошибка при загрузке данных для публикации:', err);
+        publishError.value = 'Ошибка при загрузке данных для публикации';
+    } finally {
+        isLoadingPublishForm.value = false;
     }
-    
-    isPublishPopupOpen.value = true;
+}
+
+// Функция для заполнения формы данными вакансии
+function fillPublishForm(vacancy) {
+    publishFormData.value.name = vacancy.name || '';
+    publishFormData.value.code = vacancy.code || '';
+    publishFormData.value.description = vacancy.description || '';
+    publishFormData.value.location = vacancy.location || '';
+    publishFormData.value.workSpace = vacancy.place ? String(vacancy.place) : '1';
+
+    publishFormData.value.salary_from = vacancy.salary_from || null;
+    publishFormData.value.salary_to = vacancy.salary_to || null;
+
+    // Маппинг типа занятости
+    if (vacancy.employment) {
+        const employmentType = HH_EMPLOYMENT_TYPES.find(item => item.siteName === vacancy.employment);
+        if (employmentType) {
+            publishFormData.value.employment_form = employmentType;
+        }
+    }
+
+    // Маппинг графика работы
+    if (vacancy.schedule) {
+        const scheduleItem = schedule.find(item => item.name === vacancy.schedule);
+        if (scheduleItem) {
+            const scheduleMap = {
+                'Полный': 'FIVE_ON_TWO_OFF',
+                'Сменный': 'SHIFT',
+                'Свободный': 'FLEXIBLE',
+                'Удаленная работа': 'REMOTE',
+                'Вахтовый метод': 'FLY_IN_FLY_OUT',
+            };
+            const hhScheduleId = scheduleMap[vacancy.schedule] || 'FLEXIBLE';
+            const hhSchedule = HH_WORK_SCHEDULE_BY_DAYS.find(item => item.id === hhScheduleId);
+            if (hhSchedule) {
+                publishFormData.value.work_schedule_by_days = hhSchedule;
+            }
+        }
+    }
+
+    // Маппинг образования
+    if (vacancy.education) {
+        const educationMap = {
+            'Высшее': 'higher',
+            'Не полное высшее': 'unfinished_higher',
+            'Среднее специальное': 'special_secondary',
+            'Среднее': 'secondary',
+        };
+        const hhEduId = educationMap[vacancy.education];
+        if (hhEduId) {
+            const hhEdu = HH_EDUCATION_LAVEL.find(item => item.id === hhEduId);
+            if (hhEdu) {
+                publishFormData.value.education_level = hhEdu;
+            }
+        }
+    }
+
+    // Маппинг опыта работы
+    if (vacancy.experience) {
+        const expItem = experienceData.value.find(item => item.name === vacancy.experience);
+        if (expItem) {
+            publishFormData.value.experience = expItem;
+        }
+    }
+
+    // Маппинг отрасли и специализации
+    if (hhRolesData.value && vacancy.industry) {
+        const industry = hhRolesData.value.categories?.find(cat => cat.name === vacancy.industry);
+        if (industry) {
+            publishFormData.value.industry = industry;
+            if (vacancy.specializations && industry.roles) {
+                const role = industry.roles.find(r => r.name === vacancy.specializations);
+                if (role) {
+                    publishFormData.value.professional_role = role;
+                } else if (industry.roles.length > 0) {
+                    publishFormData.value.professional_role = industry.roles[0];
+                }
+            } else if (industry.roles && industry.roles.length > 0) {
+                publishFormData.value.professional_role = industry.roles[0];
+            }
+        }
+    }
+
+    // Маппинг ключевых фраз
+    if (vacancy.phrases && Array.isArray(vacancy.phrases)) {
+        publishFormData.value.phrases = vacancy.phrases;
+    }
+}
+
+// Обработчик изменения отрасли
+function handleIndustryChange(industry) {
+    publishFormData.value.industry = industry;
+    // Сбрасываем специализацию при изменении отрасли
+    if (industry && industry.roles && industry.roles.length > 0) {
+        publishFormData.value.professional_role = industry.roles[0];
+    } else {
+        publishFormData.value.professional_role = null;
+    }
 }
 
 function closePublishPopup() {
@@ -543,10 +936,75 @@ function closePublishPopup() {
     selectedPlatformForPublish.value = null;
 }
 
-function confirmPublish() {
-    // TODO: Реализовать логику публикации вакансии
-    alert(`Вакансия "${currentVacancy.value?.title}" будет опубликована на ${selectedPlatformForPublish.value}`);
-    closePublishPopup();
+async function confirmPublish() {
+    if (!publishFormData.value.name || !publishFormData.value.description) {
+        publishError.value = 'Заполните обязательные поля: название и описание';
+        return;
+    }
+
+    if (!publishFormData.value.industry || !publishFormData.value.professional_role) {
+        publishError.value = 'Выберите отрасль и специализацию';
+        return;
+    }
+
+    if (selectedPlatformForPublish.value !== 'hh.ru') {
+        publishError.value = 'Публикация на эту платформу пока не поддерживается';
+        return;
+    }
+
+    isPublishing.value = true;
+    publishError.value = null;
+
+    try {
+        // Формируем данные для публикации на hh.ru
+        const hhVacancyData = {
+            name: publishFormData.value.name,
+            code: publishFormData.value.code || '',
+            description: publishFormData.value.description,
+            days: '30',
+            workSpace: publishFormData.value.workSpace || '1',
+            areas: [{ id: '1' }], // TODO: Реализовать маппинг локации
+            professional_roles: publishFormData.value.professional_role
+                ? [{ id: publishFormData.value.professional_role.id, ...publishFormData.value.professional_role }]
+                : [],
+            employment_form: publishFormData.value.employment_form,
+            work_schedule_by_days: publishFormData.value.work_schedule_by_days,
+            education_level: publishFormData.value.education_level,
+            experience: publishFormData.value.experience,
+            phrases: publishFormData.value.phrases || [],
+            industry: publishFormData.value.industry,
+            platform: null,
+            billing_types: selectedBillingType.value ? hhBillingTypesRaw.value.find(type => (type.id || type) === selectedBillingType.value) || selectedBillingType.value : null,
+            driver_license_types: null,
+            salary_range: {},
+        };
+
+        // Добавляем диапазон зарплаты, если указан
+        if (publishFormData.value.salary_from || publishFormData.value.salary_to) {
+            hhVacancyData.salary_range = {
+                from: publishFormData.value.salary_from || null,
+                to: publishFormData.value.salary_to || null,
+                currency: 'RUR',
+                gross: true,
+            };
+        }
+
+        // Публикуем вакансию
+        const result = await publishVacancyToHh(hhVacancyData);
+
+        if (result.error) {
+            publishError.value = result.error;
+        } else {
+            // Успешная публикация
+            alert(`Вакансия "${publishFormData.value.name}" успешно опубликована на ${selectedPlatformForPublish.value}`);
+            closePublishPopup();
+        }
+    } catch (err) {
+        console.error('Ошибка при публикации вакансии:', err);
+        publishError.value = 'Ошибка при публикации вакансии';
+    } finally {
+        isPublishing.value = false;
+    }
 }
 
 function handlePlatformDropdown(item, platformName) {
@@ -565,8 +1023,14 @@ async function openImportPopup(platformName) {
     isLoadingImport.value = true;
 
     try {
-        const result = await getPublications();
-        
+        // Для hh.ru загружаем и активные, и архивные публикации
+        let result;
+        if (platformName === 'hh.ru') {
+            result = await getAllPublications();
+        } else {
+            result = await getPublications();
+        }
+
         if (result?.error || result?.errorRoles) {
             importError.value = result?.error || result?.errorRoles || 'Ошибка при загрузке публикаций';
             return;
@@ -723,18 +1187,27 @@ const sortArrowStyle = (key) => {
     };
 };
 
+const isUpdatingFromToggleAll = ref(false);
+
 const toggleAll = (isChecked) => {
-    data.value.forEach((item) => {
+    isUpdatingFromToggleAll.value = true;
+    publicationsHh.value.forEach((item) => {
         selected.value[item.id] = isChecked;
     });
+    isUpdatingFromToggleAll.value = false;
 };
 
 
 // Следить за изменениями состояния частных чекбоксов
 watch(selected, (newSelected) => {
+    // Пропускаем обновление, если это обновление из toggleAll
+    if (isUpdatingFromToggleAll.value) {
+        return;
+    }
+
     // Проверяем, выбраны ли все элементы
-    const allChecked = data.value.every(item => newSelected[item.id]);
-    const noneChecked = data.value.every(item => !newSelected[item.id]);
+    const allChecked = publicationsHh.value.length > 0 && publicationsHh.value.every(item => newSelected[item.id]);
+    const noneChecked = publicationsHh.value.every(item => !newSelected[item.id]);
 
     allSelected.value = allChecked; // Обновляем общий чекбокс
 
@@ -743,6 +1216,14 @@ watch(selected, (newSelected) => {
         console.log("Частично выбрано"); // Для добавления UI-реакции
     }
 }, { deep: true }); // Обязательно deep, так как мы следим за вложенными объектами
+
+// Следить за изменениями общего чекбокса (только при ручном клике пользователя)
+watch(allSelected, (newValue) => {
+    // Пропускаем, если это обновление из watch на selected
+    if (!isUpdatingFromToggleAll.value) {
+        toggleAll(newValue);
+    }
+});
 
 const dropdownOptions = ["Редактировать текст", "Посмотреть публикацию", "Снять с публикации", "Дублировать публикацию", "Показать отчет по публикации"];
 
@@ -823,8 +1304,8 @@ const openPopupNewPublication = () => {
 .import-table-header,
 .import-table-row {
     display: grid;
-    grid-template-columns: 30% 20% 20% 15% 15%;
-    gap: 10px;
+    grid-template-columns: 28% 18% 18% 12% 11%;
+    gap: 15px;
     padding: 15px 20px;
     align-items: center;
 }

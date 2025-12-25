@@ -22,8 +22,8 @@ import GenerateButton from '~/components/custom/GenerateButton.vue'
 import MyTextarea from '~/components/custom/MyTextarea.vue'
 import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue'
 import { getDepartments, executorsList } from '~/utils/executorsList'
-import { inject, ReactiveEffect } from 'vue'
 import { useRoute } from 'vue-router'
+import { createError } from '#app'
 
 import schedule from '~/src/data/work-schedule.json'
 import experience from '~/src/data/experience.json'
@@ -35,11 +35,13 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeMount } from 'vue'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
+import { fetchApplicationDetail } from '~/utils/applicationItem'
 import majors from '~/src/data/majors.json'
+import { convertDateFromApi } from '~/helpers/date'
 
 const ArraySpecialization = specialization
 const ArrayOptions = MoreOptions
@@ -135,7 +137,10 @@ const cards = [
 const showContacts = ref(true)
 const salaryType = ref('')
 
-const newVacancy = ref({ place: 1, currency: 'RUB (рубль)', status: 1 })
+const newVacancy = ref({ place: 1, currency: 'RUB (рубль)', status: 'В работе' })
+const originalVacancyRaw = ref(null) // Исходные сырые данные с сервера
+const originalVacancyData = ref(null) // Отформатированные исходные данные для сравнения
+
 if (props.id) {
   const currectVacancy = await getVacancy(props.id)
   if (currectVacancy) {
@@ -143,7 +148,19 @@ if (props.id) {
     for (let key in currectVacancy) {
       newVacancy.value[key] = currectVacancy[key]
     }
-    inject('currentVacancy', currectVacancy)
+    // Преобразуем статус из формата API в русское название для отображения
+    if (currectVacancy.status) {
+      newVacancy.value.status = getStatusDisplayValue(currectVacancy.status)
+    } else {
+      // Если статус не указан, устанавливаем 'active' по умолчанию
+      newVacancy.value.status = 'В работе'
+    }
+    // Конвертируем dateEnd из формата Y-m-d в d.m.Y
+    if (currectVacancy.dateEnd) {
+      newVacancy.value.dateEnd = convertDateFromApi(currectVacancy.dateEnd)
+    }
+    // Сохраняем исходные сырые данные
+    originalVacancyRaw.value = JSON.parse(JSON.stringify(currectVacancy))
   } else {
     throw createError({
             statusCode: 404,
@@ -155,7 +172,6 @@ if (props.id) {
 if (props.application) {
   const applicationResponse = await fetchApplicationDetail(props.application)
   if (applicationResponse.data) {
-    console.log('app', applicationResponse.data)
     newVacancy.value.name = applicationResponse.data.position
     newVacancy.value.currency = applicationResponse.data.currency
     newVacancy.value.salary_from = applicationResponse.data.salaryFrom
@@ -163,80 +179,249 @@ if (props.application) {
     newVacancy.value.location = applicationResponse.data.city
   }
 }
-console.log('newVacancy', newVacancy.value)
-const editVacancyData = ref({})
-const newCode = ref('')
-const jobDescription = ref('')
-
-const formattedJobDescription = computed(() =>
-  parseHtmlToJson(jobDescription.value)
-)
-const selectEmployment = ref('')
-const selectedSpecialization = ref('')
-const selectedIndustry = ref('')
-const selectedSchedule = ref('')
-const selectedExperience = ref('')
-const selectedEducation = ref('')
 const tags = ref([])
-const selectedAdditional = ref([])
-const selectedCarId = ref([])
-const selectedOptions = ref([])
 const salary = ref({
   from: newVacancy.value.salary_from ? newVacancy.value.salary_from : null,
   to: newVacancy.value.salary_to ? newVacancy.value.salary_to : null
 })
-const currencyType = ref('RUB (рубль)')
-const workSpace = ref('1')
-const location = ref('')
-const response = ref('')
-const phone = ref(null)
-const email = ref('')
 const errors = ref({})
 const isOpenDateTo = ref(false)
 const departments = ref([])
-const { data, error } = await getPhrases()
-tags.value = data;
+const { data } = await getPhrases()
+tags.value = data || [];
 
 departments.value = await getDepartments();
-const descriptionText = computed(() => {
-  return formattedJobDescription.value
-    .reduce((acc, section) => {
-      return acc + `${section.title} ${section.items.join(' ')} `
-    }, '')
-    .trim()
-})
-
-const tagsString = computed(() => {
-  return tags.value.join(' ') || ''
-})
 
 const route = useRoute();
 
+// Функция для преобразования phrases из ID в названия
+function getPhrasesArray(phrasesIds) {
+  if (!phrasesIds || !Array.isArray(phrasesIds) || phrasesIds.length === 0) {
+    return []
+  }
+  return phrasesIds
+    .map(id => {
+      const tag = tags.value.find(t => t.id === id || String(t.id) === String(id));
+      return tag ? tag.name : null;
+    })
+    .filter(name => name !== null);
+}
+
+// Функция для преобразования employment из ID в текст
+function getEmploymentText(employmentValue) {
+  if (!employmentValue) return ''
+  
+  const employmentOption = options.value.find(opt => {
+    const optValueNum = Number(opt.value);
+    const empValueNum = Number(employmentValue);
+    return opt.value === employmentValue || 
+           optValueNum === empValueNum || 
+           opt.name === employmentValue ||
+           String(opt.value) === String(employmentValue);
+  });
+  
+  if (employmentOption) {
+    return employmentOption.name;
+  }
+  
+  // Если это уже строка (название), используем её
+  if (typeof employmentValue === 'string') {
+    return employmentValue;
+  }
+  
+  return '';
+}
+
+// Функция для преобразования schedule из ID в текст
+function getScheduleText(scheduleValue) {
+  if (!scheduleValue) return ''
+  
+  const scheduleOption = ArraySchedule.find(opt => {
+    const optValueNum = Number(opt.value);
+    const schValueNum = Number(scheduleValue);
+    return opt.value === scheduleValue || 
+           optValueNum === schValueNum || 
+           opt.name === scheduleValue ||
+           String(opt.value) === String(scheduleValue);
+  });
+  
+  if (scheduleOption) {
+    return scheduleOption.name;
+  }
+  
+  // Если это уже строка (название), используем её
+  if (typeof scheduleValue === 'string') {
+    return scheduleValue;
+  }
+  
+  return '';
+}
+
+// Функция для преобразования experience из ID в текст
+function getExperienceText(experienceValue) {
+  if (!experienceValue) return ''
+  
+  const experienceOption = ArrayExperience.find(opt => {
+    const optValueNum = Number(opt.value);
+    const expValueNum = Number(experienceValue);
+    return opt.value === experienceValue || 
+           optValueNum === expValueNum || 
+           opt.name === experienceValue ||
+           opt.id === experienceValue ||
+           String(opt.value) === String(experienceValue) ||
+           String(opt.id) === String(experienceValue);
+  });
+  
+  if (experienceOption) {
+    return experienceOption.name;
+  }
+  
+  // Если это уже строка (название), используем её
+  if (typeof experienceValue === 'string') {
+    return experienceValue;
+  }
+  
+  return '';
+}
+
+// Функция для преобразования education из ID в текст
+function getEducationText(educationValue) {
+  if (!educationValue) return ''
+  
+  const educationOption = ArrayEducation.find(opt => {
+    const optValueNum = Number(opt.value);
+    const eduValueNum = Number(educationValue);
+    return opt.value === educationValue || 
+           optValueNum === eduValueNum || 
+           opt.name === educationValue ||
+           String(opt.value) === String(educationValue);
+  });
+  
+  if (educationOption) {
+    return educationOption.name;
+  }
+  
+  // Если это уже строка (название), используем её
+  if (typeof educationValue === 'string') {
+    return educationValue;
+  }
+  
+  return '';
+}
+
+// Функция для преобразования статуса в формат API
+function getStatusValue(statusValue) {
+  // Если значение пустое, возвращаем 'active' по умолчанию
+  if (!statusValue || statusValue === '' || statusValue === null || statusValue === undefined) {
+    return 'active';
+  }
+  
+  // Маппинг русских названий в значения API
+  const statusMap = {
+    'В работе': 'active',
+    'Черновик': 'draft',
+    'Архив': 'archive',
+    'active': 'active',
+    'draft': 'draft',
+    'archive': 'archive',
+  };
+  
+  // Если значение уже в формате API, возвращаем его
+  if (statusMap[statusValue]) {
+    return statusMap[statusValue];
+  }
+  
+  // Если значение не найдено, возвращаем 'active' по умолчанию
+  return 'active';
+}
+
+// Функция для преобразования статуса из формата API в русское название (для отображения)
+function getStatusDisplayValue(statusValue) {
+  if (!statusValue) return null;
+  
+  // Обратный маппинг значений API в русские названия
+  const statusDisplayMap = {
+    'active': 'В работе',
+    'draft': 'Черновик',
+    'archive': 'Архив',
+    'В работе': 'В работе',
+    'Черновик': 'Черновик',
+    'Архив': 'Архив',
+  };
+  
+  return statusDisplayMap[statusValue] || statusValue;
+}
+
 const vacancyData = computed(() => {
   return {
-    name: newVacancy.value,
-    code: newCode.value,
-    description: descriptionText.value,
-    industry: selectedIndustry.value,
-    specializations: selectedSpecialization.value,
-    employment: selectEmployment.value,
-    schedule: selectedSchedule.value,
-    experience: selectedExperience.value,
-    education: selectedEducation.value,
-    phrases: tagsString.value,
-    conditions: selectedAdditional.value, // массив
-    drivers: selectedCarId.value, // массив
-    additions: selectedOptions.value, // массив
+    name: newVacancy.value.name,
+    code: newVacancy.value.code || '',
+    description: newVacancy.value.description || '',
+    industry: newVacancy.value.industry || '',
+    specializations: newVacancy.value.specializations || '',
+    employment: getEmploymentText(newVacancy.value.employment),
+    schedule: getScheduleText(newVacancy.value.schedule),
+    experience: getExperienceText(newVacancy.value.experience),
+    education: getEducationText(newVacancy.value.education),
+    phrases: getPhrasesArray(newVacancy.value.phrases),
+    conditions: newVacancy.value.conditions || [],
+    drivers: newVacancy.value.drivers || [],
+    additions: newVacancy.value.additions || [],
     salary_from: salary.value.from,
     salary_to: salary.value.to,
-    currency: currencyType.value,
-    place: workSpace.value,
-    location: location.value,
+    currency: newVacancy.value.currency || 'RUB (рубль)',
+    place: newVacancy.value.place || '1',
+    location: newVacancy.value.location || '',
     customer_id: 10,
-    customer_phone: phone.value,
-    customer_email: email.value,
+    customer_phone: newVacancy.value.executor_phone || null,
+    customer_email: newVacancy.value.executor_email || '',
+    status: getStatusValue(newVacancy.value.status),
+    // department: newVacancy.value.department || '',
+    dateEnd: newVacancy.value.dateEnd || null,
+    comment: newVacancy.value.comment || '',
+    peoples: newVacancy.value.peoples || null,
   }
 });
+
+// Функция для форматирования исходных данных в формат vacancyData
+function formatOriginalData(original) {
+  if (!original) return null
+  
+  return {
+    name: original.name,
+    code: original.code || '',
+    description: original.description || '',
+    industry: original.industry || '',
+    specializations: original.specializations || '',
+    employment: getEmploymentText(original.employment),
+    schedule: getScheduleText(original.schedule),
+    experience: getExperienceText(original.experience),
+    education: getEducationText(original.education),
+    phrases: getPhrasesArray(original.phrases),
+    conditions: original.conditions || [],
+    drivers: original.drivers || [],
+    additions: original.additions || [],
+    salary_from: original.salary_from || null,
+    salary_to: original.salary_to || null,
+    currency: original.currency || 'RUB (рубль)',
+    place: original.place || '1',
+    location: original.location || '',
+    customer_phone: original.executor_phone || null,
+    customer_email: original.executor_email || '',
+    status: getStatusValue(original.status),
+    // department: original.department || '',
+    dateEnd: convertDateFromApi(original.dateEnd) || null,
+    comment: original.comment || '',
+    peoples: original.peoples || null,
+  }
+}
+
+// Сохраняем исходные данные в формате vacancyData после загрузки тегов
+watch(() => [tags.value.length, originalVacancyRaw.value], ([tagsLength, original]) => {
+  if (tagsLength > 0 && original && props.type === 'edit' && !originalVacancyData.value) {
+    originalVacancyData.value = formatOriginalData(original)
+  }
+}, { immediate: true })
 
 const validateVacancy = () => {
   let errorsValid = true;
@@ -268,43 +453,97 @@ const validateVacancy = () => {
   return errorsValid
 }
 
-const updateVacancyHandler = async id => {
-  try {
-    const { data, error } = await updateVacancy(id, vacancyData.value)
+// Функция для сравнения значений (включая массивы)
+function isEqual(value1, value2) {
+  if (Array.isArray(value1) && Array.isArray(value2)) {
+    if (value1.length !== value2.length) return false
+    return value1.every((item, index) => {
+      if (typeof item === 'object' && typeof value2[index] === 'object') {
+        return JSON.stringify(item) === JSON.stringify(value2[index])
+      }
+      return item === value2[index]
+    })
+  }
+  // Для статуса: пустая строка и null считаются разными (пустая строка = очистка)
+  // Для остальных полей: null, undefined и пустая строка считаются эквивалентными
+  if (value1 === null || value1 === undefined || value1 === '') {
+    if (value2 === null || value2 === undefined || value2 === '') {
+      return true
+    }
+    return false
+  }
+  if (value2 === null || value2 === undefined || value2 === '') {
+    return false
+  }
+  return value1 === value2
+}
 
-    if (data) {
-      console.log('Успех обновления:', data.message)
-
-    } else if (error) {
-      const status = error.status
-      const message = error.data?.message || error.message
-      if (status === 409) {
-        console.warn('Конфликт:', message)
-      } else if (status === 422) {
-        console.error('Ошибка валидации:', message)
-      } else {
-        console.error('Ошибка сервера:', message)
+// Функция для получения только измененных полей
+function getChangedFields(currentData, originalData) {
+  if (!originalData) return currentData
+  
+  const changedFields = {}
+  
+  // Список полей для сравнения
+  const fieldsToCompare = [
+    'name', 'code', 'description', 'industry', 'specializations',
+    'employment', 'schedule', 'experience', 'education',
+    'phrases', 'conditions', 'drivers', 'additions',
+    'salary_from', 'salary_to', 'currency', 'place', 'location',
+    'customer_phone', 'customer_email', 'status', /* 'department', */ 'dateEnd', 'comment', 'peoples'
+  ]
+  
+  fieldsToCompare.forEach(field => {
+    const currentValue = currentData[field]
+    const originalValue = originalData[field]
+    
+    if (!isEqual(currentValue, originalValue)) {
+      // Не добавляем поля со значением null, если исходное значение тоже было null
+      if (currentValue !== null || (originalValue !== null && originalValue !== undefined)) {
+        changedFields[field] = currentValue
       }
     }
-  } catch (error) {
-    console.error('Ошибка сети:', error.message)
-  }
+  })
+  
+  return changedFields
+}
+
+// Функция для очистки данных от null значений (для создания)
+function cleanDataForSending(data) {
+  const cleaned = { ...data }
+  
+  // Удаляем поля со значением null
+  Object.keys(cleaned).forEach(key => {
+    if (cleaned[key] === null) {
+      delete cleaned[key]
+    }
+  })
+  
+  return cleaned
 }
 
 async function saveVacancy() {
   if (validateVacancy()) {
-    // const { data: response, error } = props.type === 'edit'
-    //   ? await updateVacancy(props.id, editVacancyData.value)
-    //   : (newVacancy.value.application = route.query.application ? route.query.application : null) && await createVacancy(newVacancy.value)
     let response, error;
     
+    // Используем vacancyData для получения правильных данных (phrases как массив)
+    const fullData = { ...vacancyData.value };
+    fullData.application = route.query.application ?? null;
+    
     if (props.type === 'edit') {
-      ({ data: response, error } = await updateVacancy(props.id, editVacancyData.value));
+      // При редактировании отправляем только измененные поля
+      const changedFields = getChangedFields(fullData, originalVacancyData.value);
+      // Очищаем от null значений
+      const cleanedData = cleanDataForSending(changedFields);
+      const result = await updateVacancy(props.id, cleanedData);
+      response = result.data;
+      error = result.error;
     } else {
-      
-      newVacancy.value.application = route.query.application ?? null;
-      
-      ({ data: response, error } = await createVacancy(newVacancy.value));
+      // При создании отправляем все данные, очищенные от null
+      const cleanedData = cleanDataForSending(fullData);
+      const result = await createVacancy(cleanedData);
+      response = result.data;
+      error = result.error;
     }
     
     if (response == null) {
@@ -326,67 +565,39 @@ async function saveVacancy() {
 }
 
 const updateEvent = (data, property) => {
-  if (props.type === 'edit') {
-    editVacancyData.value[property] = data
-  } else {
-    console.log('newvacancy', data, property)
-    newVacancy.value[property] = data
-  }
+  newVacancy.value[property] = data
 }
 
 const updateEventObject = (data, property, obj) => {
-  if (props.type === 'edit') {
-    editVacancyData.value[property] = obj
-  } else {
-    newVacancy.value[property] = obj
-  }
+  newVacancy.value[property] = obj
 }
 
 
 const updateTags = (data) => {
   if (data.length > 0) {
-    const phrases = []
-    data.forEach((item, key) => {
-      phrases.push(item.id)
-    })
-    if (props.type === 'edit') {
-      editVacancyData.value.phrases = phrases
-    } else {
-      newVacancy.value.phrases = phrases
-    }
-
+    newVacancy.value.phrases = data.map(item => item.id)
   } else {
-    if (props.type === 'edit') {
-      if (editVacancyData.value.phrases)
-        delete editVacancyData.value.phrases
-    } else {
-      if (newVacancy.value.phrases)
-        delete newVacancy.value.phrases
-    }
+    delete newVacancy.value.phrases
   }
 }
 
-const updateDataSalary = (objSalary, type, value) => {
-  if (type == 'from') {
-    if (value) {
-      objSalary.salary_from = value
-    } else {
-      delete objSalary.salary_from
-    }
-
-  } else {
-    if (value) {
-      objSalary.salary_to = value
-    } else {
-      delete objSalary.salary_to
-    }
-  }
-}
 const updateSalary = (type, value) => {
-  if (props.type === 'edit') {
-    updateDataSalary(editVacancyData.value, type, value)
+  if (type === 'from') {
+    if (value) {
+      newVacancy.value.salary_from = value
+      salary.value.from = value
+    } else {
+      delete newVacancy.value.salary_from
+      salary.value.from = null
+    }
   } else {
-    updateDataSalary(newVacancy.value, type, value)
+    if (value) {
+      newVacancy.value.salary_to = value
+      salary.value.to = value
+    } else {
+      delete newVacancy.value.salary_to
+      salary.value.to = null
+    }
   }
 }
 
@@ -403,12 +614,6 @@ const updateExecutor = (value, id) => {
   }
 }
 
-// Валидация employment пример для разрешения данных
-watch(() => newVacancy.employment, (newValue) => {
-  if (newValue && !options.value.includes(newValue)) {
-    updateEvent('', 'employment') // Сбрасываем невалидное значение
-  }
-})
 </script>
 
 <template>
@@ -455,11 +660,11 @@ watch(() => newVacancy.employment, (newValue) => {
                   Статус
             </p>
             <MyDropdown 
-                  :defaultValue="''" 
+                  :defaultValue="'В работе'" 
                   placeholder="Выберите статус"
                   :options="['В работе', 'Черновик', 'Архив']"
-                  :model-value="newVacancy.status ? newVacancy.status : null"
-                  @update:model-value="$event => newVacancy.status = $event" 
+                  :model-value="newVacancy.status ? newVacancy.status : 'В работе'"
+                  @update:model-value="$event => newVacancy.status = $event || 'В работе'" 
             />
           </div>
            <div class="w-full">
@@ -467,6 +672,7 @@ watch(() => newVacancy.employment, (newValue) => {
                   Желаемая дата закрытия
               </p>
               <DropdownCalendarStatic 
+                  :model-value="newVacancy.dateEnd || null"
                   @update:model-value="newVacancy.dateEnd = $event" 
                   :is-open="isOpenDateTo"
                 />
@@ -792,3 +998,4 @@ watch(() => newVacancy.employment, (newValue) => {
   padding-top: 12rem;
 }
 </style>
+

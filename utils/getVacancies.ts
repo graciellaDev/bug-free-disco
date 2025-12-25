@@ -111,7 +111,7 @@ export const getVacancy = async ( id: String) => {
         });
 
 
-        return response ? JSON.parse(response).data : null;
+        return response ? response.data : null;
     } catch (err: any) {
         console.error('Ошибка при запросе:', err);
         if (err.response?.status === 401) {
@@ -157,7 +157,7 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
     }
 
     const params = new URLSearchParams();
-    
+
     Object.entries(data).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
             params.append(key, String(value));
@@ -180,7 +180,7 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
         return { data: response || null, error: null };
     } catch (err: any) {
         console.error('Ошибка при обновлении вакансии:', err);
-        
+
         if (err.response?.status === 401) {
             const userStore = useUserStore();
             userStore.clearUserData();
@@ -224,7 +224,7 @@ export const getPhrases = async () => {
     try {
         const response = await $fetch<VacancyResponse>('/phrases', {
             method: 'GET',
-            baseURL: config.public.apiBase as string, 
+            baseURL: config.public.apiBase as string,
             headers: {
                 'Accept': 'application/json',
                 'Authorization': `Bearer ${serverToken}`,
@@ -239,7 +239,7 @@ export const getPhrases = async () => {
             const userStore = useUserStore();
             userStore.clearUserData();
 
-            serverTokenCookie.value = null; 
+            serverTokenCookie.value = null;
             userTokenCookie.value = null;
             // Middleware сработает автоматически при следующем роутинге
             alert('Срок сессии истек. Пожалуйста, авторизуйтесь снова.');

@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import CalendarBarStatic from '@/components/custom/CalendarBarStatic.vue';
 import { dateStringToDots } from '../../helpers/date'
 
@@ -48,6 +48,10 @@ const props = defineProps({
   dateTo: {
     type: Boolean,
     default: false
+  },
+  modelValue: {
+    type: String,
+    default: null
   }
 })
 const emit = defineEmits(['update:modelValue', 'isOpen'])
@@ -60,7 +64,7 @@ const isDropDownVisible = ref(props.isOpen);
 const isFocused = ref(false)
 const isError = ref(false)
 
-const currectDate = ref(null);
+const currectDate = ref(props.modelValue || null);
 
 const handleBlur = () => {
   isFocused.value = false
@@ -251,7 +255,20 @@ const handleClickOutside = (event) => {
   }
 };
 
+// Следим за изменениями modelValue и обновляем currectDate
+watch(() => props.modelValue, (newValue) => {
+  if (newValue) {
+    currectDate.value = newValue;
+  } else {
+    currectDate.value = null;
+  }
+}, { immediate: true });
+
 onMounted(() => {
+  // Инициализируем дату при монтировании, если она еще не установлена
+  if (props.modelValue && !currectDate.value) {
+    currectDate.value = props.modelValue;
+  }
   document.addEventListener('click', handleClickOutside);
 });
 
