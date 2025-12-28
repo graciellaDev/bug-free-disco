@@ -3,6 +3,7 @@
   import BtnIcon from '~/components/custom/BtnIcon.vue';
   import MyTooltip from '~/components/custom/MyTooltip.vue';
   import DotsDropdown from '~/components/custom/DotsDropdown.vue';
+  import type { Candidate } from '@/types/candidates';
 
   const props = defineProps<{
     isFunnel: boolean;
@@ -18,6 +19,7 @@
     email: [];
     refuse: [];
     'update:selectedLabel': [label: string];
+    'confirm-transfer': [label: string];
   }>();
 </script>
 
@@ -31,6 +33,7 @@
       :options="options"
       :modelValue="selectedLabel"
       @update:modelValue="emit('update:selectedLabel', $event)"
+      @confirm-transfer="emit('confirm-transfer', $event)"
     />
     <div class="flex gap-x-2.5">
       <BtnIcon

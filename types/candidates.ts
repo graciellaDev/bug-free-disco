@@ -120,7 +120,7 @@ export interface CandidateCreateRequest {
   surname?: string;
   patronymic?: string;
   email: string;
-  vacancy?: string;
+  vacancy_id?: number | null;
   age?: number | null;
   phone?: string; // формат: +7XXXXXXXXXX
   stage_id?: number | null;

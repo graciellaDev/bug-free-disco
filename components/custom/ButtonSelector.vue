@@ -1,22 +1,20 @@
 <script setup lang="ts">
-  import {
-    ref,
-    onMounted,
-    onBeforeUnmount,
-    defineProps,
-    defineEmits,
-  } from 'vue';
+  import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 
   const props = defineProps<{
     modelValue: string;
     options: string[];
   }>();
 
-  const emit = defineEmits(['update:modelValue']);
+  const emit = defineEmits(['update:modelValue', 'confirm-transfer']);
 
   const btnSelector = ref<HTMLElement | null>(null);
-  const selectedLabel = ref<string>('Подумать'); // начальное значение
+  const selectedLabel = ref(''); // начальное значение
   const showDropdown = ref(false);
+
+  const updateModelValue = () => {
+    selectedLabel.value = props.modelValue || '';
+  };
 
   const toggleDropdown = () => {
     showDropdown.value = !showDropdown.value;
@@ -29,8 +27,7 @@
   };
 
   const confirmTransfer = () => {
-    // Здесь будет логика "перенести на выбранное"
-    console.log('Переносим на:', selectedLabel.value);
+    emit('confirm-transfer', selectedLabel.value);
   };
 
   const handleClickOutside = (event: MouseEvent) => {
@@ -42,8 +39,17 @@
     }
   };
 
+  watch(
+    () => [props.modelValue, props.options],
+    () => {
+      updateModelValue();
+    },
+    { immediate: true, deep: true }
+  );
+
   onMounted(() => {
     window.addEventListener('click', handleClickOutside);
+    updateModelValue();
   });
 
   onBeforeUnmount(() => {
@@ -77,7 +83,7 @@
       >
         <ul class="divide-y divide-athens rounded-plus bg-transparent">
           <li
-            v-for="(label, index) in props.options"
+            v-for="(label, index) in options"
             :key="index"
             @click="selectOption(label)"
             class="cursor-pointer bg-white px-15px py-[9.5px] text-sm font-normal leading-normal text-slate-custom first:rounded-t-plus first:py-2.5 last:rounded-b-plus hover:bg-slate-100"

@@ -93,9 +93,8 @@ export function useCandidateAddForm(options?: {
         phone:
           formData.phone && formData.phone !== '+7' ? formData.phone : null,
         resume: formData.resume || null,
-        vacancy: formData.vacancy || null,
+        vacancy_id: formData.vacancy_id || null,
       };
-
       const response = await createCandidate(candidateData);
 
       if (response && typeof response === 'object' && response.data) {

@@ -35,7 +35,7 @@
         );
       }
     } catch (error) {
-      console.error('Ошибка при загрузке вакансий:', error);
+      console.error('[loadVacancies] Ошибка при загрузке вакансий:', error);
     } finally {
       loading.value = false;
     }
@@ -72,8 +72,8 @@
     @close="handleCancel"
     width="790px"
     :showCloseButton="false"
-    :lgSize="true"
-    :maxHeightValue="'90px'"
+    :lgSize="false"
+    :maxHeightValue="'230px'"
     :allowDropdownOverflow="true"
     :disableOverflowHidden="true"
   >

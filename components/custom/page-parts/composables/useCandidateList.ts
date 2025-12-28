@@ -19,7 +19,6 @@ export function useCandidateList(
           total: pagination.total,
           per_page: pagination.per_page,
         },
-        autoLoad,
       };
     },
     fetchParams: filters,

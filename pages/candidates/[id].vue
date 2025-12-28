@@ -63,7 +63,7 @@
       candidate.value = result.candidateData;
       candidateExtra.value = result.candidateExtra;
     } catch (error: unknown) {
-      console.error('Ошибка при загрузке кандидата:', error);
+      console.error('[loadCandidate] Ошибка при загрузке кандидата:', error);
       throw error;
     } finally {
       loading.value = false;
