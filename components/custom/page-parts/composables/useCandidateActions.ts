@@ -112,7 +112,7 @@ export function useCandidateActions(
       onClosePopup?.();
       router.push('/candidates');
     } catch (error) {
-      console.error('Ошибка при удалении кандидата:', error);
+      console.error('[handleDelete] Ошибка при удалении кандидата:', error);
       //TODO: Проработать оповещение об ошибке
       // alert('Не удалось удалить кандидата');
       throw error;
@@ -141,6 +141,8 @@ export function useCandidateActions(
 
     try {
       const currentCandidate = getCandidate();
+      const candidateId = formData.id ?? currentCandidate.id;
+
       let imagePath = currentCandidate.imagePath;
 
       // Загрузка фото, если оно выбрано
@@ -162,7 +164,7 @@ export function useCandidateActions(
 
       // Подготовка данных для обновления
       const updateData: CandidateUpdateRequest = {
-        id: currentCandidate.id,
+        id: candidateId,
         firstname: formData.firstname,
         surname: formData.surname || '',
         patronymic: formData.patronymic || null,
@@ -173,7 +175,10 @@ export function useCandidateActions(
         messengerMax: prepareUsernameForApi(formData.messengerMax),
         telegram: prepareUsernameForApi(formData.telegram),
         imagePath: imagePath,
+        stage: formData.stage ?? undefined,
       };
+
+      console.log('updateData: ', updateData);
 
       // Отправка запроса на обновление
       const response = await updateCandidate(updateData);

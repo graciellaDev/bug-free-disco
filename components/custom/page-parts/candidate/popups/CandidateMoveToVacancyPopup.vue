@@ -35,7 +35,7 @@
         );
       }
     } catch (error) {
-      console.error('Ошибка при загрузке вакансий:', error);
+      console.error('[loadVacancies] Ошибка при загрузке вакансий:', error);
     } finally {
       loading.value = false;
     }

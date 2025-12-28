@@ -32,7 +32,7 @@
 
   const vacancyFilter = computed(() => {
     if (!vacancy.value?.id) return {};
-    return { vacancy: vacancy.value.id };
+    return { vacancy_id: vacancy.value.id };
   });
 
   const candidateFormConfig: FormConfig = {

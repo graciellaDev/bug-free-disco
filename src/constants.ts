@@ -244,3 +244,5 @@ export const HH_WORK_SCHEDULE_BY_DAYS = [
     name: 'Другое',
   },
 ];
+
+export const BASE_FUNNEL_ID = 1;

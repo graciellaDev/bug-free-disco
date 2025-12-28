@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, onMounted, toRef } from 'vue';
+  import { ref, onMounted, toRef, watch } from 'vue';
   import { getVacancyName } from '@/src/api/vacancies';
   import { usePopups } from '@/composables/usePopup';
   import { normalizeUsername } from '@/helpers/messengers';
@@ -11,8 +11,11 @@
   import CandidateMoveToVacancyPopup from './popups/CandidateMoveToVacancyPopup.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
   import { updateCandidate } from '@/src/api/candidates';
+
+  import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
+  import type { Stage } from '@/types/funnels';
+  import { getFunnelStages } from '@/src/api/funnels';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -27,8 +30,10 @@
 
   const vacancyName = ref<string>('');
 
-  const selectedLabel = ref<string>('Подумать');
+  const selectedLabel = ref<string>('');
   const candidateEditForm = ref<Record<string, any>>({});
+  const stages = ref<Stage[] | null>(null);
+  const options = ref<string[]>([]);
 
   const popups = usePopups({
     deleteCandidate: {
@@ -107,15 +112,6 @@
     resetFormState,
   } = candidateActions;
 
-  const options = [
-    'Все',
-    'Не разобранное',
-    'Подумать',
-    'Подходящие',
-    'Отклоненные',
-    'Служба безопасности',
-  ];
-
   const dropdownOptions = [
     'Поделиться кандидатом',
     'Редактировать',
@@ -150,6 +146,13 @@
     // TODO: Реализовать отправку письма
   };
 
+  const candidateActionsUI = useCandidateActionsUI(toRef(props.candidate), {
+    onEdit: () => handleEditCandidate(),
+    onDelete: () => handleDeleteCandidate(),
+    onEmail: () => popups.mailToCandidate.open(),
+    onMoveToVacancy: () => handleMoveToVacancy(),
+  });
+
   const handleConfirmMove = async (vacancyId: number) => {
     try {
       const movedCandidate: CandidateUpdateRequest = {
@@ -165,23 +168,127 @@
       popups.moveToVacancy.close();
       // TODO: Сообщение об успехе при необходимости
     } catch (err) {
-      console.error('Ошибка при перемещении кандидата: ', err);
+      console.error(
+        '[handleConfirmMove] Ошибка при перемещении кандидата: ',
+        err
+      );
     }
   };
 
-  const candidateActionsUI = useCandidateActionsUI(toRef(props.candidate), {
-    onEdit: () => handleEditCandidate(),
-    onDelete: () => handleDeleteCandidate(),
-    onEmail: () => popups.mailToCandidate.open(),
-    onMoveToVacancy: () => handleMoveToVacancy(),
+  const handleConfirmTransfer = async (stageName: string) => {
+    if (!stages.value || !props.candidate) {
+      console.error('[handleConfirmTransfer] Недостаточно данных для переноса');
+      return;
+    }
+
+    const targetStage = stages.value.find(stage => stage.name === stageName);
+    if (!targetStage) {
+      console.error(`[handleConfirmTransfer] Этап ${stageName} не найден.`);
+      return;
+    }
+
+    try {
+      const updateData: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        stage: targetStage.id,
+      };
+
+      console.log('upadateData: ', updateData);
+
+      const updated = await updateCandidate(updateData);
+      emit('candidate-updated', updated.data);
+    } catch (err) {
+      console.error(
+        '[handleConfirmTransfer] Ошибка при переносе кандидата на другой этап: ',
+        err
+      );
+    }
+  };
+
+  /**
+   * Вычисляет название следующего этапа относительно текущего
+   * @param currentStageId - ID текущего этапа кандидата
+   * @param stagesList - Список всех этапов
+   * @returns Название следующего этапа или пустая строка
+   */
+  const getNextStageName = (
+    currentStageId: number | null | undefined,
+    stagesList: Stage[]
+  ): string => {
+    if (!stagesList || stagesList.length === 0) {
+      return '';
+    }
+
+    const currentStageIndex = stagesList.findIndex(
+      stage => stage.id === currentStageId
+    );
+
+    let nextStage: Stage | null = null;
+
+    if (currentStageIndex >= 0) {
+      nextStage =
+        currentStageIndex === stagesList.length - 1
+          ? stagesList[0]
+          : stagesList[currentStageIndex + 1];
+    } else {
+      nextStage = stagesList[0];
+    }
+
+    return nextStage?.name || '';
+  };
+
+  watch(
+    () => props.candidate,
+    async newCandidate => {
+      if (stages.value && stages.value.length > 0 && newCandidate) {
+        selectedLabel.value = getNextStageName(
+          newCandidate.stage,
+          stages.value
+        );
+      }
+    },
+    { immediate: true }
+  );
+
+  watchEffect(() => {
+    if (stages.value && stages.value.length > 0) {
+      options.value = [
+        ...stages.value
+          .filter(stage => stage.id !== props.candidate.stage)
+          .map(stage => stage.name),
+      ];
+
+      if (props.candidate) {
+        selectedLabel.value = getNextStageName(
+          props.candidate.stage,
+          stages.value
+        );
+      }
+    }
   });
 
   onMounted(async () => {
-    // Загрузка названия вакансии
     if (props.candidate?.vacancy_id) {
       vacancyName.value = await getVacancyName(props.candidate.vacancy_id);
     } else {
       vacancyName.value = 'Вакансия не определена';
+    }
+
+    stages.value = await getFunnelStages();
+    if (stages.value && stages.value.length > 0) {
+      options.value = [
+        ...stages.value
+          .filter(stage => stage.id !== props.candidate.stage)
+          .map(stage => stage.name),
+      ];
+
+      selectedLabel.value = getNextStageName(
+        props.candidate?.stage,
+        stages.value
+      );
     }
   });
 </script>
@@ -198,6 +305,7 @@
       @email="candidateActionsUI.handleClickEmail"
       @refuse="candidateActionsUI.handleClickRefuse"
       @update:selectedLabel="emit('update:selectedLabel', $event)"
+      @confirm-transfer="handleConfirmTransfer"
     />
     <div class="absolute left-0 top-[70px] h-[1px] w-full bg-athens-gray"></div>
     <CandidateInfoContent

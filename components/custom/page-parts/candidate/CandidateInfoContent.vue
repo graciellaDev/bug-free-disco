@@ -111,7 +111,10 @@
         tagInputValue.value = '';
       }
     } catch (err) {
-      console.error('Ошибка при добавлении тега: ', err);
+      console.error(
+        '[handleTagInputKeyDown] Ошибка при добавлении тега: ',
+        err
+      );
     } finally {
       isSubmittingTag.value = false;
     }

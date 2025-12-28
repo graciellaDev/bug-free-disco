@@ -37,7 +37,7 @@ export function useCandidateActionsUI(
         alert('Ссылка на кандидата скопирована в буфер обмена');
       })
       .catch(error => {
-        console.error('Ошибка при копировании:', error);
+        console.error('[handleShareCandidate] Ошибка при копировании:', error);
         alert('Не удалось скопировать ссылку');
       });
   };
