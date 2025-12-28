@@ -3,7 +3,7 @@
     <div class="min-h-[153px] max-h-auto bg-white shadow-shadow-cards">
       <div class="container pt-25px pb-[16px]">
         <div class="flex mb-25px">
-          <h1 class="text-xl text-space font-semibold leading-[38px]">{{ nameVacancy }}</h1>
+          <h1 class="text-xl text-space font-semibold leading-[38px]">{{ props.name }}</h1>
           <div class="flex ml-auto">
             <UiButton class="mr-15px" variant="semiaction" size="semiaction">В черновик</UiButton>
             <UiButton class="font-bold" variant="action" size="action">Сохранить и продолжить</UiButton>
@@ -93,7 +93,13 @@ import { ref } from 'vue'
 
 // const vacancyStore = useVacancyStore();
 // const nameVacancy = computed(() => vacancyStore.nameVacancy);
-const nameVacancy = ref('Новая вакансия');
+
+const props = defineProps({
+  name: {
+    type: String,
+    default: 'Новая вакансия',
+  }
+});
 
 // Объявляем переменную для состояния табов
 const isHovered = ref(false)

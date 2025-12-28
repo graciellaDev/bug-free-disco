@@ -1055,7 +1055,36 @@ function closeImportPopup() {
 function importPublication(publication) {
     // Добавляем публикацию в список активных
     if (!publicationsHh.value.find(p => p.id === publication.id)) {
+      // const keysHH = [];
+      // const vacancyData =  {
+      //   name: publicationsHh.value.name,
+      //   code: newVacancy.value.code || null,
+      //   industry: newVacancy.value.industry || '',
+      //   specializations: newVacancy.value.specializations || '',
+      //   employment: getEmploymentText(newVacancy.value.employment),
+      //   schedule: getScheduleText(newVacancy.value.schedule),
+      //   experience: getExperienceText(newVacancy.value.experience),
+      //   education: getEducationText(newVacancy.value.education),
+      //   phrases: getPhrasesArray(newVacancy.value.phrases),
+      //   conditions: newVacancy.value.conditions || [],
+      //   drivers: newVacancy.value.drivers || [],
+      //   additions: newVacancy.value.additions || [],
+      //   salary_from: salary.value.from,
+      //   salary_to: salary.value.to,
+      //   currency: newVacancy.value.currency || 'RUB (рубль)',
+      //   place: newVacancy.value.place || '1',
+      //   location: newVacancy.value.location || '',
+      //   customer_id: 10,
+      //   customer_phone: newVacancy.value.executor_phone || null,
+      //   customer_email: newVacancy.value.executor_email || '',
+      //   status: getStatusValue(newVacancy.value.status),
+      //   // department: newVacancy.value.department || '',
+      //   dateEnd: newVacancy.value.dateEnd || null,
+      //   comment: newVacancy.value.comment || '',
+      //   peoples: newVacancy.value.peoples || null,
+      // };
         publicationsHh.value.push(publication);
+        console.log('publiation', publicationsHh.value);
     }
     alert(`Публикация "${publication.name}" импортирована`);
 }
