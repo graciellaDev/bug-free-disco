@@ -144,10 +144,10 @@ export function useCandidateActionsUI(
     // TODO: Реализовать отказ кандидату
   };
 
-  const handleClickAddTag = () => {
-    console.log('click add tag');
-    // TODO: Реализовать добавление тега
-  };
+  // const handleClickAddTag = () => {
+  //   console.log('click add tag');
+  //   // TODO: Реализовать добавление тега
+  // };
 
   const handleClickMessengerMax = () => {
     const currentCandidate = getCandidate();
@@ -178,7 +178,7 @@ export function useCandidateActionsUI(
     handleClickEmail,
     handleClickNewTask,
     handleClickRefuse,
-    handleClickAddTag,
+    // handleClickAddTag,
     handleClickTelegram,
     handleClickMessengerMax,
   };

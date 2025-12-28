@@ -1,6 +1,12 @@
 <script setup lang="ts">
-  import { computed } from 'vue';
-  import type { Candidate } from '@/types/candidates';
+  import { ref, computed, nextTick } from 'vue';
+  import { createTag } from '@/src/api/tags';
+  import { updateCandidate } from '@/src/api/candidates';
+  import type {
+    Candidate,
+    CandidateUpdateRequest,
+    TagCandidate,
+  } from '@/types/candidates';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -9,8 +15,14 @@
 
   const emit = defineEmits<{
     'telegram-click': [];
-    'add-tag': [];
+    // 'add-tag': [];
+    'candidate-updated': [candidate: Candidate];
   }>();
+
+  const isAddingTag = ref(false);
+  const tagInputValue = ref('');
+  const isSubmittingTag = ref(false);
+  const tagInputRef = ref<HTMLInputElement | null>(null);
 
   const formattedPhone = computed(() => {
     if (!props.candidate.phone) return '';
@@ -37,6 +49,78 @@
     }
     return '';
   });
+
+  const handleAddTagClick = async () => {
+    isAddingTag.value = true;
+    tagInputValue.value = '';
+    await nextTick();
+    tagInputRef.value?.focus();
+  };
+
+  const handleTagInputKeyDown = async (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      handleCancelAddTag();
+      return;
+    }
+    if (event.key !== 'Enter') return;
+
+    const tagName = tagInputValue.value.trim();
+
+    if (!tagName) return;
+
+    const existingTag = props.candidate.tags?.find(
+      tag => tag.name.toLocaleLowerCase() === tagName.toLowerCase()
+    );
+
+    if (existingTag) {
+      isAddingTag.value = false;
+      tagInputValue.value = '';
+      return;
+    }
+
+    isSubmittingTag.value = true;
+
+    try {
+      const tagResponse = await createTag(tagName);
+
+      if (!tagResponse.data || !tagResponse.data.id) {
+        throw new Error('Ошибка создания тега!');
+      }
+
+      const newTag = tagResponse.data;
+
+      const updatedTags = [];
+      if (props.candidate.tags && props.candidate.tags.length > 0)
+        updatedTags.push(...props.candidate.tags);
+      updatedTags.push(newTag);
+
+      const updateData: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        tags: updatedTags,
+      };
+
+      const updatedRespose = await updateCandidate(updateData);
+
+      if (updatedRespose?.data) {
+        emit('candidate-updated', updatedRespose.data);
+
+        isAddingTag.value = false;
+        tagInputValue.value = '';
+      }
+    } catch (err) {
+      console.error('Ошибка при добавлении тега: ', err);
+    } finally {
+      isSubmittingTag.value = false;
+    }
+  };
+
+  const handleCancelAddTag = () => {
+    isAddingTag.value = false;
+    tagInputValue.value = '';
+  };
 </script>
 
 <template>
@@ -129,14 +213,15 @@
             :key="index"
             class="mr-2 text-sm font-medium text-dodger"
           >
-            {{ tag }}
+            {{ tag.name }}
           </span>
           <button
+            v-if="!isAddingTag"
             :class="{
               'ml-2.5': candidate?.tags && candidate?.tags?.length > 0,
             }"
             class="flex items-center text-slate-custom"
-            @click="emit('add-tag')"
+            @click="handleAddTagClick"
           >
             <svg-icon
               name="plus-gray20"
@@ -146,6 +231,24 @@
             />
             <span class="text-sm font-medium">Добавить</span>
           </button>
+          <div v-else class="flex items-center gap-2">
+            <input
+              ref="tagInputRef"
+              v-model="tagInputValue"
+              type="text"
+              class="h-8 rounded border border-gray-300 px-2 text-sm focus:border-dodger focus:outline-none"
+              :disabled="isSubmittingTag"
+              @keydown="handleTagInputKeyDown"
+              @blur="handleCancelAddTag"
+            />
+            <button
+              v-if="isSubmittingTag"
+              class="text-state-custom text-sm"
+              disabled
+            >
+              Сохранение...
+            </button>
+          </div>
         </div>
       </div>
     </div>

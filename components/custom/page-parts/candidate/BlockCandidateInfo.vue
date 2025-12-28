@@ -205,7 +205,7 @@
       :vacancyName="vacancyName"
       @telegram="candidateActionsUI.handleClickTelegram"
       @messengerMax="candidateActionsUI.handleClickMessengerMax"
-      @add-tag="candidateActionsUI.handleClickAddTag"
+      @candidate-updated="emit('candidate-updated', $event)"
     />
     <CandidateEmailPopup
       :isOpen="popups.mailToCandidate.isOpen"
