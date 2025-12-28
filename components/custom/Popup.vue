@@ -120,7 +120,7 @@
       :style="{
         maxWidth: width,
         top: lgSize ? '10%' : 'auto',
-        paddingBottom: allowDropdownOverflow ? '11%' : lgSize ? '7.86%' : '0',
+        paddingBottom: lgSize ? '7.86%' : '0',
       }"
     >
       <div

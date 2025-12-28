@@ -89,9 +89,9 @@
     });
   };
 
-  const closeAddCandidatePopup = () => {
-    addCandidatePopup.close();
-  };
+  // const closeAddCandidatePopup = () => {
+  //   addCandidatePopup.close();
+  // };
 
   function goToCandidate(id: number) {
     // console.log('[goToCandidate] Переходим к кандидату:', id);
@@ -149,6 +149,7 @@
   };
 
   // const handlePageChangeWrapper = async (page: number) => {
+  //   console.log('Change page to: ', page);
   //   await handlePageChange(page);
   // };
 
@@ -248,8 +249,8 @@
 
       <Pagination
         v-if="pagination && pagination.last_page > 1"
-        :current-page="pagination.current_page"
-        :last-page="pagination.last_page"
+        :currentPage="pagination.current_page"
+        :lastPage="pagination.last_page"
         @page-changed="handlePageChange"
       />
     </div>

@@ -11,11 +11,8 @@
   import CandidateMoveToVacancyPopup from './popups/CandidateMoveToVacancyPopup.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import type { Candidate } from '@/types/candidates';
-  import {
-    getCandidateById,
-    moveCandidateToVacancy,
-  } from '@/src/api/candidates';
+  import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
+  import { updateCandidate } from '@/src/api/candidates';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -155,9 +152,15 @@
 
   const handleConfirmMove = async (vacancyId: number) => {
     try {
-      await moveCandidateToVacancy(vacancyId, props.candidate);
-      const updated = await getCandidateById(props.candidate.id);
-      emit('candidate-updated', updated.candidateData);
+      const movedCandidate: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        vacancy_id: vacancyId,
+      };
+      const updated = await updateCandidate(movedCandidate);
+      emit('candidate-updated', updated.data);
 
       popups.moveToVacancy.close();
       // TODO: Сообщение об успехе при необходимости
@@ -176,9 +179,7 @@
   onMounted(async () => {
     // Загрузка названия вакансии
     if (props.candidate?.vacancy_id) {
-      vacancyName.value = await getVacancyName(
-        props.candidate.vacancy_id.toString()
-      );
+      vacancyName.value = await getVacancyName(props.candidate.vacancy_id);
     } else {
       vacancyName.value = 'Вакансия не определена';
     }

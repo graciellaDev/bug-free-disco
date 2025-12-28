@@ -6,6 +6,7 @@
   import UiAvatarFallback from '@/components/ui/avatar/AvatarFallback.vue';
   import CardIcon from '@/components/custom/CardIcon.vue';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
+  import { getVacancyName } from '@/src/api/vacancies';
 
   interface Props {
     candidates: Candidate[];
@@ -29,6 +30,33 @@
     'select-all': [isSelected: boolean];
   }>();
 
+  const vacancyNames = ref<Record<number, string>>({});
+
+  const loadVacancyNames = async () => {
+    const uniqueVacancyIds = new Set<number>();
+
+    // Собираем уникальные ID вакансий
+    props.candidates.forEach(candidate => {
+      if (candidate.vacancy_id) {
+        uniqueVacancyIds.add(candidate.vacancy_id);
+      }
+    });
+
+    // Загружаем названия для всех уникальных вакансий параллельно
+    const promises = Array.from(uniqueVacancyIds).map(async vacancyId => {
+      if (!vacancyNames.value[vacancyId]) {
+        try {
+          const name = await getVacancyName(vacancyId);
+          vacancyNames.value[vacancyId] = name;
+        } catch (error) {
+          vacancyNames.value[vacancyId] = 'Неизвестная вакансия';
+        }
+      }
+    });
+
+    await Promise.all(promises);
+  };
+
   const getFullName = (candidate: Candidate) => {
     const parts = [
       candidate.surname,
@@ -42,6 +70,13 @@
     const surnameInitial = candidate.surname?.[0] || '';
     const firstnameInitial = candidate.firstname?.[0] || '';
     return `${surnameInitial}${firstnameInitial}`.toUpperCase();
+  };
+
+  const getVacancyNameForTable = (candidate: Candidate): string => {
+    if (!candidate.vacancy_id) {
+      return 'Не указана';
+    }
+    return vacancyNames.value[candidate.vacancy_id] || 'Загрузка...';
   };
 
   const getStageName = (candidate: Candidate) => {
@@ -66,6 +101,18 @@
   const handlerSelectAll = (isSelected: boolean) => {
     emit('select-all', isSelected);
   };
+
+  onMounted(() => {
+    loadVacancyNames();
+  });
+
+  watch(
+    () => props.candidates,
+    () => {
+      loadVacancyNames();
+    },
+    { deep: true }
+  );
 </script>
 
 <template>
@@ -155,7 +202,7 @@
         </div>
         <div class="px-2.5 text-sm font-normal text-space">
           <slot name="cell-vacancy" :candidate="candidate">
-            {{ candidate.vacancy || 'Не указана' }}
+            {{ getVacancyNameForTable(candidate) }}
           </slot>
         </div>
         <div class="px-2.5 text-sm font-normal text-space">

@@ -148,7 +148,7 @@
       if (result) {
         vacancy.value = result;
       } else {
-        console.log('Ошибка загрузки вакансии');
+        console.error('Ошибка загрузки вакансии');
       }
     } catch (err) {
       console.error('Ошибка при получении вакансии:', err);
@@ -286,7 +286,7 @@
     }
     const formDataWithVacancy = {
       ...formData,
-      vacancy: vacancy.value?.id?.toString() || null,
+      vacancy_id: vacancy.value?.id || null,
     };
     await handleFormSubmitBase(formDataWithVacancy, addCandidatePopup.isOpen);
   };
