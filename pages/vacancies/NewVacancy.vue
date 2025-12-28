@@ -1,6 +1,6 @@
 <template>
   <div>
-    <status-vacancy @update:currentTab="switchTab" />
+    <status-vacancy @update:currentTab="switchTab" :name="vacancyName" />
     <Suspense @pending="onPending" @resolve="onResolve" @fallback="onFallback">
       <template #default>
         <component
@@ -29,16 +29,19 @@
 
   const route = useRoute();
   const vacancyId = ref(route.query.id ? route.query.id : null);
-  const currectVacancy: any = inject('vacancyCurrect');
+  const vacancyName = ref('Новая вакансия');
   const application = ref(
     route.query.application ? route.query.application : null
   );
 
   const typeSave = ref(route.query.type ? route.query.type : 'create');
+  if (vacancyId.value) {
+    const currectVacancy = await getVacancy(String(vacancyId.value));
+    vacancyName.value = 'Редактирование вакансии';
+    if (currectVacancy.value !== null && currectVacancy.name !== '')
+      vacancyName.value +=  `: ${currectVacancy.name}`;
 
-  // if (vacancyId.value && !currectVacancy.value) {
-  //   currectVacancy.value = await getVacancy(String(vacancyId.value))
-  // }
+  }
 
   useSeoMeta({
     title: 'Создание вакансии — Jobly',
