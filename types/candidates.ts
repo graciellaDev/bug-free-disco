@@ -6,8 +6,10 @@ export type SkillCandidate = {
 };
 
 export type TagCandidate = {
+export type TagCandidate = {
   id: number;
   name: string;
+};
 };
 
 export type CustomFieldCandidate = {
@@ -51,15 +53,15 @@ export interface Candidate {
   coverPath?: string | null;
   source?: string | null;
   isReserve?: boolean | null;
-  customer?: number | null;
-  vacancy_id?: number | null;
-  stage?: number | null;
+  customer??: number | null;
+  vacancy_id??: number | null;
+  stage??: number | null;
   attachments?: AttachmentCandidate[] | null;
   skills?: SkillCandidate[] | null;
   tags?: TagCandidate[] | null;
   customFields?: CustomFieldCandidate[] | null;
-  created_at?: string;
-  updated_at?: string;
+  created_at??: string;
+  updated_at??: string;
 }
 
 // Успешный ответ запроса списка кандидатов
@@ -117,6 +119,8 @@ export type CandidateDeleteResponse = ApiSuccessResponse<{
 // Для создания кандидата
 export interface CandidateCreateRequest {
   firstname: string;
+  surname?: string;
+  patronymic?: string;
   surname?: string;
   patronymic?: string;
   email: string;

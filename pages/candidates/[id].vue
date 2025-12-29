@@ -50,7 +50,19 @@
   };
 
   const loadCandidate = async (id: number) => {
+<<<<<<< Updated upstream
     if (!id || isNaN(id)) {
+=======
+    loading.value = true;
+    try {
+      // const rawData = await fetchCandidateById(id)
+      const { candidateData, candidateExtra }: ApiResponseById =
+        await getCandidateById(id);
+      candidate.value = candidateData;
+      // console.log('Candidate loaded:', candidate);
+    } catch (error) {
+      console.error(error);
+>>>>>>> Stashed changes
       throw createError({
         statusCode: 404,
         statusMessage: 'Некорректный ID кандидата',

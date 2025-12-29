@@ -4,6 +4,12 @@ export type Option<T = string> = {
 };
 export type Phrase = string | Option[];
 
+export type Option<T = string> = {
+  id: number;
+  name: T;
+};
+export type Phrase = string | Option[];
+
 export interface Vacancy {
   id?: number;
   name: string;

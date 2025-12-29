@@ -73,8 +73,6 @@
     Черновик: 'draft',
     Архив: 'archive',
   };
-  departments.value = await getDepartments();
-  responsibles.value = await responsiblesList();
 
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(vacancies.value.length / itemsPerPage))
@@ -209,6 +207,8 @@
   // Инициализация высоты при монтировании
   // onMounted(updateContainerHeight, fetchVacancies);
   onMounted(async () => {
+    departments.value = await getDepartments();
+    responsibles.value = await responsiblesList();
     updateContainerHeight();
     loading.value = true;
     const result = await getVacancies();

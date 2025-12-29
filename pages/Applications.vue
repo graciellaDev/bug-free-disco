@@ -1,3 +1,924 @@
+<script setup>
+  import {
+    ref,
+    computed,
+    onMounted,
+    onUnmounted,
+    onBeforeUnmount,
+    nextTick,
+    watch,
+  } from 'vue';
+  import dayjs from 'dayjs';
+  import ResponseInput from '~/components/custom/ResponseInput.vue';
+  import DotsDropdown from '~/components/custom/DotsDropdown.vue';
+  import Popup from '~/components/custom/Popup.vue';
+  import SimpleInput from '~/components/custom/SimpleInput.vue';
+  import InputCalendar from '~/components/custom/InputCalendar.vue';
+  import BtnResponseInput from '~/components/custom/BtnResponseInput.vue';
+  import BtnAddBindVacancy from '~/components/custom/BtnAddBindVacancy.vue';
+  import MyInput from '~/components/custom/MyInput.vue';
+  import GeoInput from '~/components/custom/GeoInput.vue';
+  import SalaryRange from '~/components/custom/SalaryRange.vue';
+  import MyDropdown from '~/components/custom/MyDropdown.vue';
+  import MyTextarea from '~/components/custom/MyTextarea.vue';
+  import ChatMin from '~/components/custom/chat-min';
+  import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
+  import UiCircleLoader from '~/components/custom/UiCircleLoader.vue';
+  import Pagination from '~/components/custom/Pagination.vue';
+  import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue';
+  import responses from '~/src/data/responses.json';
+  import currency from '~/src/data/currency.json';
+
+  import { fetchApplications } from '~/utils/applicationsList';
+  import { fetchApplicationDetail, approve } from '~/utils/applicationItem';
+  import { createApplication } from '~/utils/applicationCreate';
+  import { deleteApplication } from '~/utils/applicationRemove';
+  import { clientsList } from '~/utils/clientsList';
+  import { executorsList, getDepartments } from '~/utils/executorsList';
+  import { fetchApplicationUpdate } from '~/utils/applicationUpdate';
+  import { getVacanciesNames } from '~/utils/getVacancies';
+  import { loadScript } from '@/plugins/loader';
+  import { profile } from '@/utils/loginUser';
+  import { reject } from '@/utils/applicationItem';
+  const isCreateVacancy = ref(false);
+
+  import { API_YANDEX_KEY, API_YANDEX_SUGGEST } from '@/src/constants.ts';
+
+  import { useRouter } from 'vue-router';
+
+  const router = useRouter();
+
+  const applications = ref([]);
+  const data = ref([]);
+  const pagination = ref({
+    current_page: 1,
+    total: 1,
+    per_page: 10,
+    last_page: 1,
+    links: [],
+  });
+  const error = ref(null);
+  const loading = ref(true);
+  const loadingItem = ref(false);
+  const errorItem = ref(null);
+  const isOpenDateFrom = ref(false);
+  const isOpenDateTo = ref(false);
+  const errorReject = ref(null);
+
+  const headers = computed(() => {
+    const baseHeaders = [
+      { key: 'title', label: 'Вакансия' },
+      { key: 'status', label: 'Статус' },
+      { key: 'dateStart', label: 'Дата создания' },
+      { key: 'executor', label: 'Согласующий' },
+      { key: 'region', label: 'Город' },
+      { key: 'dateWork', label: 'Закрыть до' },
+    ];
+
+    if (['admin', 'responsible'].includes(userRole.value)) {
+      baseHeaders.splice(2, 0, { key: 'customer', label: 'Автор' });
+    } else if (userRole.value === 'customer') {
+      baseHeaders.splice(2, 0, { key: 'responsible', label: 'Ответственный' });
+    }
+
+    return baseHeaders;
+  });
+
+  const sortKey = ref('');
+  const sortOrder = ref('asc');
+  const userRole = ref('admin'); // Change to "admin" or "responsible" and "customer" for testing
+  const dropdownOptions = ['Управлять', 'Копировать заявку', 'Удалить'];
+  // const isNewAppPopup = ref(false)
+  const isNewAppPopupAdmin = ref(false);
+  const isNewAppPopupCustomer = ref(false);
+  const isNewAppPopupResponsible = ref(false);
+  const showNewResponse = ref(false);
+  const newResponse = ref('');
+  const responseContainer = ref(null);
+  const newApplication = ref({});
+  const newResponseResponsible = ref('');
+  const showNewResponseResponsible = ref(false);
+  const responseContainerResponsible = ref(null);
+  const newExecutor = ref({ id: null, name: '' });
+  const showNewExecutor = ref(false);
+  const executorContainer = ref(null);
+  const newCustomer = ref({ id: null, name: '' });
+  const showNewCustomer = ref(false);
+  const newClient = ref({ id: null, name: '' });
+  const customerContainer = ref(false);
+  const newPositionResponsible = ref('');
+  const newDepartmentResponsible = ref('');
+  const newRegionResponsible = ref('');
+  const newReasonResponsible = ref('');
+  const salaryMinResponsible = ref('');
+  const salaryMaxResponsible = ref('');
+  const vacancyCountResponsible = ref('');
+  const requirementsResponsible = ref('');
+  const responsibilitiesResponsible = ref('');
+  const newResponseCustomer = ref('');
+  const newPositionCustomer = ref('');
+  const newDepartmentCustomer = ref('');
+  const newRegionCustomer = ref('');
+  const newReasonCustomer = ref('');
+  const salaryMinCustomer = ref('');
+  const salaryMaxCustomer = ref('');
+  const vacancyCountCustomer = ref('');
+  const requirementsCustomer = ref('');
+  const responsibilitiesCustomer = ref('');
+  const selectedVacancy = ref(null);
+  const detailedVacancy = ref(null);
+  const popupSelectedTab = ref('popupMainInfo');
+  const tabContentInner = ref(null);
+  const tabContentHeight = ref(0);
+  const popupResponse = ref(null);
+  const isSaveVacancy = ref(false);
+  const rejectReason = ref('');
+
+  const ArrayCurrency = currency;
+  const clients = ref([]);
+  const executors = ref([]);
+  const departments = ref([]);
+  const vacancies = ref([]);
+  let resizeObserver = null;
+  const errors = ref({});
+  const updateData = ref({});
+  const isDeleteApplication = ref(false);
+  const isAddApprove = ref(false);
+  const isApprove = ref(false);
+  const isNotApprove = ref(false);
+  const reasonReject = ref(false);
+
+  const { data: profileCustomer, error: errorProfile } = await profile();
+  if (!errorProfile) {
+  }
+  // Функция обновления высоты контента
+  const updateTabHeight = () => {
+    nextTick(() => {
+      if (tabContentInner.value) {
+        tabContentHeight.value = tabContentInner.value.offsetHeight;
+      } else {
+        console.warn('tabContent is null when updating height');
+      }
+    });
+  };
+
+  const closeCalendare = () => {
+    isOpenFrom(false);
+  };
+
+  const isOpenFrom = value => {
+    isOpenDateFrom.value = value;
+  };
+
+  const deleteApplicationSelect = async id => {
+    await deleteApplication(id);
+    isDeleteApplication.value = false;
+    selectedVacancy.value = false;
+    loadApplications();
+  };
+
+  const statusWeights = {
+    new: 1,
+    in_review: 2,
+    in_work: 3,
+    paused: 4,
+  };
+
+  const sortedData = computed(() => {
+    if (!sortKey.value) return data.value;
+
+    return [...data.value].sort((a, b) => {
+      const multiplier = sortOrder.value === 'asc' ? 1 : -1;
+
+      if (sortKey.value === 'status') {
+        return (statusWeights[a.status] - statusWeights[b.status]) * multiplier;
+      }
+
+      if (a[sortKey.value] > b[sortKey.value]) return 1 * multiplier;
+      if (a[sortKey.value] < b[sortKey.value]) return -1 * multiplier;
+      return 0;
+    });
+  });
+
+  const sortBy = key => {
+    if (sortKey.value === key) {
+      sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortKey.value = key;
+      sortOrder.value = 'asc';
+    }
+    let asc = sortOrder.value === 'asc' ? '' : '&asc=0';
+    loadApplications(1, `sort=${sortKey.value}${asc}`);
+  };
+
+  const sortArrowStyle = key => {
+    return {
+      transform:
+        sortKey.value === key && sortOrder.value === 'asc'
+          ? 'rotate(180deg)'
+          : 'rotate(0deg)',
+      transition: 'transform 0.3s ease',
+    };
+  };
+
+  const takeInWork = vacancy => {
+    console.log(`Вакансия взята в работу: ${vacancy.title}`);
+  };
+
+  const openResponseInput = (vacancy, event) => {
+    event.stopPropagation(); // Останавливаем всплытие события
+    vacancy.showResponseInput = true;
+  };
+
+  const handleClickOutside = event => {
+    const elTarget = event.target;
+    //console.log('event', event.target);
+    //обработчик события клика вне календаря
+    // if ((!elTarget || !elTarget.classList.contains('.shadow-shadow-droplist')) || !elTarget.closest('.calendar-wrapper')) {
+    console.log('close');
+    // if (isOpenDateFrom.value)
+    //     isOpenDateFrom.value = false
+    // if (isOpenDateTo.value)
+    //     isOpenDateTo.value = false
+    //   console.log('isOpen', isOpenDateFrom.value);
+    // }
+
+    if (!isNewAppPopupAdmin.value && newApplication.value) {
+      newApplication.value = {};
+      errors.value = {};
+    }
+    data.value.forEach(vacancy => {
+      if (vacancy.showResponseInput) {
+        const element = document.querySelector(
+          `[data-vacancy="${vacancy.title}"]`
+        );
+        if (element && !element.contains(event.target)) {
+          // Если не было выбора, оставляем кнопку "Добавить"
+          if (!vacancy.responseChoose) {
+            vacancy.showResponseInput = false;
+          } else {
+            vacancy.showResponseInput = false;
+          }
+        }
+      }
+    });
+  };
+
+  const handleClickOutsideNewAppPopup = event => {
+    if (
+      responseContainer.value &&
+      !responseContainer.value.contains(event.target)
+    ) {
+      if (!newResponse.value) {
+        showNewResponse.value = false; // Закрываем input, если ничего не выбрано
+      }
+    }
+  };
+
+  const handleClickOutsideNewAppPopupResponsible = event => {
+    if (
+      responseContainerResponsible.value &&
+      !responseContainerResponsible.value.contains(event.target)
+    ) {
+      if (!newResponseResponsible.value) {
+        showNewResponseResponsible.value = false; // Закрываем input, если ничего не выбрано
+      }
+    }
+  };
+
+  const handleClickOutsideNewAppPopupExecutor = event => {
+    if (
+      executorContainer.value &&
+      !executorContainer.value.contains(event.target)
+    ) {
+      if (!newExecutor.value.name) {
+        showNewExecutor.value = false; // Закрываем input, если ничего не выбрано
+      }
+    }
+  };
+
+  const handleClickOutsideNewAppPopupCustomer = event => {
+    if (
+      customerContainer.value &&
+      !customerContainer.value.contains(event.target)
+    ) {
+      if (!newCustomer.value.name) {
+        showNewCustomer.value = false; // Закрываем input, если ничего не выбрано
+      }
+    }
+  };
+
+  const loadApplications = async (page = 1, params = '') => {
+    // load data applications
+    loading.value = true;
+    try {
+      const {
+        applications: fetchedApplications,
+        pagination: fetchedPagination,
+      } = await fetchApplications(page, params);
+      applications.value = fetchedApplications;
+      data.value = applications.value.map(vacancy => ({
+        ...vacancy,
+        responsible: vacancy.responsible, // TODO: Заменить на данные из API
+        candidates: 0, // TODO: Заменить на данные из API
+        showResponseInput: false,
+        responseChoose: '',
+        approvals: vacancy.approvals,
+      }));
+      pagination.value = fetchedPagination;
+
+      // получаем динамический список клиентов
+      const { clients: clientData } = await clientsList();
+      clients.value = clientData;
+    } catch (error) {
+      error.value = 'Ошибка загрузки заявок.';
+      console.error(error);
+    } finally {
+      loading.value = false;
+    }
+
+    // получаем динамический список вакансий
+    vacancies.value = await getVacanciesNames();
+
+    // получаем динамический список исполнителей
+    const { executors: executorData } = await executorsList();
+    executors.value = executorData;
+  };
+
+  // Получаем динамический список отделов
+  departments.value = await getDepartments();
+
+  const handlePageChange = async page => {
+    pagination.value.current_page = page;
+    await loadApplications(page);
+  };
+
+  const getClients = async () => {
+    const { clients } = await clientsList();
+
+    return clients;
+  };
+
+  const getExecutors = async () => {
+    const { executors } = await executorsList();
+
+    return executors;
+  };
+
+  onMounted(async () => {
+    await loadScript(
+      `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}`
+    );
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('click', handleClickOutsideNewAppPopup);
+    document.addEventListener(
+      'click',
+      handleClickOutsideNewAppPopupResponsible
+    );
+    document.addEventListener('click', handleClickOutsideNewAppPopupExecutor);
+    document.addEventListener('click', handleClickOutsideNewAppPopupCustomer);
+    loadApplications();
+  });
+
+  onBeforeUnmount(() => {
+    document.removeEventListener('click', handleClickOutside);
+    document.removeEventListener('click', handleClickOutsideNewAppPopup);
+    document.removeEventListener(
+      'click',
+      handleClickOutsideNewAppPopupResponsible
+    );
+    document.removeEventListener(
+      'click',
+      handleClickOutsideNewAppPopupExecutor
+    );
+    document.removeEventListener(
+      'click',
+      handleClickOutsideNewAppPopupCustomer
+    );
+  });
+
+  onUnmounted(() => {
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+  });
+
+  const updateResponseChoose = (vacancy, value) => {
+    if (value) {
+      vacancy.responseChoose = value;
+      vacancy.showResponseInput = false;
+    }
+  };
+
+  // popup's settings
+  // config for control scroll
+  function disableBodyScroll() {
+    document.body.style.overflow = 'hidden'; // Отключаем прокрутку
+  }
+
+  function enableBodyScroll() {
+    document.body.style.overflow = ''; // Включаем прокрутку
+  }
+
+  // const openNewResponse = event => {
+  //   event.stopPropagation()
+  //   showNewResponse.value = true
+  // }
+
+  // const updateNewResponse = value => {
+  //   if (value) {
+  //     newResponse.value = value
+  //     showNewResponse.value = false
+  //   }
+  // }
+
+  const openNewResponseResponsible = event => {
+    event.stopPropagation();
+    showNewResponseResponsible.value = true;
+  };
+
+  const openNewExecutor = event => {
+    event.stopPropagation();
+    showNewExecutor.value = true;
+  };
+
+  const openNewCustomer = event => {
+    event.stopPropagation();
+    showNewCustomer.value = true;
+  };
+
+  const updateNewResponseResponsible = value => {
+    if (value) {
+      newResponseResponsible.value = value;
+      showNewResponseResponsible.value = false;
+    }
+  };
+
+  function updateNewExecutor(value, id) {
+    // сonsole.log('value executor ', value)
+    if (value) {
+      newExecutor.value.name = value;
+      newExecutor.value.id = id;
+      showNewExecutor.value = false;
+      if (!newApplication.value.executor) {
+        newApplication.value.executor = {};
+      }
+      newApplication.value.executor.id = id;
+      newApplication.value.executor.name = value;
+      // сonsole.log('newApplication.value.executor.id ', newApplication.value.executor.id)
+    }
+  }
+
+  function updateNewResponsible(value, id) {
+    if (value) {
+      newExecutor.value.name = value;
+      newExecutor.value.id = id;
+      showNewExecutor.value = false;
+      if (!newApplication.value.responsible) {
+        newApplication.value.responsible = {};
+      }
+      newApplication.value.responsible.id = id;
+      newApplication.value.responsible.name = value;
+    }
+  }
+
+  const updateNewCustomer = (value, id) => {
+    if (value) {
+      newCustomer.value.name = value;
+      newCustomer.value.id = id;
+      showNewCustomer.value = false;
+    }
+  };
+
+  const updateNewClient = (value, id) => {
+    if (value) {
+      newClient.value.name = value;
+      newClient.value.id = id;
+      showNewCustomer.value = false;
+      if (!newApplication.value.client) {
+        newApplication.value.client = {};
+      }
+      newApplication.value.client.id = id;
+      newApplication.value.client.name = value;
+    }
+  };
+
+  const closeNewApplicationPopup = () => {
+    if (newApplication.value) {
+      newApplication.value = {};
+    }
+
+    isNewAppPopupAdmin.value = false;
+  };
+
+  watch(selectedVacancy, newValue => {
+    if (newValue) {
+      // popup is opening
+      nextTick(() => {
+        if (tabContentInner.value) {
+          let isInitialUpdate = true;
+          resizeObserver = new ResizeObserver(() => {
+            if (isInitialUpdate) {
+              isInitialUpdate = false;
+            } else {
+              updateTabHeight();
+            }
+          });
+          resizeObserver.observe(tabContentInner.value);
+          updateTabHeight();
+        } else {
+          console.warn('tabContentInner is null after popup open');
+        }
+      });
+    } else {
+      // popup is closing
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+    }
+  });
+
+  // Следим за изменением выбранного таба и обновляем высоту
+  watch(popupSelectedTab, () => {
+    updateTabHeight();
+  });
+
+  const openPopup = async vacancy => {
+    loadingItem.value = true;
+    try {
+      const fullData = await fetchApplicationDetail(vacancy.id);
+      detailedVacancy.value = fullData.data; // save full response.data
+      if (detailedVacancy.value.status.name == 'На рассмотрении') {
+        if (
+          profileCustomer.data.role.name == 'Рекрутер' ||
+          profileCustomer.data.role.name == 'Администратор'
+        ) {
+          isAddApprove.value = true;
+        }
+        if (
+          profileCustomer.data.role.name == 'Клиент' ||
+          profileCustomer.data.role.name == 'Администратор'
+        ) {
+          if (!isDeleteApplication.value) {
+            isDeleteApplication.value = true;
+          }
+        } else {
+          if (isDeleteApplication.value) {
+            isDeleteApplication.value = false;
+          }
+        }
+        reasonReject.value ? (reasonReject.value = false) : '';
+      } else {
+        if (isDeleteApplication.value) {
+          isDeleteApplication.value = false;
+        }
+        if (
+          detailedVacancy.value.status.name == 'Отклонена' &&
+          detailedVacancy.value.approvals.length > 0
+        ) {
+          reasonReject.value = true;
+        } else {
+          reasonReject.value = false;
+        }
+        isAddApprove.value = false;
+      }
+
+      selectedVacancy.value = vacancy; // open popup
+    } catch (error) {
+      error.value = 'Ошибка загрузки деталей заявки.';
+      console.error(error);
+    } finally {
+      loadingItem.value = false;
+    }
+  };
+
+  const closePopup = () => {
+    selectedVacancy.value = null;
+    detailedVacancy.value = null;
+  };
+
+  const reasonseForOpenVacancy = [
+    {
+      name: 'Замена позиции',
+      value: 0,
+    },
+    {
+      name: 'Расширения',
+      value: 1,
+    },
+    {
+      name: 'Причина 3',
+      value: 2,
+    },
+    {
+      name: 'Причина 4',
+      value: 3,
+    },
+    {
+      name: 'Причина 5',
+      value: 4,
+    },
+  ];
+
+  const EVENT_TYPES = {
+    CREATED: 'Создана заявка',
+    UNDER_REVIEW: 'Принята к рассмотрению',
+    ASSIGNED: 'Назначен ответственный',
+  };
+
+  const historyTabEvents = [
+    {
+      id: 1,
+      eventTitle: EVENT_TYPES.CREATED,
+      eventContent: 'Программист 1С на неполный день',
+      eventLogDateTime: '2024-09-11T18:03:00',
+    },
+    {
+      id: 2,
+      eventTitle: EVENT_TYPES.UNDER_REVIEW,
+      eventContent: 'Василисов Василий Сергеевич',
+      eventLogDateTime: '2024-09-11T18:03:00',
+    },
+    {
+      id: 3,
+      eventTitle: EVENT_TYPES.ASSIGNED,
+      eventContent: 'Михайлов Михаил Михайлович',
+      eventLogDateTime: '2024-09-11T18:03:00',
+    },
+  ];
+
+  const formatDateTime = dateTime => {
+    return {
+      date: dayjs(dateTime).format('DD.MM.YYYY'),
+      time: dayjs(dateTime).format('HH:mm'),
+    };
+  };
+
+  // const getStatusLabel = statusId => {
+  //   console.log('Статус: ', statusId)
+  //   const statusKey = Object.keys(statusWeights).find(
+  //     key => statusWeights[key] === statusId
+  //   )
+  //   return statusKey ? statusLabels[statusKey] : 'Не указан'
+  // }
+
+  // Начальные данные (позже можно заменить на API)
+  const messages = ref([
+    {
+      id: 1,
+      type: 'standard',
+      author: 'Василисов Василий Сергеевич',
+      content: 'Пожалуйста, кто-то, закройте окно в коридоре, уже ДУЕТ!',
+      dateTime: '2024-09-11T18:03:00',
+    },
+    {
+      id: 2,
+      type: 'with-recipient',
+      author: 'Алексеев Алексей Алексеевич',
+      recipients: ['Василисов Василий Сергеевич'],
+      content: 'Коллега уважаемый, попробуй сделать это самостоятельно!',
+      dateTime: '2024-09-11T18:03:00',
+    },
+    {
+      id: 3,
+      type: 'with-file',
+      author: 'Георгиева Настасья Самбурская',
+      recipients: [
+        'Василисов Василий Сергеевич',
+        'Алексеев Алексей Алексеевич',
+      ],
+      content:
+        'Коллеги! Отчет готов! Прошу ознакомиться и дать обратную связь ближайшее время',
+      file: { name: 'Какой-то отчет.pdf', format: 'pdf' },
+      dateTime: '2024-09-11T18:03:00',
+    },
+    {
+      id: 4,
+      type: 'standard',
+      author: 'Денисов Василис Алексеевич',
+      content: 'Благодарность за отчет!',
+      dateTime: '2024-09-11T18:03:00',
+    },
+    {
+      id: 5,
+      type: 'standard',
+      author: 'Василисов Василий Сергеевич',
+      content: 'Пожалуйста, кто-то, откройте окно в коридоре, уже не ДУЕТ!',
+      dateTime: '2024-09-11T18:03:00',
+    },
+  ]);
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!newApplication.value.responsible)
+      newErrors.response = 'Укажите согласующего';
+    if (!newApplication.value.position) newErrors.post = 'Укажите должность';
+    if (!newApplication.value.city) newErrors.location = 'Укажите город поиска';
+    if (!newApplication.value.count || newApplication.value.count <= 0) {
+      newErrors.positions = 'Укажите корректное количество позиций';
+    }
+    if (newApplication.value.salaryFrom && newApplication.value.salaryTo) {
+      if (newApplication.value.salaryFrom > newApplication.value.salaryTo) {
+        newErrors.salaryTo =
+          'Максимальная зарплата должна быть больше минимальной';
+      }
+    }
+    if (!newApplication.value.currency)
+      newApplication.value.currency = currency[0]['name'];
+    if (!newApplication.value.reason) {
+      newErrors.reason = 'Укажите причину открытия вакансии';
+    }
+
+    errors.value = newErrors;
+
+    return Object.keys(newErrors).length === 0; // Возвращаем true, если ошибок нет
+  };
+
+  const applicationData = computed(() => {
+    return {
+      position: newApplication.value.position,
+      division: newApplication.value.division,
+      count: newApplication.value.count,
+      salaryFrom: newApplication.value.salaryFrom,
+      salaryTo: newApplication.value.salaryTo,
+      currency: newApplication.value.currency,
+      require: newApplication.value.require,
+      duty: newApplication.value.duty,
+      city: newApplication.value.city,
+      reason: newApplication.value.reason.name,
+      dateStart: newApplication.value.dateStart,
+      dateWork: newApplication.value.dateWork,
+      vacancy: newApplication.value.vacancy?.id,
+      status: newApplication.value.status?.id,
+      executor: newApplication.value.executor?.id,
+      client: newApplication.value.client?.id,
+      responsible: newApplication.value.responsible?.id,
+    };
+  });
+
+  const createApplicationHandler = async () => {
+    if (validateForm()) {
+      try {
+        const { data, error } = await createApplication(applicationData.value);
+        if (!error) {
+          isNewAppPopupAdmin.value = false; // Закрываем попап
+          loadApplications();
+          isSaveVacancy.value = true;
+        } else if (error) {
+          const status = error.status;
+          const message = error.data?.message || error.message;
+
+          if (status === 422) {
+            console.warn('Validate error:', message);
+          } else {
+            console.warn('Error:', message);
+          }
+        }
+      } catch (error) {
+        console.error('Network error:', error.message);
+      }
+    } else {
+      console.log('Form validation failed');
+    }
+  };
+
+  const clientName = computed({
+    get: () => {
+      // Безопасная проверка на client и client.name
+      return detailedVacancy.value.client?.name || '';
+    },
+    set: newValue => {
+      // Обновляем detailedVacancy.client, если это необходимо
+      if (detailedVacancy.value.client) {
+        detailedVacancy.value.client.name = newValue;
+      } else {
+        // Если client === null, создаем объект client
+        detailedVacancy.value.client = { id: 0, name: newValue }; // Или другой id
+      }
+    },
+  });
+
+  const responsibleName = computed({
+    get: () => {
+      // Безопасная проверка на responsible и responsible.name
+      return detailedVacancy.value.responsible?.name || '';
+    },
+    set: newValue => {
+      // Обновляем detailedVacancy.responsible, если это необходимо
+
+      if (detailedVacancy.value.name) {
+        detailedVacancy.value.responsible.name = newValue;
+      } else {
+        // Если responsible === null, создаем объект responsible
+        detailedVacancy.value.responsible = { id: 0, name: newValue }; // Или другой id
+      }
+    },
+  });
+
+  const vacancy = computed({
+    get: () => {
+      // Безопасная проверка на responsible и responsible.name
+      return detailedVacancy.value?.vacancy || null;
+    },
+    set: newValue => {
+      // Обновляем detailedVacancy.responsible, если это необходимо
+
+      if (detailedVacancy.value.name) {
+        isCreateVacancy.value = false;
+        detailedVacancy.value.vacancy.name = newValue;
+      } else {
+        isCreateVacancy.value = true;
+        detailedVacancy.value.vacancy = { id: 0, name: newValue }; // Или другой id
+      }
+    },
+  });
+
+  const updateResponse = (value, id, key = null) => {
+    if (key) {
+      updateData.value[key] = id;
+    }
+  };
+
+  const updateExecutor = () => {
+    updateData.value.append('executor', id);
+  };
+
+  const handleRemoveApplication = async (item, vacancy) => {
+    if (item === 'Удалить') {
+      try {
+        const { data, error } = await deleteApplication(vacancy.id);
+        if (error) {
+          console.error('Failed to delete application:', error);
+          return;
+        }
+        // Опционально: обнови список заявок после удаления
+        loadApplications(); // Если нужно перезагрузить список
+      } catch (err) {
+        console.error('Unexpected error during deletion:', err);
+      }
+    }
+    if (item === 'Копировать заявку') {
+      const { data, error } = await fetchApplicationDetail(vacancy.id);
+      newApplication.value = data;
+      isNewAppPopupAdmin.value = true;
+    }
+    if (item === 'Управлять') {
+      openPopup(vacancy);
+    }
+  };
+
+  const handlerUpdateApplication = async vacancy => {
+    if (Object.keys(updateData.value).length > 0) {
+      const { data, error } = await fetchApplicationUpdate(
+        updateData.value,
+        vacancy.id
+      );
+      updateData.value = {};
+      loadApplications();
+    }
+
+    closePopup();
+  };
+
+  const rejectApplication = () => {
+    selectedVacancy.value = false;
+    isNotApprove.value = true;
+  };
+
+  const sendReject = async reason => {
+    const { data: message, error: errorResponse } = await reject(
+      detailedVacancy.value.id,
+      reason
+    );
+    if (!errorResponse) {
+      if (errorReject.value) {
+        errorReject.value = null;
+      }
+      isNotApprove.value = false;
+      await handlePageChange(pagination.value.current_page);
+    } else {
+      errorReject.value = errorResponse;
+    }
+  };
+
+  const addApprove = async () => {
+    selectedVacancy.value = false;
+    if (!vacancy.value) {
+      router.push(
+        `/vacancies/newvacancy/?application=${detailedVacancy.value.id}`
+      );
+    } else {
+      const idApplication = detailedVacancy.value.id;
+      handlerUpdateApplication(detailedVacancy.value);
+      await approve(idApplication);
+      loadApplications();
+    }
+  };
+</script>
+
 <template>
   <div class="container pb-72 pt-[34px]">
     <div
@@ -51,7 +972,7 @@
           class="flex pl-2.5 text-sm font-medium text-slate-custom"
           @click="
             ['dateStart', 'dateWork', 'status'].includes(header.key) &&
-              sortBy(header.key)
+            sortBy(header.key)
           "
           :class="{
             'cursor-pointer select-none': [
@@ -1749,7 +2670,7 @@
     loadingItem.value = true;
     try {
       const fullData = await fetchApplicationDetail(vacancy.id);
-      
+
       detailedVacancy.value = fullData.data;
       vacancy.value = detailedVacancy.value;
       if (detailedVacancy.value.status.name == 'На рассмотрении') {
@@ -1793,7 +2714,6 @@
       }
 
       selectedVacancy.value = vacancy; // open popup
-      
     } catch (error) {
       error.value = 'Ошибка загрузки деталей заявки.';
       console.error(error);
