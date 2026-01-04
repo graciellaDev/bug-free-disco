@@ -894,6 +894,8 @@ function fillPublishForm(vacancy) {
         if (expItem) {
             publishFormData.value.experience = expItem;
         }
+    } else {
+        publishFormData.value.experience = experienceData.value[1];
     }
 
     // Маппинг отрасли и специализации

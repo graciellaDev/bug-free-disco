@@ -89,7 +89,6 @@ const emit = defineEmits(['update:modelValue']);
 const selectedOption = ref(props.selected); // Устанавливаем начальное значение
 
 const isSelected = computed(() => props.variant === 'selected');
-console.log('types', props.options);
 // Открытие/закрытие выпадающего списка
 const toggleDropDown = () => {
     isDropDownVisible.value = !isDropDownVisible.value;
@@ -97,7 +96,6 @@ const toggleDropDown = () => {
 
 // Выбор значения
 const toggleOptionSelect = (option) => {
-    console.log(option);
     selectedOption.value = option || null;
     emit('update:modelValue', option || null);
     isDropDownVisible.value = false;

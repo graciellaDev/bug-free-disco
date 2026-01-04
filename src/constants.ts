@@ -88,7 +88,12 @@ export const HH_EMPLOYMENT_TYPES = [
   {
     id: 'FLY_IN_FLY_OUT',
     name: 'Вахта',
-    siteName: 'Стажировка',
+    siteName: 'Вахта',
+  },
+  {
+    id: 'SIDE_JOB',
+    name: 'Подработка',
+    siteName: 'Подработка',
   },
 ];
 
@@ -245,4 +250,69 @@ export const HH_WORK_SCHEDULE_BY_DAYS = [
   },
 ];
 
+export const HH_EXPERIENCE_DAYS = [
+        {
+            "id": "DAYS_15",
+            "name": "15"
+        },
+        {
+            "id": "DAYS_20",
+            "name": "20"
+        },
+        {
+            "id": "DAYS_30",
+            "name": "30"
+        },
+        {
+            "id": "DAYS_40",
+            "name": "40"
+        },
+        {
+            "id": "DAYS_45",
+            "name": "45"
+        },
+        {
+            "id": "DAYS_60",
+            "name": "60"
+        },
+        {
+            "id": "DAYS_90",
+            "name": "90"
+        },
+        {
+            "id": "DAYS_120",
+            "name": "120"
+        },
+        {
+            "id": "DAYS_180",
+            "name": "180"
+        },
+        {
+            "id": "OTHER",
+            "name": "Другое"
+        }
+];
+
+export const HH_WORK_FORMAT = [
+  {
+            "id": "ON_SITE",
+            "name": "На месте работодателя",
+            "description": 'Сотрудники работают в офисе',
+        },
+        {
+            "id": "REMOTE",
+            "name": "Удалённо",
+            "description": 'Сотрудники работают как офисе, так и дома',
+        },
+        {
+            "id": "HYBRID",
+            "name": "Гибрид",
+            "description": 'Сотрудники работают из дома',
+        },
+        {
+            "id": "FIELD_WORK",
+            "name": "Разъездной",
+            "description": 'Сотрудники часто ездят в разные места для выполнения задач',
+        }
+];
 export const BASE_FUNNEL_ID = 1;
