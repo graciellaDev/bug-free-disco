@@ -28,6 +28,7 @@
   const isLoadingVacancy = ref(false);
   const isLoadingVacancies = ref(false);
   const isLoadingCandidate = ref(false);
+  const isInitialLoad = ref(true);
   const isDropdownOpen = ref(false);
   const selected = ref<Record<number, boolean>>({});
   const allSelected = ref(false);
@@ -418,8 +419,6 @@
     if (selectedCandidate.value?.id === id) {
       selectedCandidate.value = null;
     }
-
-    refreshCandidates();
   };
 
   const handleClickAll = () => {
@@ -430,7 +429,7 @@
     selectedStageId.value = stageId;
     isActiveAll.value = stageId === null;
 
-    refreshCandidates();
+    // refreshCandidates();
 
     if (selectedCandidate.value) {
       const matchesFilter =
@@ -446,23 +445,16 @@
     const vacancyId = getVacancyId();
     await loadVacancy(vacancyId);
     await loadVacancies();
-    if (vacancy.value?.id) {
+
+    await nextTick();
+
+    if (isInitialLoad.value && vacancy.value?.id) {
+      console.log('watch не сработал');
       await refreshCandidates();
     }
 
+    isInitialLoad.value = false;
     stages.value = await getFunnelStages();
-    // if (stages.value && stages.value.length > 0) {
-    //   options.value = [
-    //     ...stages.value
-    //       .filter(stage => stage.id !== props.candidate.stage)
-    //       .map(stage => stage.name),
-    //   ];
-
-    //   selectedLabel.value = getNextStageName(
-    //     props.candidate?.stage,
-    //     stages.value
-    //   );
-    // }
   });
 
   watch(
@@ -475,16 +467,6 @@
           !newCandidates.some(c => c.id === selectedCandidate.value?.id))
       ) {
         await loadCandidate(newCandidates[0].id);
-      }
-    },
-    { immediate: false }
-  );
-
-  watch(
-    () => vacancy.value?.id,
-    async vacancyId => {
-      if (vacancyId) {
-        await refreshCandidates();
       }
     },
     { immediate: false }
@@ -605,6 +587,7 @@
             :candidate="selectedCandidate"
             :stages="stages"
             :isFunnel="true"
+            :vacancy="vacancy"
             @candidate-updated="handleCandidateUpdated"
             @candidate-deleted="handleCandidateDeleted"
           />

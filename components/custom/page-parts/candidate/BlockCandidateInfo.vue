@@ -23,6 +23,7 @@
     candidate: Candidate;
     stages: Stage[] | [];
     isFunnel: boolean;
+    vacancy?: Vacancy | null;
   }>();
 
   const emit = defineEmits<{
@@ -354,14 +355,28 @@
   );
 
   watch(
+    () => props.vacancy,
+    newVacancy => {
+      if (newVacancy) {
+        vacancy.value = newVacancy;
+        vacancyName.value = newVacancy.name || 'Вакансия не определена';
+      } else if (props.vacancy === null) {
+        vacancy.value = null;
+        vacancyName.value = 'Вакансия не определена';
+      }
+    },
+    { immediate: true }
+  );
+
+  watch(
     () => props.candidate?.vacancy_id,
     async newVacancyId => {
-      if (newVacancyId) {
+      if (!props.vacancy && newVacancyId) {
         vacancy.value = await getVacancyById(newVacancyId.toString());
         vacancyName.value = vacancy.value
           ? vacancy.value?.name
           : 'Вакансия не определена';
-      } else {
+      } else if (!props.vacancy && !newVacancyId) {
         vacancy.value = null;
         vacancyName.value = 'Вакансия не определена';
       }
@@ -383,17 +398,6 @@
         );
       }
     }
-  });
-
-  onMounted(async () => {
-    if (props.candidate?.vacancy_id) {
-      vacancy.value = await getVacancyById(
-        props.candidate.vacancy_id.toString()
-      );
-    }
-    vacancyName.value = vacancy.value
-      ? vacancy.value?.name
-      : 'Вакансия не определена';
   });
 </script>
 <template>
