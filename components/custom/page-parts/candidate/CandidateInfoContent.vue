@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, computed, nextTick } from 'vue';
-  import { createTag } from '@/src/api/tags';
+  import { createTag, findTag } from '@/src/api/tags';
   import { updateCandidate } from '@/src/api/candidates';
   import type {
     Candidate,
@@ -68,8 +68,8 @@
 
     if (!tagName) return;
 
-    const existingTag = props.candidate.tags?.find(
-      tag => tag.name.toLocaleLowerCase() === tagName.toLowerCase()
+    const existingTag = props.candidate.tags?.find(tag =>
+      typeof tag === 'object' ? tag.name === tagName : false
     );
 
     if (existingTag) {
@@ -81,28 +81,51 @@
     isSubmittingTag.value = true;
 
     try {
-      const tagResponse = await createTag(tagName);
+      let tagId: number;
 
-      if (!tagResponse.data || !tagResponse.data.id) {
-        throw new Error('Ошибка создания тега!');
+      try {
+        const foundTag = await findTag(tagName);
+
+        if (foundTag && typeof foundTag === 'object' && 'id' in foundTag) {
+          console.log('Тег найден', foundTag);
+          tagId = (foundTag as TagCandidate).id;
+        } else {
+          throw new Error(
+            '[handleInputKeyDown] Неожиданный ответ функции findTag'
+          );
+        }
+      } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'statusCode' in error) {
+          const apiError = error as { statusCode?: number };
+
+          if (apiError.statusCode === 404) {
+            const tagResponse = await createTag(tagName);
+
+            if (!tagResponse.data || !tagResponse.data.id) {
+              throw new Error('[handkeInputKeyDown] Ошибка создания тега.');
+            }
+            tagId = tagResponse.data.id;
+          } else {
+            throw new Error('[handkeInputKeyDown] Ошибка при получении тега.');
+          }
+        } else {
+          throw new Error('[handkeInputKeyDown] Ошибка при получении тега.');
+        }
       }
-
-      const newTag = tagResponse.data;
-
-      const updatedTags = [];
-      if (props.candidate.tags && props.candidate.tags.length > 0)
-        updatedTags.push(...props.candidate.tags);
-      updatedTags.push(newTag);
 
       const updateData: CandidateUpdateRequest = {
         id: props.candidate.id,
         firstname: props.candidate.firstname,
         email: props.candidate.email,
         phone: props.candidate.phone,
-        tags: updatedTags,
+        tags: [tagId],
       };
 
+      console.log('updateData', updateData);
+
       const updatedRespose = await updateCandidate(updateData);
+
+      console.log('updatedRespose', updatedRespose);
 
       if (updatedRespose?.data) {
         emit('candidate-updated', updatedRespose.data);
@@ -141,116 +164,118 @@
       <div class="mb-6 text-13px text-slate-custom">
         {{ formattedLocation }}
       </div>
-      <div v-if="candidate.phone" class="flex">
-        <div
-          class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-        >
-          Телефон:
-        </div>
-        <div class="mr-2.5 flex">
-          <span class="mr-4 text-sm font-medium text-space">
-            <a :href="`tel:${candidate.phone}`">
-              {{ formattedPhone }}
-            </a>
-          </span>
-          <div v-if="candidate.telegram">
-            <button class="mr-1" @click="emit('telegram-click')">
-              <svg-icon
-                class="pointer-events-none [&_use]:pointer-events-none"
-                name="tg20"
-                width="21"
-                height="21"
-              />
-            </button>
+      <div class="space-between flex flex-col gap-y-[5px]">
+        <div v-if="candidate.phone" class="flex items-center leading-[1.5]">
+          <div
+            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
+          >
+            Телефон:
+          </div>
+          <div class="mr-2.5 flex items-center leading-[1.5]">
+            <span class="mr-4 text-sm font-medium text-space">
+              <a :href="`tel:${candidate.phone}`">
+                {{ formattedPhone }}
+              </a>
+            </span>
+            <div v-if="candidate.telegram">
+              <button class="mr-1" @click="emit('telegram-click')">
+                <svg-icon
+                  class="pointer-events-none [&_use]:pointer-events-none"
+                  name="tg20"
+                  width="21"
+                  height="21"
+                />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="flex">
-        <span
-          class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-        >
-          Почта:
-        </span>
-        <span class="text-sm font-medium text-space">
-          {{ candidate.email }}
-        </span>
-      </div>
-      <div class="flex">
-        <span
-          class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-        >
-          Max:
-        </span>
-        <span v-if="messengerMaxUrl" class="text-sm font-medium text-space">
-          <a
-            :href="messengerMaxUrl"
-            class="link-max"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {{ candidate.firstname }} {{ candidate.surname }} в Max
-          </a>
-        </span>
-        <span v-else class="text-sm font-medium text-space">Не указан</span>
-      </div>
-      <div class="flex">
-        <span
-          class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-        >
-          Telegram:
-        </span>
-        <span v-if="formattedTelegram" class="text-sm font-medium text-space">
-          {{ formattedTelegram }}
-        </span>
-        <span v-else class="text-sm font-medium text-space">Не указан</span>
-      </div>
-      <div class="flex">
-        <span
-          class="mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-        >
-          Теги:
-        </span>
-        <div class="flex">
+        <div class="flex items-center leading-[1.5]">
           <span
-            v-for="(tag, index) in candidate?.tags"
-            :key="index"
-            class="mr-2 text-sm font-medium text-dodger"
+            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
           >
-            {{ tag.name }}
+            Почта:
           </span>
-          <button
-            v-if="!isAddingTag"
-            :class="{
-              'ml-2.5': candidate?.tags && candidate?.tags?.length > 0,
-            }"
-            class="flex items-center text-slate-custom"
-            @click="handleAddTagClick"
+          <span class="text-sm font-medium text-space">
+            {{ candidate.email }}
+          </span>
+        </div>
+        <div class="flex items-center leading-[1.5]">
+          <span
+            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
           >
-            <svg-icon
-              name="plus-gray20"
-              width="18"
-              height="17"
-              class="mr-5px"
-            />
-            <span class="text-sm font-medium">Добавить</span>
-          </button>
-          <div v-else class="flex items-center gap-2">
-            <input
-              ref="tagInputRef"
-              v-model="tagInputValue"
-              type="text"
-              class="h-8 rounded border border-gray-300 px-2 text-sm focus:border-dodger focus:outline-none"
-              :disabled="isSubmittingTag"
-              @keydown="handleTagInputKeyDown"
-              @blur="handleCancelAddTag"
-            />
-            <button
-              v-if="isSubmittingTag"
-              class="text-state-custom text-sm"
-              disabled
+            Max:
+          </span>
+          <span v-if="messengerMaxUrl" class="text-sm font-medium text-space">
+            <a
+              :href="messengerMaxUrl"
+              class="link-max"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              Сохранение...
+              {{ candidate.firstname }} {{ candidate.surname }} в Max
+            </a>
+          </span>
+          <span v-else class="text-sm font-medium text-space">Не указан</span>
+        </div>
+        <div class="flex items-center leading-[1.5]">
+          <span
+            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
+          >
+            Telegram:
+          </span>
+          <span v-if="formattedTelegram" class="text-sm font-medium text-space">
+            {{ formattedTelegram }}
+          </span>
+          <span v-else class="text-sm font-medium text-space">Не указан</span>
+        </div>
+        <div class="flex items-center leading-[1.5]">
+          <span
+            class="mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
+          >
+            Теги:
+          </span>
+          <div class="flex items-center">
+            <span
+              v-for="(tag, index) in candidate?.tags as TagCandidate[]"
+              :key="index"
+              class="mr-2 text-sm font-medium text-dodger"
+            >
+              #{{ tag.name }}
+            </span>
+            <button
+              v-if="!isAddingTag"
+              :class="{
+                'ml-2.5': candidate?.tags && candidate?.tags?.length > 0,
+              }"
+              class="flex items-center text-slate-custom"
+              @click="handleAddTagClick"
+            >
+              <svg-icon
+                name="plus-gray20"
+                width="18"
+                height="17"
+                class="mr-5px"
+              />
+              <span class="text-sm font-medium">Добавить</span>
             </button>
+            <div v-else class="flex items-center gap-2">
+              <input
+                ref="tagInputRef"
+                v-model="tagInputValue"
+                type="text"
+                class="h-5 rounded border border-gray-300 px-2 text-sm focus:border-dodger focus:outline-none"
+                :disabled="isSubmittingTag"
+                @keydown="handleTagInputKeyDown"
+                @blur="handleCancelAddTag"
+              />
+              <button
+                v-if="isSubmittingTag"
+                class="text-state-custom text-sm"
+                disabled
+              >
+                Сохранение...
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -17,7 +17,10 @@ export function useCandidateActionsUI(
     onEdit?: () => void;
     onDelete?: () => void;
     onEmail?: () => void;
+    onCopyToVacancy?: () => void;
     onMoveToVacancy?: () => void;
+    onRemoveFromVacancy?: () => void;
+    onRefuse?: () => void;
   }
 ) {
   const router = useRouter();
@@ -68,8 +71,12 @@ export function useCandidateActionsUI(
    * Копировать в вакансию
    */
   const handleCopyToVacancy = () => {
-    // TODO: Открыть диалог выбора вакансии
     console.log('Копировать в вакансию');
+    callbacks?.onCopyToVacancy?.();
+  };
+
+  const handleRemoveFromVacancy = () => {
+    callbacks?.onRemoveFromVacancy?.();
   };
 
   /**
@@ -111,6 +118,9 @@ export function useCandidateActionsUI(
       case 'Копировать в вакансию':
         handleCopyToVacancy();
         break;
+      case 'Открепить от вакансии':
+        handleRemoveFromVacancy();
+        break;
       case 'Отправить сообщение':
         handleSendMessage();
         break;
@@ -140,8 +150,7 @@ export function useCandidateActionsUI(
   };
 
   const handleClickRefuse = () => {
-    console.log('click refuse');
-    // TODO: Реализовать отказ кандидату
+    callbacks?.onRefuse?.();
   };
 
   // const handleClickAddTag = () => {
@@ -171,6 +180,7 @@ export function useCandidateActionsUI(
     handleResumeFile,
     handleMoveToVacancy,
     handleCopyToVacancy,
+    handleRemoveFromVacancy,
     handleSendMessage,
     handleSendForEvaluation,
     handleSelectItem,

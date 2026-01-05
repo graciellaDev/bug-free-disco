@@ -4,7 +4,7 @@
   import Button from '@/components/ui/button/Button.vue';
   import MyDropdown from '~/components/custom/MyDropdown.vue';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
-  import { getVacancies } from '@/src/api/vacancies';
+  import { getVacancies, getVacancyName } from '@/src/api/vacancies';
   import type { MaybeRef } from 'vue';
   import type { Candidate } from '@/types/candidates';
   import type { Vacancy } from '@/types/vacancy';
@@ -22,6 +22,7 @@
   const selectedVacancyId = ref<number | null>(null);
   const vacancies = ref<Vacancy[]>([]);
   const loading = ref(false);
+  const vacancyName = ref<string>('');
 
   // Загрузка списка вакансий
   const loadVacancies = async () => {
@@ -41,17 +42,6 @@
     }
   };
 
-  // Загрузка при открытии попапа
-  watch(
-    () => unref(props.isOpen),
-    isOpen => {
-      if (isOpen) {
-        selectedVacancyId.value = null;
-        loadVacancies();
-      }
-    }
-  );
-
   // Подтверждение перемещения
   const handleConfirm = () => {
     if (selectedVacancyId.value) {
@@ -64,6 +54,22 @@
     selectedVacancyId.value = null;
     emit('close');
   };
+
+  // Загрузка при открытии попапа
+  watch(
+    () => unref(props.isOpen),
+    isOpen => {
+      if (isOpen) {
+        selectedVacancyId.value = null;
+        loadVacancies();
+      }
+    }
+  );
+
+  onMounted(async () => {
+    if (props.candidate && props.candidate.vacancy_id)
+      vacancyName.value = await getVacancyName(props.candidate.vacancy_id);
+  });
 </script>
 
 <template>
@@ -73,38 +79,49 @@
     width="790px"
     :showCloseButton="false"
     :lgSize="false"
-    :maxHeightValue="'230px'"
     :allowDropdownOverflow="true"
     :disableOverflowHidden="true"
   >
-    <div class="gap-y-35px">
-      <h2 class="mb-10px text-20px font-semibold leading-normal text-space">
-        Переместить кандидата
-      </h2>
-      <p class="mb-25px text-sm text-slate-custom">
-        Вы собираетесь перенести кандидата
-        <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>
-        в другую вакансию.
-      </p>
-
-      <div class="mb-25px">
-        <MyDropdown
-          v-if="!loading"
-          :options="
-            vacancies.map(v => ({
-              name: v.name || v.title || 'Без названия',
-              value: v.id,
-            }))
-          "
-          :modelValue="selectedVacancyId"
-          placeholder="Выберите вакансию"
-          @update:modelValue="selectedVacancyId = $event"
-        />
-        <div v-else class="py-4 text-center">
-          <UiDotsLoader />
+    <div v-if="!loading" class="flex flex-col gap-y-35px text-sm">
+      <div class="gap-y-10px flex flex-col">
+        <h2 class="text-20px font-semibold leading-normal text-space">
+          Переместить кандидата
+        </h2>
+        <p class="text-slate-custom">
+          Вы собираетесь перенести кандидата
+          <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>
+          в другую вакансию.
+        </p>
+      </div>
+      <div class="flex flex-col gap-y-15px text-black">
+        <p class="font-medium">Кандидат</p>
+        <p class="w-[100%] rounded-ten bg-athens-gray px-11px py-15px">
+          {{ candidate.surname }} {{ candidate.firstname }}
+        </p>
+      </div>
+      <div class="mb-35px flex gap-x-15px text-black">
+        <div class="flex w-[50%] flex-col gap-y-15px">
+          <p class="font-medium">Из вакансии</p>
+          <p class="w-[100%] rounded-ten bg-athens-gray px-11px py-10px">
+            {{ vacancyName }}
+          </p>
+        </div>
+        <div class="flex w-[50%] flex-col gap-y-15px">
+          <p class="font-medium">В вакансию</p>
+          <MyDropdown
+            :options="
+              vacancies.map(v => ({
+                name: v.name || v.title || 'Без названия',
+                value: v.id,
+              }))
+            "
+            :modelValue="selectedVacancyId"
+            placeholder="Выберите вакансию"
+            @update:modelValue="selectedVacancyId = $event"
+            class="z-1000"
+          />
         </div>
       </div>
-
       <div class="flex gap-x-15px">
         <Button
           variant="action"
@@ -123,6 +140,9 @@
           Отмена
         </Button>
       </div>
+    </div>
+    <div v-else class="py-4 text-center">
+      <UiDotsLoader />
     </div>
   </Popup>
 </template>

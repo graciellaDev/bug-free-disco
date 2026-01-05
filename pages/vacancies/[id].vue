@@ -9,15 +9,19 @@
   import { usePopup } from '@/composables/usePopup';
   import { useCandidateList } from '@/components/custom/page-parts/composables/useCandidateList';
   import { useCandidateAddForm } from '@/components/custom/page-parts/composables/useCandidateAddForm';
+  import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
 
   import type { Vacancy } from '@/types/vacancy';
   import type { UserRole } from '@/types/roles';
   import type { Candidate } from '@/types/candidates';
   import type { FormConfig } from '@/types/form';
   import { getCandidateById } from '@/src/api/candidates';
+  import type { Stage } from '@/types/funnels';
+  import { getFunnelStages } from '@/src/api/funnels';
 
   const route = useRoute();
   const router = useRouter();
+  const selectedStageId = ref<number | null>(null); // null = "Все"
   const vacancy = ref<Vacancy | null>(null);
   const vacancies = ref<Vacancy[] | null>(null);
   const selectedCandidate = ref<Candidate | null>(null);
@@ -27,12 +31,34 @@
   const isDropdownOpen = ref(false);
   const selected = ref<Record<number, boolean>>({});
   const allSelected = ref(false);
-
+  const isActiveAll = ref(true);
+  const stages = ref<Stage[] | []>([]);
   const userRole = ref<UserRole>('admin');
 
-  const vacancyFilter = computed(() => {
-    if (!vacancy.value?.id) return {};
-    return { vacancy_id: vacancy.value.id };
+  // const vacancyFilter = computed(() => {
+  //   if (!vacancy.value?.id) return {};
+  //   return { vacancy_id: vacancy.value.id };
+  // });
+
+  const candidateFilter = computed(() => {
+    const filter: Record<string, any> = {};
+
+    if (vacancy.value?.id) {
+      filter.vacancy_id = vacancy.value.id;
+    }
+
+    if (selectedStageId.value !== null) {
+      filter.stage = selectedStageId.value;
+    }
+
+    return filter;
+  });
+
+  const addCandidatePopup = usePopup('addCandidate', {
+    manageBodyScroll: true,
+    onClose: () => {
+      resetForm();
+    },
   });
 
   const candidateFormConfig: FormConfig = {
@@ -102,6 +128,13 @@
   };
 
   const {
+    items: candidatesList,
+    loading: loadingCandidates,
+    loadPage: handlePageChange,
+    refresh: refreshCandidates,
+  } = useCandidateList(candidateFilter, false);
+
+  const {
     candidateFormData,
     serverErrors,
     isSubmitting,
@@ -120,12 +153,47 @@
     },
   });
 
-  const {
-    items: candidatesList,
-    loading: loadingCandidates,
-    loadPage: handlePageChange,
-    refresh: refreshCandidates,
-  } = useCandidateList(vacancyFilter, false);
+  const candidatesCountByStage = computed(() => {
+    const counts: Record<number, number> = {};
+
+    stages.value.forEach(s => {
+      counts[s.id] = 0;
+    });
+
+    if (candidatesList.value) {
+      candidatesList.value.forEach(c => {
+        if (c.stage && c.vacancy_id) {
+          counts[c.stage] = (counts[c.stage] || 0) + 1;
+        }
+      });
+    }
+
+    return counts;
+  });
+
+  const filteredVacancies = computed(() => {
+    if (!vacancies.value || !vacancy.value) return [];
+    return vacancies.value
+      .filter(v => v.id !== vacancy.value?.id)
+      .map(v => ({
+        name: v.title || v.name,
+        value: v.id,
+      }));
+  });
+
+  // const filteredCandidatesList = computed(() => {
+  //   if (!candidatesList.value || !vacancy.value?.id) {
+  //     return [];
+  //   }
+
+  //   return candidatesList.value.filter(
+  //     candidate => candidate.vacancy_id === vacancy.value?.id
+  //   );
+  // });
+
+  const isInitialLoading = computed(
+    () => isLoadingVacancy.value || isLoadingVacancies.value
+  );
 
   const getVacancyId = (): string => {
     const vacancyId = Array.isArray(route.params.id)
@@ -197,7 +265,7 @@
   const switchToNextCandidate = async (movedCandidateId: number) => {
     await refreshCandidates();
 
-    const currentList = filteredCandidatesList.value || [];
+    const currentList = candidatesList.value || [];
 
     // Если список пуст, очищаем выбранного кандидата
     if (currentList.length === 0) {
@@ -247,33 +315,6 @@
     }
   };
 
-  const addCandidatePopup = usePopup('addCandidate', {
-    manageBodyScroll: true,
-    onClose: () => {
-      resetForm();
-    },
-  });
-
-  const filteredVacancies = computed(() => {
-    if (!vacancies.value || !vacancy.value) return [];
-    return vacancies.value
-      .filter(v => v.id !== vacancy.value?.id)
-      .map(v => ({
-        name: v.title || v.name,
-        value: v.id,
-      }));
-  });
-
-  const filteredCandidatesList = computed(() => {
-    if (!candidatesList.value || !vacancy.value?.id) {
-      return [];
-    }
-
-    return candidatesList.value.filter(
-      candidate => candidate.vacancy_id === vacancy.value?.id
-    );
-  });
-
   const selectVacancy = (id: number) => {
     router.push(`/vacancies/${id}`);
     isDropdownOpen.value = false;
@@ -299,14 +340,14 @@
   const handleSelectionChange = (newSelected: Record<number, boolean>) => {
     selected.value = newSelected;
 
-    const listToUse = filteredCandidatesList.value || [];
+    const listToUse = candidatesList.value || [];
     allSelected.value =
       listToUse.length > 0 &&
       listToUse.every(candidate => newSelected[candidate.id]);
   };
 
   const handleSelectAll = (isSelected: boolean) => {
-    const listToUse = filteredCandidatesList.value || [];
+    const listToUse = candidatesList.value || [];
     if (!listToUse.length) return;
 
     if (isSelected) {
@@ -381,6 +422,26 @@
     refreshCandidates();
   };
 
+  const handleClickAll = () => {
+    handleStageClick(null);
+  };
+
+  const handleStageClick = (stageId: number | null) => {
+    selectedStageId.value = stageId;
+    isActiveAll.value = stageId === null;
+
+    refreshCandidates();
+
+    if (selectedCandidate.value) {
+      const matchesFilter =
+        stageId === null ? true : selectedCandidate.value.stage === stageId;
+
+      if (!matchesFilter) {
+        selectedCandidate.value = null;
+      }
+    }
+  };
+
   onMounted(async () => {
     const vacancyId = getVacancyId();
     await loadVacancy(vacancyId);
@@ -388,10 +449,24 @@
     if (vacancy.value?.id) {
       await refreshCandidates();
     }
+
+    stages.value = await getFunnelStages();
+    // if (stages.value && stages.value.length > 0) {
+    //   options.value = [
+    //     ...stages.value
+    //       .filter(stage => stage.id !== props.candidate.stage)
+    //       .map(stage => stage.name),
+    //   ];
+
+    //   selectedLabel.value = getNextStageName(
+    //     props.candidate?.stage,
+    //     stages.value
+    //   );
+    // }
   });
 
   watch(
-    () => filteredCandidatesList.value,
+    () => candidatesList.value,
     async newCandidates => {
       if (
         newCandidates &&
@@ -417,13 +492,10 @@
 </script>
 
 <template>
-  <div class="container pb-28 pt-6">
-    <div class="relative mb-15px rounded-fifteen bg-white p-25px">
-      <div class="mb-50px flex items-center justify-between">
-        <div v-if="isLoadingVacancy || isLoadingVacancies">
-          <UiLoader />
-        </div>
-        <div v-else class="flex flex-col gap-2.5">
+  <div class="container pt-35px">
+    <div class="relative rounded-t-fifteen bg-white p-25px">
+      <div class="flex items-center justify-between">
+        <div class="flex flex-col gap-2.5">
           <div class="flex flex-col gap-2.5">
             <div class="relative">
               <div
@@ -471,27 +543,78 @@
         </UiButton>
       </div>
     </div>
-    <div class="flex-column flex w-full gap-15px">
-      <div class="w-[375px] rounded-sixteen bg-white">
-        <CandidateList
-          :candidates="filteredCandidatesList || []"
-          :selected="selected"
-          :show-checkboxes="true"
-          :all-selected="allSelected"
-          :loading="loadingCandidates"
-          @item-click="handleCandidateClick"
-          @selection-change="handleSelectionChange"
-          @select-all="handleSelectAll"
-        />
+    <div
+      class="relative mb-15px flex items-center gap-x-2.5 rounded-b-fifteen bg-catskill px-25px py-15px transition-all"
+    >
+      <button
+        class="flex cursor-pointer gap-x-2.5 rounded-ten px-15px py-2.5 text-sm font-medium"
+        @click="handleClickAll()"
+        style="
+          transition-property: background-color, color;
+          transition-duration: 0.2s;
+          transition-timing-function: ease-in-out;
+        "
+        :class="
+          isActiveAll ? 'bg-space text-white' : 'bg-transparent text-space'
+        "
+      >
+        <p>Все</p>
+        <span class="text-sm font-medium text-slate-custom">
+          {{ candidatesList?.length }}
+        </span>
+      </button>
+      <button
+        v-for="(stage, index) in stages"
+        :key="stage.id"
+        class="flex cursor-pointer gap-x-2.5 rounded-ten px-15px py-2.5 text-sm font-medium text-space"
+        @click="handleStageClick(stage.id)"
+        :class="
+          selectedStageId === stage.id
+            ? 'bg-space text-white'
+            : 'bg-transparent text-space'
+        "
+      >
+        <p>{{ stage.name }}</p>
+        <span class="text-sm font-medium text-slate-custom">
+          {{ candidatesCountByStage[stage.id] || 0 }}
+        </span>
+      </button>
+    </div>
+    <div v-if="isInitialLoading">
+      <UiDotsLoader />
+    </div>
+    <div v-else>
+      <div v-if="candidatesList.length > 0" class="flex gap-x-15px">
+        <div class="w-[375px] rounded-sixteen bg-white">
+          <CandidateList
+            :candidates="candidatesList || []"
+            :selected="selected"
+            :show-checkboxes="true"
+            :all-selected="allSelected"
+            :loading="loadingCandidates"
+            @item-click="handleCandidateClick"
+            @selection-change="handleSelectionChange"
+            @select-all="handleSelectAll"
+          />
+        </div>
+        <div v-if="isLoadingCandidate">
+          <UiDotsLoader />
+        </div>
+        <div v-else-if="selectedCandidate" class="w-full">
+          <BlockCandidateInfo
+            :candidate="selectedCandidate"
+            :stages="stages"
+            :isFunnel="true"
+            @candidate-updated="handleCandidateUpdated"
+            @candidate-deleted="handleCandidateDeleted"
+          />
+          <BlockCandidateTabsInfo :candidate="selectedCandidate" />
+        </div>
       </div>
-      <div v-if="selectedCandidate" class="w-full">
-        <BlockCandidateInfo
-          :candidate="selectedCandidate"
-          :isFunnel="true"
-          @candidate-updated="handleCandidateUpdated"
-          @candidate-deleted="handleCandidateDeleted"
-        />
-        <BlockCandidateTabsInfo :candidate="selectedCandidate" />
+      <div v-else-if="vacancy && !loadingCandidates" class="text-center">
+        Кандидаты в вакансии
+        <strong>{{ vacancy?.name }}</strong>
+        не найдены.
       </div>
     </div>
     <!-- popup -->

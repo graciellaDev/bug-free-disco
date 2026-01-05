@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, onMounted, toRef, watch } from 'vue';
-  import { getVacancyName } from '@/src/api/vacancies';
+  import { getVacancyById } from '@/src/api/vacancies';
   import { usePopups } from '@/composables/usePopup';
   import { normalizeUsername } from '@/helpers/messengers';
   import CandidateInfoHeader from './CandidateInfoHeader.vue';
@@ -9,16 +9,19 @@
   import CandidateInfoContent from './CandidateInfoContent.vue';
   import CandidateDeletePopup from './popups/CandidateDeletePopup.vue';
   import CandidateMoveToVacancyPopup from './popups/CandidateMoveToVacancyPopup.vue';
+  import CandidateRemoveFromVacancyPopup from './popups/CandidateRemoveFromVacancyPopup.vue';
+  import CandidateRefusePopup from './popups/CandidateRefusePopup.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
   import { updateCandidate } from '@/src/api/candidates';
 
   import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
   import type { Stage } from '@/types/funnels';
-  import { getFunnelStages } from '@/src/api/funnels';
+  import type { Vacancy } from '@/types/vacancy';
 
   const props = defineProps<{
     candidate: Candidate;
+    stages: Stage[] | [];
     isFunnel: boolean;
   }>();
 
@@ -29,10 +32,11 @@
   }>();
 
   const vacancyName = ref<string>('');
+  const vacancy = ref<Vacancy | null>(null);
 
   const selectedLabel = ref<string>('');
   const candidateEditForm = ref<Record<string, any>>({});
-  const stages = ref<Stage[] | null>(null);
+
   const options = ref<string[]>([]);
 
   const popups = usePopups({
@@ -62,9 +66,20 @@
         // console.log('Попап переноса кандидата в другую вакансию закрыт');
       },
     },
+    removeFromVacancy: {
+      manageBodyScroll: true,
+      onClose: () => {
+        // console.log('Попап удаления кандидата из вакансии закрыт');
+      },
+    },
+    refuseCandidate: {
+      manageBodyScroll: true,
+      onClose: () => {
+        // console.log('Попап отказа кандидату закрыт');
+      },
+    },
   });
 
-  // Открытие попапа удаления
   const handleDeleteCandidate = () => {
     popups.deleteCandidate.open();
   };
@@ -95,6 +110,56 @@
     popups.moveToVacancy.open();
   };
 
+  const handleRemoveFromVacancy = () => {
+    popups.removeFromVacancy.open();
+  };
+
+  const handleRefuseCandidate = async (data: {
+    sendEmail: boolean;
+    subject?: string;
+    body?: string;
+  }) => {
+    if (!props.stages || !props.candidate) {
+      console.error('[handkeRefuseCandidate] Недостаточно данных');
+      return;
+    }
+
+    const rejectedStage = props.stages.find(
+      stage => stage.name === 'Отклоненные' || stage.id === 3
+    );
+    if (!rejectedStage) {
+      console.error('[handkeRefuseCandidate] Этап "Отклонённые" не найден');
+      return;
+    }
+
+    try {
+      const updateData: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        stage: rejectedStage.id,
+      };
+
+      const updated = await updateCandidate(updateData);
+      emit('candidate-updated', updated.data);
+
+      if (data.sendEmail && data.subject && data.body) {
+        sendEmail({
+          subject: data.subject,
+          body: data.body,
+        });
+      }
+
+      popups.refuseCandidate.close();
+    } catch (err) {
+      console.error(
+        '[handleRefuseCandidate] Ошибка при отказе кандидату:',
+        err
+      );
+    }
+  };
+
   const candidateActions = useCandidateActions(
     toRef(props.candidate),
     updated => emit('candidate-updated', updated),
@@ -118,6 +183,7 @@
     'Файл резюме',
     'Переместить в вакансию',
     'Копировать в вакансию',
+    ...(props.candidate?.vacancy_id ? ['Открепить от вакансии'] : []),
     'Отправить сообщение',
     'Отправить на оценку {-}',
     'Удалить',
@@ -128,16 +194,6 @@
     try {
       await handleDelete();
     } catch (error) {}
-  };
-
-  //  Обработчик отправки формы редактирования
-  const handleFormSubmit = async (formData: Record<string, any>) => {
-    await handleUpdate(formData, () => popups.editCandidate.isOpen.value);
-  };
-
-  //  Отмена редактирования
-  const handleFormCancel = () => {
-    popups.editCandidate.close();
   };
 
   //  Отправка письма кандидату
@@ -151,6 +207,9 @@
     onDelete: () => handleDeleteCandidate(),
     onEmail: () => popups.mailToCandidate.open(),
     onMoveToVacancy: () => handleMoveToVacancy(),
+    onRemoveFromVacancy: () => handleRemoveFromVacancy(),
+    // onCopyToVacancy: () => popups.copyCand
+    onRefuse: () => popups.refuseCandidate.open(),
   });
 
   const handleConfirmMove = async (vacancyId: number) => {
@@ -175,13 +234,23 @@
     }
   };
 
+  //  Обработчик отправки формы редактирования
+  const handleFormSubmit = async (formData: Record<string, any>) => {
+    await handleUpdate(formData, () => popups.editCandidate.isOpen.value);
+  };
+
+  //  Отмена редактирования
+  const handleFormCancel = () => {
+    popups.editCandidate.close();
+  };
+
   const handleConfirmTransfer = async (stageName: string) => {
-    if (!stages.value || !props.candidate) {
+    if (!props.stages || !props.candidate) {
       console.error('[handleConfirmTransfer] Недостаточно данных для переноса');
       return;
     }
 
-    const targetStage = stages.value.find(stage => stage.name === stageName);
+    const targetStage = props.stages.find(stage => stage.name === stageName);
     if (!targetStage) {
       console.error(`[handleConfirmTransfer] Этап ${stageName} не найден.`);
       return;
@@ -208,12 +277,43 @@
     }
   };
 
-  /**
-   * Вычисляет название следующего этапа относительно текущего
-   * @param currentStageId - ID текущего этапа кандидата
-   * @param stagesList - Список всех этапов
-   * @returns Название следующего этапа или пустая строка
-   */
+  const handleConfirmRemove = async () => {
+    try {
+      const updateData: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        vacancy_id: null,
+        stage: 1,
+      };
+
+      const response = await updateCandidate(updateData);
+      if (response && typeof response === 'object' && response.data) {
+        vacancy.value = null;
+        vacancyName.value = 'Вакансия не определена';
+
+        emit('candidate-updated', response.data as Candidate);
+
+        popups.removeFromVacancy.close();
+      }
+    } catch (error: any) {
+      console.error(
+        '[handleConfirmRemove] Ошибка при откреплении от вакансии:',
+        error
+      );
+      const errors = candidateActions.parseServerErrors(error);
+
+      // TODO: Обработка ошибок (показать сообщение пользователю)
+      // Показать ошибку пользователю
+      // Вариант 1: alert (простой)
+      // alert(errors._general || 'Не удалось открепить кандидата от вакансии');
+
+      // Вариант 2: Использовать toast/notification компонент
+      // showNotification('error', errors._general || 'Ошибка при откреплении');
+    }
+  };
+
   const getNextStageName = (
     currentStageId: number | null | undefined,
     stagesList: Stage[]
@@ -243,20 +343,35 @@
   watch(
     () => props.candidate,
     async newCandidate => {
-      if (stages.value && stages.value.length > 0 && newCandidate) {
+      if (props.stages && props.stages.length > 0 && newCandidate) {
         selectedLabel.value = getNextStageName(
           newCandidate.stage,
-          stages.value
+          props.stages
         );
       }
     },
     { immediate: true }
   );
 
+  watch(
+    () => props.candidate?.vacancy_id,
+    async newVacancyId => {
+      if (newVacancyId) {
+        vacancy.value = await getVacancyById(newVacancyId.toString());
+        vacancyName.value = vacancy.value
+          ? vacancy.value?.name
+          : 'Вакансия не определена';
+      } else {
+        vacancy.value = null;
+        vacancyName.value = 'Вакансия не определена';
+      }
+    }
+  );
+
   watchEffect(() => {
-    if (stages.value && stages.value.length > 0) {
+    if (props.stages && props.stages.length > 0) {
       options.value = [
-        ...stages.value
+        ...props.stages
           .filter(stage => stage.id !== props.candidate.stage)
           .map(stage => stage.name),
       ];
@@ -264,7 +379,7 @@
       if (props.candidate) {
         selectedLabel.value = getNextStageName(
           props.candidate.stage,
-          stages.value
+          props.stages
         );
       }
     }
@@ -272,24 +387,13 @@
 
   onMounted(async () => {
     if (props.candidate?.vacancy_id) {
-      vacancyName.value = await getVacancyName(props.candidate.vacancy_id);
-    } else {
-      vacancyName.value = 'Вакансия не определена';
-    }
-
-    stages.value = await getFunnelStages();
-    if (stages.value && stages.value.length > 0) {
-      options.value = [
-        ...stages.value
-          .filter(stage => stage.id !== props.candidate.stage)
-          .map(stage => stage.name),
-      ];
-
-      selectedLabel.value = getNextStageName(
-        props.candidate?.stage,
-        stages.value
+      vacancy.value = await getVacancyById(
+        props.candidate.vacancy_id.toString()
       );
     }
+    vacancyName.value = vacancy.value
+      ? vacancy.value?.name
+      : 'Вакансия не определена';
   });
 </script>
 <template>
@@ -344,6 +448,21 @@
       :candidate="candidate"
       @close="popups.moveToVacancy.close"
       @confirm="handleConfirmMove"
+    />
+    <CandidateRemoveFromVacancyPopup
+      v-if="vacancy"
+      :isOpen="popups.removeFromVacancy.isOpen"
+      :candidate="candidate"
+      :vacancyName="vacancy.name"
+      @close="popups.removeFromVacancy.close"
+      @confirm="handleConfirmRemove"
+    />
+    <CandidateRefusePopup
+      :isOpen="popups.refuseCandidate.isOpen"
+      :candidateName="`${candidate.firstname || ''} ${candidate.surname || ''}`"
+      :vacancyName="vacancyName"
+      @close="popups.refuseCandidate.close"
+      @submit="handleRefuseCandidate"
     />
   </div>
 </template>

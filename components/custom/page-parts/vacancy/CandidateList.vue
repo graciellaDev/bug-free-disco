@@ -24,8 +24,6 @@
     allSelected: boolean;
   }>();
 
-  const loading = ref<boolean>(false);
-
   const emit = defineEmits<{
     'item-click': [candidate: Candidate, index: number];
     'selection-change': [selected: Record<number, boolean>];
@@ -69,7 +67,7 @@
 <template>
   <div>
     <!-- Лоадер -->
-    <div v-if="loading" class="absolute left-1/2 top-1/2">
+    <div v-if="props.loading" class="absolute left-1/2 top-1/2">
       <UiDotsLoader />
     </div>
 
@@ -138,7 +136,7 @@
 
     <!-- Пустое состояние -->
     <div
-      v-if="!loading && (!candidates || candidates.length === 0)"
+      v-if="!props.loading && (!candidates || candidates.length === 0)"
       class="empty-state"
     >
       <p class="text-center">Кандидаты не найдены</p>

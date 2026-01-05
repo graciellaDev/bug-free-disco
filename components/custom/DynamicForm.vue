@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, computed, watch } from 'vue';
+  import { ref, computed, watch, nextTick } from 'vue';
   import type {
     FormConfig,
     FormFieldConfig,
@@ -11,6 +11,8 @@
   import MyDropdown from './MyDropdown.vue';
   import MyCheckbox from './MyCheckbox.vue';
 
+  const isUpdatingFromParent = ref(false);
+
   const props = defineProps<{
     config: FormConfig; // конфигурация формы
     modelValue?: Record<string, any>; // начальные данные формы
@@ -21,6 +23,7 @@
   const emit = defineEmits<{
     submit: [data: Record<string, any>];
     cancel: [];
+    'update:modelValue': [value: Record<string, any>];
   }>();
 
   // Инициализация данных формы из конфигурации
@@ -262,38 +265,45 @@
   watch(
     () => props.modelValue,
     newValue => {
-      if (newValue) {
-        // Обновляем форму, объединяя с дефолтными значениями
-        formData.value = { ...initializeFormData(), ...newValue };
-      } else {
-        // Если передан null/undefined - сбрасываем форму
-        formData.value = initializeFormData();
+      if (newValue && !isUpdatingFromParent.value) {
+        isUpdatingFromParent.value = true;
+        Object.keys(newValue).forEach(key => {
+          if (formData.value[key] !== newValue[key]) {
+            formData.value[key] = newValue[key];
+          }
+        });
+        nextTick(() => {
+          isUpdatingFromParent.value = false;
+        });
       }
     },
-    { immediate: false }
+    { deep: true }
   );
 
-  // Применение ошибок сервера к полям формы
   watch(
     () => props.serverErrors,
     errors => {
       if (errors) {
-        // Применяем ошибки сервера к полям (кроме _general)
         Object.keys(errors).forEach(key => {
           if (key !== '_general') {
             formErrors.value[key] = errors[key];
           }
         });
       } else {
-        // Если ошибок нет - очищаем серверные ошибки из полей
-        // (клиентские ошибки валидации остаются)
-        Object.keys(formErrors.value).forEach(key => {
-          // Удаляем только те ошибки, которые были от сервера
-          // Это упрощенная логика - можно улучшить, если нужно различать
-        });
+        Object.keys(formErrors.value).forEach(key => {});
       }
     },
     { immediate: true }
+  );
+
+  watch(
+    formData,
+    newValue => {
+      if (!isUpdatingFromParent.value) {
+        emit('update:modelValue', { ...newValue });
+      }
+    },
+    { deep: true }
   );
 </script>
 
