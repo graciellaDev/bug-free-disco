@@ -41,6 +41,9 @@
           </div>
         </div>
         <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          Основная информация
+        </p>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
@@ -84,6 +87,7 @@
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
               Отрасль компании
             </p>
             <DropDownRoles 
@@ -94,10 +98,11 @@
           </div>
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
               Выберите специализацию
             </p>
             <DropDownRoles
-            :options="data.industry !== undefined ?? currectRole[data.industry.key]?.roles"
+            :options="data.industry?.roles || []"
             :selected="data.professional_roles[0]"
             v-model="data.professional_roles[0]"
             @update:model-value="$event => updateRoles($event)"
@@ -106,7 +111,26 @@
         </div>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
+              <p class="text-sm font-medium mb-4 leading-normal text-space">
+                <span class="text-red-custom">*</span>
+                Опыт работы
+              </p>
+              <DropDownTypes 
+              :options=experience
+              :selected="data.experience"
+              v-model="data.experience"
+              ></DropDownTypes>
+          </div>
+          <div class="w-full"></div>
+        </div>
+        <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          Условия работы
+        </p>
+        <div class="w-full justify-between flex gap-25px mb-6">
+          <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
               Тип занятости
             </p>
             <DropDownTypes 
@@ -116,16 +140,107 @@
             ></DropDownTypes>
           </div>
           <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              График работы
-            </p>
-            <DropDownTypes 
-            :options=HH_WORK_SCHEDULE_BY_DAYS
-            :selected="data.work_schedule_by_days"
-            v-model="data.work_schedule_by_days"
-            ></DropDownTypes>
+            <template v-if="data.employment_form?.id === 'FLY_IN_FLY_OUT'">
+              <p class="text-sm font-medium mb-4 leading-normal text-space">
+                Количество смен
+              </p>
+              <MultiSelect 
+              :options="experienceDaysOptions"
+              v-model="data.experience_days"
+              defaultValue="Выберите количество смен"
+              ></MultiSelect>
+            </template>
           </div>
         </div>
+        <div class="w-full justify-between flex gap-25px mb-6">
+           <div class="w-full">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              Формат работы
+            </p>
+            <MultiSelect 
+              :options="workFormatOptions"
+              v-model="data.workSpace"
+              defaultValue="Выберите формат работы"
+            />
+           </div>
+        </div>
+        <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          График и часы работы
+        </p>
+        <div class="w-full justify-between flex gap-25px mb-6">
+          <div class="w-full">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
+              График работы
+            </p>
+            <MultiSelect 
+            :options="workScheduleOptions"
+            v-model="data.work_schedule_by_days"
+            defaultValue="Выберите график работы"
+            ></MultiSelect>
+          </div>
+          <div class="w-full">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
+              Рабочие часы в день
+            </p>
+            <MultiSelect 
+            :options="workingHoursOptions"
+            v-model="data.schedule"
+            defaultValue="Выберите рабочие часы"
+            ></MultiSelect>
+          </div>
+        </div>
+        <div class="w-full justify-between flex gap-25px mb-6">
+          <div class="w-full">
+             <MyCheckbox 
+                :id="'evening-night-shifts'" 
+                :label="'Есть вечерние или ночные смены'" 
+                v-model="data.has_evening_night_shifts" 
+             />
+          </div>
+        </div>
+        <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          Город публикации и адрес работы
+        </p>
+        <div class="w-full justify-between flex gap-25px mb-6">
+          <div class="w-full">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
+              Город публикации
+            </p>
+            <CityAutocomplete 
+              :options="citiesOptions"
+              v-model="data.areas"
+              placeholder="Например, Санкт-Петербург"
+            />
+          </div>
+          <div class="w-full">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
+              Город размещения
+            </p>
+            <GeoInput 
+              :model-value="data.address"
+              @update:model-value="$event => updateEvent($event, 'location')"
+            />
+          </div>
+        </div>
+        <div class="w-full justify-between flex gap-25px mb-6">
+          <div class="w-full">
+             <MyCheckbox 
+                :id="'show_metro_only'" 
+                :label="'Показывать только станцию метро в вакансии'" 
+                v-model="data.show_metro_only" 
+             />
+          </div>
+        </div>
+        <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          Оплата работы
+        </p>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
@@ -135,16 +250,6 @@
             :options=HH_EDUCATION_LAVEL
             :selected="data.education_level"
             v-model="data.education_level"
-            ></DropDownTypes>
-          </div>
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Опыт работы
-            </p>
-            <DropDownTypes 
-            :options=experience
-            :selected="data.experience"
-            v-model="data.experience"
             ></DropDownTypes>
           </div>
         </div>
@@ -226,28 +331,12 @@
         <div class="w-full justify-between flex gap-25px mb-6">
            <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Место работы
-            </p>
-            <RadioGroup default-value="1" class="flex gap-x-15px w-full" >
-              <CardOption v-for="card in cards" 
-                  :key="card.id" 
-                  :id="card.id"
-                  :title="card.title"
-                  :description="card.description"  :hoveredCard="hoveredCard"
-                  :selectedCard="data.workSpace"
-                  @update:selected="handleCheck" @hover="handleHover" @leave="clearHover" 
-              />
-            </RadioGroup>
-           </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-           <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
               Локация офиса
             </p>
-            <p class="leading-normal text-xs text-bali font-normal">
-              Укажите расположение офиса для нового сотрудника.
-             </p>
+            <GeoInput 
+              :model-value="data.location"
+              @update:model-value="$event => updateEvent($event, 'location')"
+            />
           </div>
         </div>
         <div class="w-full justify-between flex gap-25px mb-25px">
@@ -316,9 +405,11 @@ import GenerateButton from '../custom/GenerateButton.vue';
 import MyAccordion from '~/components/custom/MyAccordion.vue';
 import CheckboxGroup from '~/components/custom/CheckboxGroup.vue';
 import TagSelect from '~/components/custom/TagSelect.vue'
+import MultiSelect from '~/components/custom/MultiSelect.vue'
+import CityAutocomplete from '~/components/custom/CityAutocomplete.vue'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import CardOption from '~/components/custom/CardOption.vue';
+import GeoInput from '~/components/custom/GeoInput.vue';
 import { getPhrases } from '@/utils/getVacancies'
 import PhoneInput from '~/components/custom/PhoneInput.vue';
 import MoreOptions from '~/src/data/more-options.json'
@@ -330,15 +421,18 @@ import {
   HH_EMPLOYMENT_TYPES, 
   HH_WORKING_HOURS, 
   HH_WORK_SCHEDULE_BY_DAYS,
-  HH_EDUCATION_LAVEL 
+  HH_EDUCATION_LAVEL,
+  HH_WORK_FORMAT,
+  HH_EXPERIENCE_DAYS,
 } from '@/src/constants'
 import experience from '~/src/data/experience.json'
-import { inject } from 'vue'
+import { inject, watch, computed } from 'vue'
 import { 
   getProfile as profileHh, 
   getAvailableTypes as typesHh, 
   addDraft as addDraftHh,
-  getRoles as getRolesHh
+  getRoles as getRolesHh,
+  getAreas as getAreasHh
 } from '@/utils/hhAccount'
 import { getVacancy } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
@@ -351,24 +445,45 @@ const currectRole = ref(null)
 const roleData = ref(null)
 const status = ref(null)
 const route = useRoute();
-console.log('current vacancy - ', vacancyData);
 const phrases = ref(null)
 const data = ref({})
 
 data.value.days = "30"
-data.value.workSpace = '1'
-data.value.areas = [{"id":"1"}]
+data.value.workSpace = []
+data.value.areas = null
 data.value.salary_range = {}
 data.value.professional_roles = [null]
-data.value.employment_form = null
-data.value.work_schedule_by_days = ref(null)
+data.value.employment_form = ref(HH_EMPLOYMENT_TYPES[0]);
+data.value.work_schedule_by_days = []
+data.value.schedule = []
 data.value.education_level = ref(null)
 data.value.experience = ref(null)
 data.value.driver_license_types = ref(null)
+data.value.experience_days = []
+data.value.has_evening_night_shifts = false
+data.value.address = ref(null)
+data.value.show_metro_only = ref(false)
+
+
+// Список городов из API hh.ru
+const cities = ref([])
+const citiesOptions = computed(() => {
+  return cities.value.map(city => ({
+    id: city.id,
+    name: city.name,
+    value: city.id
+  }))
+})
 
 const { roles, errorRoles } = await getRolesHh()
 if (!errorRoles) {
   currectRole.value = roles.categories
+}
+
+// Загрузка списка городов из API hh.ru
+const { data: areasData, error: areasError } = await getAreasHh()
+if (!areasError && areasData) {
+  cities.value = areasData
 }
 
 const vacancyId = route.query.id
@@ -402,9 +517,9 @@ if (globCurrentVacancy.value) {
   if (globCurrentVacancy.value.salary_to) {
       data.value.salary_range.to = globCurrentVacancy?.value?.salary_to
   }
-  // if (globCurrentVacancy.value.schedule) {
-  //   data.value.working_hours = HH_WORKING_HOURS.find((item) => item.name == globCurrentVacancy.value.schedule)
-  // }
+  if (globCurrentVacancy.value.schedule) {
+    data.value.working_hours = HH_WORKING_HOURS.find((item) => item.name == globCurrentVacancy.value.schedule)
+  }
   if (globCurrentVacancy.value.education) {
     data.value.education_level = HH_EDUCATION_LAVEL.find((item) => item.name == globCurrentVacancy.value.education)
   }
@@ -441,10 +556,9 @@ if (vacancyData.value) {
     data.value.professional_roles[0] = data.value.industry.roles[0]
   }
 }
-
 data.value.employment_form = HH_EMPLOYMENT_TYPES.filter( (item, i) => {
       return item.siteName == globCurrentVacancy.value?.employment
-})[0]
+})[0] || HH_EMPLOYMENT_TYPES[0];
 
 if (!inject('isPlatforms')) {
     const { data, error } = await profileHh()
@@ -479,23 +593,37 @@ const ArrayOptions = ref(MoreOptions)
 const ArrayCarId = ref(CarId)
 const ArrayCurrency = ref(currency)
 
-const cards = [
-  {
-    id: '1',
-    title: 'Офис',
-    description: 'Сотрудники<br>работают в офисе',
-  },
-  {
-    id: '2',
-    title: 'Гибрид',
-    description: 'Сотрудники работают как офисе,<br>так и дома',
-  },
-  {
-    id: '3',
-    title: 'Удаленно',
-    description: 'Сотрудники<br>работают из дома',
-  },
-]
+// Преобразование HH_EXPERIENCE_DAYS для MultiSelect (id -> value)
+const experienceDaysOptions = computed(() => {
+  return HH_EXPERIENCE_DAYS.map(day => ({
+    ...day,
+    value: day.id
+  }))
+})
+
+// Преобразование HH_WORK_FORMAT для MultiSelect (id -> value)
+const workFormatOptions = computed(() => {
+  return HH_WORK_FORMAT.map(format => ({
+    ...format,
+    value: format.id
+  }))
+})
+
+// Преобразование HH_WORK_SCHEDULE_BY_DAYS для MultiSelect (id -> value)
+const workScheduleOptions = computed(() => {
+  return HH_WORK_SCHEDULE_BY_DAYS.map(schedule => ({
+    ...schedule,
+    value: schedule.id
+  }))
+})
+
+// Преобразование HH_WORKING_HOURS для MultiSelect (id -> value)
+const workingHoursOptions = computed(() => {
+  return HH_WORKING_HOURS.map(hours => ({
+    ...hours,
+    value: hours.id
+  }))
+})
 
 const selectedCard = ref(null)
 const hoveredCard = ref(null)
@@ -503,8 +631,14 @@ const hoveredCard = ref(null)
 const workSpace = ref('1')
 
 const handleCheck = id => {
+  const index = data.value.workSpace.indexOf(id)
+  if (index === -1) {
+    data.value.workSpace.push(id)
+  } else {
+    data.value.workSpace.splice(index, 1)
+  }
   selectedCard.value = id
-  workSpace.value = id
+  workSpace.value = data.value.workSpace
 }
 
 const handleHover = id => {
@@ -570,6 +704,12 @@ const updateTags = (el) => {
     }
 }
 
+// Сброс experience_days при изменении типа занятости
+watch(() => data.value.employment_form, (newValue) => {
+  if (newValue?.id !== 'FLY_IN_FLY_OUT') {
+    data.value.experience_days = []
+  }
+})
 
 onBeforeMount(async () => {
 })

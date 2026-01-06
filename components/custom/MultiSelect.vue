@@ -175,7 +175,12 @@ watch(() => props.options, (newOptions) => {
 // Синхронизация modelValue → selectedOptions
 watch(() => props.modelValue, (newValue) => {
   console.log('watch: modelValue changed', { newValue, selectedOptions: selectedOptions.value })
-  if (JSON.stringify(newValue) !== JSON.stringify(selectedOptions.value.map(getOptionValue))) {
+  if (!Array.isArray(newValue)) {
+    selectedOptions.value = []
+    return
+  }
+  const currentValues = selectedOptions.value.map(getOptionValue)
+  if (JSON.stringify(newValue) !== JSON.stringify(currentValues)) {
     selectedOptions.value = newValue
       .map(val => {
         const option = props.options.find(opt => getOptionValue(opt) === val)
@@ -183,7 +188,10 @@ watch(() => props.modelValue, (newValue) => {
       })
       .filter(val => val !== null)
     console.log('watch: updated selectedOptions', { selectedOptions: selectedOptions.value })
-    emit('update:modelValue', selectedOptions.value.map(getOptionValue))
+    const newValues = selectedOptions.value.map(getOptionValue)
+    if (JSON.stringify(newValues) !== JSON.stringify(newValue)) {
+      emit('update:modelValue', newValues)
+    }
   }
 }, { deep: true, immediate: true })
 

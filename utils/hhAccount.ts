@@ -567,3 +567,61 @@ export const publishVacancyToHh = async (draftData: DraftDataHh) => {
     return result.value;
   }
 }
+
+/**
+ * Получение списка городов России из API hh.ru
+ * @returns Массив городов с id и name
+ */
+export const getAreas = async () => {
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<any[]>('https://api.hh.ru/areas', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'JobLy/1.0',
+      },
+    });
+
+    // Находим Россию (id: "113")
+    const russia = response.find(area => area.id === 113 || area.id === '113');
+    
+    if (!russia) {
+      result.value.error = 'Россия не найдена в списке регионов';
+      return result.value;
+    }
+
+    // Рекурсивно извлекаем города (регионы без вложенных areas) только из России
+    const cities: Array<{ id: string; name: string }> = [];
+
+    const extractCities = (areas: any[]) => {
+      if (!areas || !Array.isArray(areas)) {
+        return;
+      }
+      areas.forEach(area => {
+        if (!area.areas || area.areas.length === 0) {
+          // Это город (нет вложенных регионов)
+          cities.push({ id: area.id.toString(), name: area.name });
+        } else {
+          // Рекурсивно обходим вложенные регионы
+          extractCities(area.areas);
+        }
+      });
+    };
+
+    // Извлекаем города из России
+    if (russia.areas && Array.isArray(russia.areas)) {
+      extractCities(russia.areas);
+    }
+    
+    // Сортируем по названию
+    cities.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+    result.value.data = cities;
+  } catch (err: any) {
+    result.value.error = err.response?._data?.message || 'Ошибка при получении списка городов';
+  } finally {
+    return result.value;
+  }
+}

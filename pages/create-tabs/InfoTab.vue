@@ -919,7 +919,7 @@ const updateExecutor = (value, id) => {
           <RadioGroup default-value="1" class="flex gap-x-15px w-full" v-model="selectedCard"
             @update:model-value="$event => updateEvent($event, 'place')">
             <CardOption v-for="card in cards" :key="card.id" :id="card.id" :title="card.title"
-              :description="card.description" :selectedCard="selectedCard" :hoveredCard="hoveredCard"
+              :description="card.description" :selectedCards="selectedCard" :hoveredCard="hoveredCard"
               @update:selected="handleCheck" @hover="handleHover" @leave="clearHover" />
           </RadioGroup>
         </div>
