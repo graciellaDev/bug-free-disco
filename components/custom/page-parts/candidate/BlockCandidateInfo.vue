@@ -8,16 +8,20 @@
   import CandidateEmailPopup from './popups/CandidateEmailPopup.vue';
   import CandidateInfoContent from './CandidateInfoContent.vue';
   import CandidateDeletePopup from './popups/CandidateDeletePopup.vue';
-  import CandidateMoveToVacancyPopup from './popups/CandidateMoveToVacancyPopup.vue';
+  import CandidateTransferToVacancyPopup from './popups/CandidateTransferToVacancyPopup.vue';
   import CandidateRemoveFromVacancyPopup from './popups/CandidateRemoveFromVacancyPopup.vue';
   import CandidateRefusePopup from './popups/CandidateRefusePopup.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import { updateCandidate } from '@/src/api/candidates';
+  import { createCandidate, updateCandidate } from '@/src/api/candidates';
 
-  import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
+  import type {
+    Candidate,
+    CandidateCreateRequest,
+    CandidateUpdateRequest,
+  } from '@/types/candidates';
   import type { Stage } from '@/types/funnels';
-  import type { Vacancy } from '@/types/vacancy';
+  import type { Vacancy, TransferMode } from '@/types/vacancy';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -28,6 +32,7 @@
 
   const emit = defineEmits<{
     'candidate-updated': [candidate: Candidate];
+    'candidate-moved': [candidate: Candidate];
     'candidate-deleted': [id: number];
     'update:selectedLabel': [label: string];
   }>();
@@ -39,6 +44,9 @@
   const candidateEditForm = ref<Record<string, any>>({});
 
   const options = ref<string[]>([]);
+
+  const transferPopupMode = ref<TransferMode>('move');
+  const isTransferPopupOpen = ref(false);
 
   const popups = usePopups({
     deleteCandidate: {
@@ -59,12 +67,6 @@
       manageBodyScroll: true,
       onClose: () => {
         // console.log('Попап отправки почты закрыт');
-      },
-    },
-    moveToVacancy: {
-      manageBodyScroll: true,
-      onClose: () => {
-        // console.log('Попап переноса кандидата в другую вакансию закрыт');
       },
     },
     removeFromVacancy: {
@@ -108,7 +110,17 @@
   };
 
   const handleMoveToVacancy = () => {
-    popups.moveToVacancy.open();
+    transferPopupMode.value = 'move';
+    isTransferPopupOpen.value = true;
+  };
+
+  const handleCopyToVacancy = () => {
+    transferPopupMode.value = 'copy';
+    isTransferPopupOpen.value = true;
+  };
+
+  const handleTransferPopupClose = () => {
+    isTransferPopupOpen.value = false;
   };
 
   const handleRemoveFromVacancy = () => {
@@ -143,7 +155,7 @@
       };
 
       const updated = await updateCandidate(updateData);
-      emit('candidate-updated', updated.data);
+      emit('candidate-moved', updated.data);
 
       if (data.sendEmail && data.subject && data.body) {
         sendEmail({
@@ -209,7 +221,7 @@
     onEmail: () => popups.mailToCandidate.open(),
     onMoveToVacancy: () => handleMoveToVacancy(),
     onRemoveFromVacancy: () => handleRemoveFromVacancy(),
-    // onCopyToVacancy: () => popups.copyCand
+    onCopyToVacancy: () => handleCopyToVacancy(),
     onRefuse: () => popups.refuseCandidate.open(),
   });
 
@@ -223,9 +235,9 @@
         vacancy_id: vacancyId,
       };
       const updated = await updateCandidate(movedCandidate);
-      emit('candidate-updated', updated.data);
+      emit('candidate-moved', updated.data);
 
-      popups.moveToVacancy.close();
+      // popups.moveToVacancy.close();
       // TODO: Сообщение об успехе при необходимости
     } catch (err) {
       console.error(
@@ -233,6 +245,59 @@
         err
       );
     }
+  };
+
+  const handleConfirmCopy = async (vacancyId: number) => {
+    console.log('Обработчик копирования кандидата');
+    try {
+      // Подготовка данных для создания нового кандидата
+      // const candidateData: CandidateCreateRequest = {
+      //   firstname: props.candidate.firstname || '',
+      //   surname: props.candidate.surname,
+      //   patronymic: props.candidate.patronymic,
+      //   email: props.candidate.email,
+      //   phone: props.candidate.phone,
+      //   vacancy_id: vacancyId,
+      //   age: props.candidate.age,
+      //   location: props.candidate.location,
+      //   quickInfo: props.candidate.quickInfo,
+      //   education: props.candidate.education,
+      //   link: props.candidate.link,
+      //   experience: props.candidate.experience,
+      //   telegram: props.candidate.telegram,
+      //   skype: props.candidate.skype,
+      //   imagePath: props.candidate.imagePath,
+      //   isPng: props.candidate.isPng,
+      //   resume: props.candidate.resume,
+      //   resumePath: props.candidate.resumePath,
+      //   coverPath: props.candidate.coverPath,
+      //   stage_id: 1, // начальный этап для новой вакансии
+      //   // Копирование связей (если нужно)
+      //   skills: props.candidate.skills?.map(s => s.id) || [],
+      //   tags: Array.isArray(props.candidate.tags)
+      //     ? props.candidate.tags.filter((t): t is number => typeof t === 'number')
+      //     : [],
+      //   // attachments и customFields требуют особой обработки
+      // };
+      //   const response = await createCandidate(candidateData);
+      //   if (response?.data) {
+      //     // Обновить список кандидатов (через emit или refetch)
+      //     emit('candidate-updated', response.data); // или новый emit 'candidate-copied'
+      //     popups.copyToVacancy.close();
+      //   }
+    } catch (err) {
+      console.error('[handleConfirmCopy] Ошибка при копировании:', err);
+    }
+  };
+
+  const handleTransferCandidateConfirm = async (vaccancyId: number) => {
+    if (transferPopupMode.value === 'move') {
+      await handleConfirmMove(vaccancyId);
+    } else {
+      await handleConfirmCopy(vaccancyId);
+    }
+
+    handleTransferPopupClose();
   };
 
   //  Обработчик отправки формы редактирования
@@ -266,10 +331,8 @@
         stage: targetStage.id,
       };
 
-      console.log('upadateData: ', updateData);
-
       const updated = await updateCandidate(updateData);
-      emit('candidate-updated', updated.data);
+      emit('candidate-moved', updated.data);
     } catch (err) {
       console.error(
         '[handleConfirmTransfer] Ошибка при переносе кандидата на другой этап: ',
@@ -294,7 +357,7 @@
         vacancy.value = null;
         vacancyName.value = 'Вакансия не определена';
 
-        emit('candidate-updated', response.data as Candidate);
+        emit('candidate-moved', response.data as Candidate);
 
         popups.removeFromVacancy.close();
       }
@@ -380,7 +443,8 @@
         vacancy.value = null;
         vacancyName.value = 'Вакансия не определена';
       }
-    }
+    },
+    { immediate: true }
   );
 
   watchEffect(() => {
@@ -447,17 +511,18 @@
       @close="popups.deleteCandidate.close"
       @confirm="confirmDelete"
     />
-    <CandidateMoveToVacancyPopup
-      :isOpen="popups.moveToVacancy.isOpen"
+    <CandidateTransferToVacancyPopup
+      :isOpen="isTransferPopupOpen"
       :candidate="candidate"
-      @close="popups.moveToVacancy.close"
-      @confirm="handleConfirmMove"
+      :mode="transferPopupMode"
+      @confirm="handleTransferCandidateConfirm"
+      @close="handleTransferPopupClose"
     />
     <CandidateRemoveFromVacancyPopup
-      v-if="vacancy"
+      v-if="candidate.vacancy_id"
       :isOpen="popups.removeFromVacancy.isOpen"
       :candidate="candidate"
-      :vacancyName="vacancy.name"
+      :vacancyName="vacancyName"
       @close="popups.removeFromVacancy.close"
       @confirm="handleConfirmRemove"
     />

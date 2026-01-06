@@ -7,11 +7,12 @@
   import { getVacancies, getVacancyName } from '@/src/api/vacancies';
   import type { MaybeRef } from 'vue';
   import type { Candidate } from '@/types/candidates';
-  import type { Vacancy } from '@/types/vacancy';
+  import type { Vacancy, TransferMode } from '@/types/vacancy';
 
   const props = defineProps<{
     isOpen: MaybeRef<boolean>;
     candidate: Candidate;
+    mode?: TransferMode;
   }>();
 
   const emit = defineEmits<{
@@ -84,10 +85,21 @@
   >
     <div v-if="!loading" class="flex flex-col gap-y-35px text-sm">
       <div class="gap-y-10px flex flex-col">
-        <h2 class="text-20px font-semibold leading-normal text-space">
+        <h2
+          v-if="mode === 'copy'"
+          class="text-20px font-semibold leading-normal text-space"
+        >
+          Копировать кандидата
+        </h2>
+        <h2 v-else class="text-20px font-semibold leading-normal text-space">
           Переместить кандидата
         </h2>
-        <p class="text-slate-custom">
+        <p v-if="mode === 'copy'" class="text-slate-custom">
+          Вы собираетесь скопировать кандидата
+          <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>
+          в другую вакансию.
+        </p>
+        <p v-else class="text-slate-custom">
           Вы собираетесь перенести кандидата
           <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>
           в другую вакансию.
@@ -103,7 +115,7 @@
         <div class="flex w-[50%] flex-col gap-y-15px">
           <p class="font-medium">Из вакансии</p>
           <p class="w-[100%] rounded-ten bg-athens-gray px-11px py-10px">
-            {{ vacancyName }}
+            {{ vacancyName ? vacancyName : 'Вакансия не определена' }}
           </p>
         </div>
         <div class="flex w-[50%] flex-col gap-y-15px">
@@ -124,6 +136,17 @@
       </div>
       <div class="flex gap-x-15px">
         <Button
+          v-if="mode === 'copy'"
+          variant="action"
+          size="action"
+          class="px-20px py-11.5px font-medium"
+          :disabled="!selectedVacancyId || loading"
+          @click="handleConfirm"
+        >
+          Копировать
+        </Button>
+        <Button
+          v-else
           variant="action"
           size="action"
           class="px-20px py-11.5px font-medium"

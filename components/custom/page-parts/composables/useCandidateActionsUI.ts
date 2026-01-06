@@ -71,10 +71,12 @@ export function useCandidateActionsUI(
    * Копировать в вакансию
    */
   const handleCopyToVacancy = () => {
-    console.log('Копировать в вакансию');
     callbacks?.onCopyToVacancy?.();
   };
 
+  /**
+   * Открепить от вакансии
+   */
   const handleRemoveFromVacancy = () => {
     callbacks?.onRemoveFromVacancy?.();
   };

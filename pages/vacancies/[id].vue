@@ -264,8 +264,6 @@
    * @param movedCandidateId - ID перемещённого кандидата
    */
   const switchToNextCandidate = async (movedCandidateId: number) => {
-    await refreshCandidates();
-
     const currentList = candidatesList.value || [];
 
     // Если список пуст, очищаем выбранного кандидата
@@ -385,10 +383,39 @@
       return;
     }
 
-    const movedCandidateId = updatedCandidate.id;
+    await refreshCandidates();
+    if (selectedCandidate.value?.id === updatedCandidate.id) {
+      try {
+        const result = await getCandidateById(updatedCandidate.id);
+        selectedCandidate.value = result.candidateData;
+      } catch (error) {
+        console.error('Ошибка при обновлении кандидата:', error);
+      }
+    }
+  };
 
+  const handleCandidateMoved = async (movedCandidate: Candidate) => {
+    if (!movedCandidate || !movedCandidate.id) {
+      console.error(
+        '[handleCandidateMoved] Получен некорректный кандидат:',
+        movedCandidate
+      );
+      await refreshCandidates();
+
+      if (selectedCandidate.value?.id) {
+        try {
+          const result = await getCandidateById(selectedCandidate.value.id);
+          selectedCandidate.value = result.candidateData;
+        } catch (error) {
+          console.error('Ошибка при обновлении кандидата:', error);
+        }
+      }
+      return;
+    }
+
+    const movedCandidateId = movedCandidate.id;
     const wasMovedToAnotherVacancy =
-      updatedCandidate.vacancy_id !== vacancy.value?.id;
+      movedCandidate.vacancy_id !== vacancy.value?.id;
 
     await refreshCandidates();
 
@@ -398,17 +425,9 @@
       }
     }
 
+    // Переключаемся на следующего кандидата
     if (selectedCandidate.value?.id === movedCandidateId) {
       await switchToNextCandidate(movedCandidateId);
-    } else {
-      if (selectedCandidate.value?.id === updatedCandidate.id) {
-        try {
-          const result = await getCandidateById(updatedCandidate.id);
-          selectedCandidate.value = result.candidateData;
-        } catch (error) {
-          console.error('Ошибка при обновлении кандидата:', error);
-        }
-      }
     }
   };
 
@@ -449,7 +468,6 @@
     await nextTick();
 
     if (isInitialLoad.value && vacancy.value?.id) {
-      console.log('watch не сработал');
       await refreshCandidates();
     }
 
@@ -589,6 +607,7 @@
             :isFunnel="true"
             :vacancy="vacancy"
             @candidate-updated="handleCandidateUpdated"
+            @candidate-moved="handleCandidateMoved"
             @candidate-deleted="handleCandidateDeleted"
           />
           <BlockCandidateTabsInfo :candidate="selectedCandidate" />
