@@ -156,6 +156,157 @@ export const HH_WORKING_HOURS = [
   },
 ];
 
+export const HH_SALARY_TYPE = [
+    {
+        "id": "MONTH",
+        "name": "За месяц"
+    },
+    {
+        "id": "SHIFT",
+        "name": "За смену"
+    },
+    {
+        "id": "HOUR",
+        "name": "За час"
+    },
+    {
+        "id": "FLY_IN_FLY_OUT",
+        "name": "За вахту"
+    },
+    {
+        "id": "SERVICE",
+        "name": "За услугу"
+    }
+]
+
+export const HH_SALARY_FREQUENCY = [
+    {
+        "id": "DAILY",
+        "name": "Ежедневно"
+    },
+    {
+        "id": "WEEKLY",
+        "name": "Раз в неделю"
+    },
+    {
+        "id": "TWICE_PER_MONTH",
+        "name": "Два раза в месяц"
+    },
+    {
+        "id": "MONTHLY",
+        "name": "Раз в месяц"
+    },
+    {
+        "id": "PER_PROJECT",
+        "name": "За проект"
+    }
+];
+
+export const HH_DRIVER_LICENSE_TYPES = [
+        {
+            "id": "A",
+            "name": "A"
+        },
+        {
+            "id": "B",
+            "name": "B"
+        },
+        {
+            "id": "C",
+            "name": "C"
+        },
+        {
+            "id": "D",
+            "name": "D"
+        },
+        {
+            "id": "E",
+            "name": "E"
+        },
+        {
+            "id": "BE",
+            "name": "BE"
+        },
+        {
+            "id": "CE",
+            "name": "CE"
+        },
+        {
+            "id": "DE",
+            "name": "DE"
+        },
+        {
+            "id": "TM",
+            "name": "TM"
+        },
+        {
+            "id": "TB",
+            "name": "TB"
+        }
+];
+
+export const HH_ADDITIONAL_CONDITIONS = [
+        {
+            "id": "with_address",
+            "name": "Только с адресом"
+        },
+        {
+            "id": "accept_handicapped",
+            "name": "Только доступные для людей с инвалидностью"
+        },
+        {
+            "id": "not_from_agency",
+            "name": "Без вакансий агентств"
+        },
+        {
+            "id": "accept_kids",
+            "name": "Только доступные для соискателей от 14 лет"
+        },
+        {
+            "id": "accredited_it",
+            "name": "Только аккредитованные ИТ-компании"
+        },
+        {
+            "id": "low_performance",
+            "name": "Только вакансии, у которых меньше 10 откликов"
+        },
+        {
+            "id": "internship",
+            "name": "Стажировка"
+        },
+        {
+            "id": "night_shifts",
+            "name": "Вечерние или ночные смены"
+        },
+        {
+            "id": "with_salary",
+            "name": "Указан доход"
+        },
+        {
+            "id": "accept_teens",
+            "name": "Только доступные для соискателей от 16 лет"
+        }
+]
+
+export const HH_BILLING_TYPES = [
+        {
+            "id": "free",
+            "name": "Бесплатная"
+        },
+        {
+            "id": "standard",
+            "name": "Стандарт"
+        },
+        {
+            "id": "standard_plus",
+            "name": "Стандарт 2"
+        },
+        {
+            "id": "premium",
+            "name": "Премиум"
+        }
+];
+
 export const HH_EDUCATION_LAVEL = [
   {
     id: 'secondary',

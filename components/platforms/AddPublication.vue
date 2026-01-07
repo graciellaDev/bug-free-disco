@@ -1,45 +1,8 @@
 <template>
   <div class="container p-0">
     <div class="flex gap-x-[24px]">
-      <div class="max-w-[875px] flex-grow bg-white rounded-fifteen">
+      <div class="max-w-[100%] flex-grow bg-white rounded-fifteen">
         <p class="text-space text-xl font-semibold">Новая публикация</p>
-        <div class="mb-25px mt-25px border-t"></div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Доступные источники
-            </p>
-            <DropDownList 
-            :options="platforms" 
-            v-model="data.platform"
-            :selected="data.platform"
-            @update:model-value="$event => changePlatform($event)"
-            ></DropDownList>
-          </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Баланс публикаций:
-            </p>
-            <DropDownTypes 
-            :options="platforms[0]?.types"
-            :selected="data.billing_types"
-            @update:model-value="$event => changeBalance($event)"
-            ></DropDownTypes>
-          </div>
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Дней всего
-            </p>
-            <MyInput
-                placeholder="Введите число дней"
-                v-model="data.days"
-                :type="'Number'"
-                :readonly="true"
-            />
-          </div>
-        </div>
         <div class="mb-25px mt-25px border-t"></div>
         <p class="text-space text-xl font-semibold mb-8">
           Основная информация
@@ -65,24 +28,6 @@
                 @update:model-value="$event => updateEvent($event, 'code')"
             />
           </div>
-        </div>
-        <div class="w-full">
-          <div class="w-full flex justify-between">
-            <p class="text-sm font-medium text-space mb-4">
-              <span class="text-red-custom">*</span>
-              Описание вакансии
-            </p>
-          </div>
-          <GenerateButton></GenerateButton>
-          <div class="mt-15px mb-25px">
-          <TiptapEditor 
-            v-model="data.description" 
-            class="mb-15px" 
-            @update:model-value="$event => updateEvent($event, 'description')"
-          />
-          <p class="text-xs text-bali font-normal">
-            Максимум 700 символов. Использовано 0 символов.
-          </p>
         </div>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
@@ -242,102 +187,153 @@
           Оплата работы
         </p>
         <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Образование
-            </p>
-            <DropDownTypes 
-            :options=HH_EDUCATION_LAVEL
-            :selected="data.education_level"
-            v-model="data.education_level"
-            ></DropDownTypes>
-          </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Ключевые фразы
-            </p>
-            <tag-select :options="phrases" :model-value="data.phrases ? data.phrases : []"
-            @update:model-value="$event => updateTags($event)" @delete="$event => updateTags($event)" />
-          </div>
-        </div>
-        <div class="w-fit mb-25px">
-          <MyAccordion title="дополнительные условия" class="mb-15px">
-            <div class="flex flex-col flex-wrap max-h-40 gap-x-25px gap-y-15px">
-              <CheckboxGroup  model-value='' :options="ArrayAdditional" />
-            </div>
-          </MyAccordion>
-          <MyAccordion title="водительские права" class="mb-15px">
-            <div class="flex flex-col flex-wrap max-h-[195px] gap-x-25px gap-y-15px">
-              <CheckboxGroup  
-                v-model="data.driver_license_types" 
-                :options="ArrayCarId" 
-                @update:model-value="($event, data) => updateEvent($event, 'driver_license_types', data)"
-              />
-            </div>
-          </MyAccordion>
-          <MyAccordion title="дополнительные пожелания">
-            <div class="flex flex-col flex-wrap max-h-[195px] gap-x-25px gap-y-15px">
-              <CheckboxGroup  :m-value=null :options="ArrayOptions"/>
-            </div>
-          </MyAccordion>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Заработная плата / мес
-            </p>
-            <div class="flex items-center gap-[10px]">
-              <!-- <div class="w-full">
-                <MyInput
-                placeholder="От"
-                type="Number"
-                v-model="data.salary_range?.from"
-                @update:model-value="$event => updateEvent($event, 'salary_range.from')"
-                />
-              </div> -->
-              <!-- <div class="w-full">
-                <MyInput
-                placeholder="До"
-                type="Number"
-                v-model="data.salary_range?.to"
-                /> 
-              </div>-->
-            </div>
-          </div>
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Валюта
-            </p>
-            <my-dropdown :defaultValue="'Валюта'" :options="ArrayCurrency" :selected="0"
-              :initialValue="null"/>
-          </div>
-        </div>
-        <RadioGroup default-value="past-cash" class="flex gap-[18px] mb-25px" v-model="salaryType">
-                <div class="my-checkbox">
-                  <Label for="past-cash" class="cursor-pointer flex items-center">
-                    <RadioGroupItem id="past-cash" value="past-cash" class="mr-5px" />
-                    <p>На руки</p>
-                  </Label>
-                </div>
-                <div class="my-checkbox">
-                  <Label for="full-cash" class="cursor-pointer flex items-center">
-                    <RadioGroupItem id="full-cash" value="full-cash" class="mr-5px" />
-                    <p>До вычета налогов</p>
-                  </Label>
-                </div>
-        </RadioGroup>
-        <div class="w-full justify-between flex gap-25px mb-6">
            <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Локация офиса
+            
+           <div class="flex items-end gap-[10px] mb-6">
+              <div class="w-full">
+                <p class="text-sm font-medium mb-4 leading-normal text-space">
+                  Заработная плата / мес
+                </p>
+                <div class="w-full flex gap-x-2.5">
+                  <MyInput
+                   placeholder="От"
+                   type="Number"
+                   v-model="data.salary_range.from"
+                   @update:model-value="$event => updateEvent($event, 'salary_range.from')"
+                   />
+                   <MyInput
+                   placeholder="До"
+                   type="Number"
+                   v-model="data.salary_range.to"
+                   @update:model-value="$event => updateEvent($event, 'salary_range.to')"
+                   /> 
+                </div>
+              </div>
+              <div class="w-full">
+                <p class="text-sm font-medium text-space mb-3.5">Валюта</p>
+                <MyDropdown 
+                  :defaultValue="'Валюта'" 
+                  :options="ArrayCurrency" 
+                  :selected="ArrayCurrency[0].value"
+                  :initialValue="data.currency" 
+                  :model-value="data.currency"
+                  @update:model-value="($event) => {
+                       console.log('update currency', ArrayCurrency.find((item) => item.value === $event));updateEvent(ArrayCurrency.find((item) => item.value === $event).name, 'currency')
+                 }"
+                />
+              </div>
+              <div class="w-full">
+                <DropDownTypes 
+                  :options=HH_SALARY_TYPE
+                  :selected="data.salary_type"
+                  v-model="data.salary_type"
+                >
+                </DropDownTypes>
+                </div>
+            </div>
+            <div class="w-full  items-end justify-between flex mb-6 gap-25px">
+              <RadioGroup default-value="past-cash" class="w-full flex gap-[18px]" v-model="salaryType">
+                      <div class="my-checkbox">
+                        <Label for="past-cash" class="cursor-pointer flex items-center">
+                          <RadioGroupItem id="past-cash" value="past-cash" class="mr-5px" />
+                          <p>На руки</p>
+                        </Label>
+                      </div>
+                      <div class="my-checkbox">
+                        <Label for="full-cash" class="cursor-pointer flex items-center">
+                          <RadioGroupItem id="full-cash" value="full-cash" class="mr-5px" />
+                          <p>До вычета налогов</p>
+                        </Label>
+                      </div>
+              </RadioGroup>
+            </div>
+            <div class="w-full  items-end justify-between flex gap-25px">
+              <div class="w-full">
+                <p class="text-sm font-medium text-space mb-3.5">
+                  Частота выплаты
+                </p>
+                <DropDownTypes 
+                  :options=HH_SALARY_FREQUENCY
+                  :selected="data.salary_frequency"
+                  v-model="data.salary_frequency"
+                >
+                </DropDownTypes>
+              </div>
+              <div class="w-full"></div>
+            </div>
+          </div> 
+        </div>
+        <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          Описание вакансии
+        </p>
+        <div class="w-full">
+          <p class="text-sm font-medium text-space mb-3.5">
+            <span class="text-red-custom">*</span>
+            Текст вакансии
+          </p>
+          <GenerateButton></GenerateButton>
+          <div class="mt-15px mb-25px">
+          <TiptapEditor 
+            v-model="data.description" 
+            class="mb-15px" 
+            @update:model-value="$event => updateEvent($event, 'description')"
+          />
+          <p class="text-xs text-bali font-normal">
+            Максимум 700 символов. Использовано 0 символов.
+          </p>
+        </div>
+        <div class="flex gap-25px">
+          <div class="w-full">
+            <p class="text-sm font-medium text-space mb-13px">
+              Навыки
             </p>
-            <GeoInput 
-              :model-value="data.location"
-              @update:model-value="$event => updateEvent($event, 'location')"
-            />
+            <tag-select 
+              :options="[]" :model-value="data.key_skills ? data.key_skills : []"
+              is-new="true"
+              :placeholder="'Например, Активный'"
+              @update:model-value="$event => updateSkills($event)" @delete="$event => updateSkills($event)" />
           </div>
+          <div class="w-full">
+            <p class="text-sm font-medium text-space mb-13px">
+               Водительские права
+            </p>
+            <MultiSelect 
+            :options="driverLicenseOptions"
+            v-model="data.driver_license_types"
+            defaultValue="Сделайте выбор"
+            ></MultiSelect>
+          </div>
+        </div>
+        <div class="mb-25px mt-25px border-t"></div>
+        <p class="text-space text-xl font-semibold mb-8">
+          Настройка откликов и управление вакансией
+        </p>
+        <div class="w-full mb-6">
+          <p class="text-sm font-medium mb-4 leading-normal text-space">
+            Кто и как может откликаться
+          </p>
+          <MultiSelect  
+          :options=additionalConditionsOptions
+          v-model="data.additional_conditions"
+          defaultValue="Сделайте выбор"
+          ></MultiSelect >
+        </div>
+        <div class="w-full flex justify-between gap-25px mb-6">
+          <div class="w-full">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              Нужно ли приложить к отклику сопроводительное письмо?
+            </p>
+            <DropDownRoles 
+              :options="[
+                {id: '1', name: 'Да'}, 
+                {id: '0', name: 'Нет'}
+              ]"
+              :selected="data.response_letter_required ?? ''"
+              @update:model-value="$event => console.log('update:model-value', $event)"
+            ></DropDownRoles>
+          </div>
+          <div class="w-full"></div>
         </div>
         <div class="w-full justify-between flex gap-25px mb-25px">
           <div class="w-full">
@@ -349,6 +345,9 @@
                 type="String"
             />
           </div>
+          <div class="w-full"></div>
+        </div>
+        <div class="w-full flex justify-between gap-25px mb-10">
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
               Номер телефона
@@ -357,12 +356,15 @@
               :model-value="null"
             />
           </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
-             <MyCheckbox :id="'show-contacts'" :label="'Отображать контакты в вакансии'" />
+            <p class="text-sm font-medium text-space leading-normal mb-4">
+              Email
+            </p>
+            <email-input :model-value="data.executor_email"
+              @update:model-value="$event => console.log('update:model-value', $event)" />
           </div>
         </div>
+
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
              <MyCheckbox 
@@ -373,20 +375,21 @@
              />
           </div>
         </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
+        <div class="w-full justify-start flex gap-25px mb-6">
+            <DropDownTypes 
+            :options=HH_BILLING_TYPES
+            :selected="data.billing_types"
+            v-model="data.billing_types"
+            ></DropDownTypes>
             <UiButton @click="savePublication" variant="action" size="semiaction" class="font-semibold">
               Опубликовать
             </UiButton>
             <div class="status" v-if="status">
               {{ status }}
             </div>
-          </div>
-          <div class="w-full flex justify-end">
             <UiButton variant="semiaction" size="semiaction" class="text-space">
               Отмена
             </UiButton>
-          </div>
         </div>
       </div>   
       </div>
@@ -400,6 +403,7 @@ import DropDownRoles from './DropDownRoles.vue';
 import MyDropdown from '~/components/custom/MyDropdown.vue';
 import MyInput from '~/components/custom/MyInput.vue';
 import MyCheckbox from '~/components/custom/MyCheckbox.vue';
+import EmailInput from '~/components/custom/EmailInput.vue';
 import TiptapEditor from '~/components/TiptapEditor.vue';
 import GenerateButton from '../custom/GenerateButton.vue';
 import MyAccordion from '~/components/custom/MyAccordion.vue';
@@ -424,6 +428,11 @@ import {
   HH_EDUCATION_LAVEL,
   HH_WORK_FORMAT,
   HH_EXPERIENCE_DAYS,
+  HH_SALARY_TYPE,
+  HH_SALARY_FREQUENCY,
+  HH_DRIVER_LICENSE_TYPES,
+  HH_ADDITIONAL_CONDITIONS,
+  HH_BILLING_TYPES,
 } from '@/src/constants'
 import experience from '~/src/data/experience.json'
 import { inject, watch, computed } from 'vue'
@@ -451,18 +460,27 @@ const data = ref({})
 data.value.days = "30"
 data.value.workSpace = []
 data.value.areas = null
-data.value.salary_range = {}
+data.value.salary_range = {
+  from: null,
+  to: null,
+}
 data.value.professional_roles = [null]
 data.value.employment_form = ref(HH_EMPLOYMENT_TYPES[0]);
 data.value.work_schedule_by_days = []
 data.value.schedule = []
 data.value.education_level = ref(null)
 data.value.experience = ref(null)
-data.value.driver_license_types = ref(null)
+data.value.driver_license_types = []
 data.value.experience_days = []
 data.value.has_evening_night_shifts = false
 data.value.address = ref(null)
 data.value.show_metro_only = ref(false)
+data.value.salary_type = ref(HH_SALARY_TYPE[0])
+data.value.salary_frequency = ref(HH_SALARY_FREQUENCY[3])
+data.value.key_skills = ref([])
+data.value.additional_conditions = ref([])
+data.value.response_letter_required = ref({id: '0', name: 'Нет'})
+data.value.billing_types = ref(HH_BILLING_TYPES[0])
 
 
 // Список городов из API hh.ru
@@ -625,6 +643,22 @@ const workingHoursOptions = computed(() => {
   }))
 })
 
+// Преобразование HH_DRIVER_LICENSE_TYPES для MultiSelect (id -> value)
+const driverLicenseOptions = computed(() => {
+  return HH_DRIVER_LICENSE_TYPES.map(hours => ({
+    ...hours,
+    value: hours.id
+  }))
+})
+
+// Преобразование HH_ADDITIONAL_CONDITIONS для DropDownTypes (id -> value)
+const additionalConditionsOptions = computed(() => {
+  return HH_ADDITIONAL_CONDITIONS.map(condition => ({
+    ...condition,
+    value: condition.id
+  }))
+})
+
 const selectedCard = ref(null)
 const hoveredCard = ref(null)
 
@@ -686,21 +720,21 @@ const changePlatform = (value) => {
 }
 
 const updateEvent = (event, property, data) => {
-  console.log('event', event, property, data)
+  // console.log('event', event, property, data)
   // data.value[property] = event
 }
 
-const updateTags = (el) => {
+const updateSkills = (el) => {
   if (el.length > 0) {
     const phrases = []
     el.forEach((item, key) => {
-      phrases.push(item.id)
+      phrases.push({name: item.name})
     })
-    data.value.phrases = phrases
+    data.value.key_skills = phrases
 
   } else {
-    if (data.value.phrases)
-        delete data.value.phrases
+    if (data.value.key_skills)
+        delete data.value.key_skills
     }
 }
 
