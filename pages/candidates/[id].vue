@@ -7,6 +7,8 @@
   import BlockCandidateTabsInfo from '@/components/custom/page-parts/candidate/BlockCandidateTabsInfo.vue';
 
   import type { ApiResponseById, Candidate } from '@/types/candidates';
+  import type { Stage } from '@/types/funnels';
+  import { getFunnelStages } from '@/src/api/funnels';
   // import type { SelectedLabel } from '@/types/ui-components';
 
   // get current route from candidateFull
@@ -16,6 +18,7 @@
   const candidate = ref<Candidate | null>(null);
   const candidateExtra = ref<ApiResponseById['candidateExtra'] | null>(null);
   const loading = ref(true);
+  const stages = ref<Stage[] | []>([]);
 
   const selectedLabel = ref<string>('Подумать');
 
@@ -100,6 +103,7 @@
 
   onMounted(async () => {
     await loadCandidate(parseInt(getCandidateId()));
+    stages.value = await getFunnelStages();
   });
 </script>
 
@@ -154,6 +158,7 @@
       <BlockCandidateInfo
         :candidate="candidate"
         :isFunnel="false"
+        :stages="stages"
         @candidate-updated="handleCandidateUpdated"
         @candidate-deleted="handleCandidateDeleted"
       />

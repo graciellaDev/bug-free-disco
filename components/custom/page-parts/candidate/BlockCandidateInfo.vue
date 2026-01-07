@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, onMounted, toRef, watch } from 'vue';
-  import { getVacancyName } from '@/src/api/vacancies';
+  import { getVacancyById } from '@/src/api/vacancies';
   import { usePopups } from '@/composables/usePopup';
   import { normalizeUsername } from '@/helpers/messengers';
   import CandidateInfoHeader from './CandidateInfoHeader.vue';
@@ -8,32 +8,45 @@
   import CandidateEmailPopup from './popups/CandidateEmailPopup.vue';
   import CandidateInfoContent from './CandidateInfoContent.vue';
   import CandidateDeletePopup from './popups/CandidateDeletePopup.vue';
-  import CandidateMoveToVacancyPopup from './popups/CandidateMoveToVacancyPopup.vue';
+  import CandidateTransferToVacancyPopup from './popups/CandidateTransferToVacancyPopup.vue';
+  import CandidateRemoveFromVacancyPopup from './popups/CandidateRemoveFromVacancyPopup.vue';
+  import CandidateRefusePopup from './popups/CandidateRefusePopup.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import { updateCandidate } from '@/src/api/candidates';
+  import { createCandidate, updateCandidate } from '@/src/api/candidates';
 
-  import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
+  import type {
+    Candidate,
+    CandidateCreateRequest,
+    CandidateUpdateRequest,
+  } from '@/types/candidates';
   import type { Stage } from '@/types/funnels';
-  import { getFunnelStages } from '@/src/api/funnels';
+  import type { Vacancy, TransferMode } from '@/types/vacancy';
 
   const props = defineProps<{
     candidate: Candidate;
+    stages: Stage[] | [];
     isFunnel: boolean;
+    vacancy?: Vacancy | null;
   }>();
 
   const emit = defineEmits<{
     'candidate-updated': [candidate: Candidate];
+    'candidate-moved': [candidate: Candidate];
     'candidate-deleted': [id: number];
     'update:selectedLabel': [label: string];
   }>();
 
   const vacancyName = ref<string>('');
+  const vacancy = ref<Vacancy | null>(null);
 
   const selectedLabel = ref<string>('');
   const candidateEditForm = ref<Record<string, any>>({});
-  const stages = ref<Stage[] | null>(null);
+
   const options = ref<string[]>([]);
+
+  const transferPopupMode = ref<TransferMode>('move');
+  const isTransferPopupOpen = ref(false);
 
   const popups = usePopups({
     deleteCandidate: {
@@ -56,15 +69,20 @@
         // console.log('Попап отправки почты закрыт');
       },
     },
-    moveToVacancy: {
+    removeFromVacancy: {
       manageBodyScroll: true,
       onClose: () => {
-        // console.log('Попап переноса кандидата в другую вакансию закрыт');
+        // console.log('Попап удаления кандидата из вакансии закрыт');
+      },
+    },
+    refuseCandidate: {
+      manageBodyScroll: true,
+      onClose: () => {
+        // console.log('Попап отказа кандидату закрыт');
       },
     },
   });
 
-  // Открытие попапа удаления
   const handleDeleteCandidate = () => {
     popups.deleteCandidate.open();
   };
@@ -92,7 +110,67 @@
   };
 
   const handleMoveToVacancy = () => {
-    popups.moveToVacancy.open();
+    transferPopupMode.value = 'move';
+    isTransferPopupOpen.value = true;
+  };
+
+  const handleCopyToVacancy = () => {
+    transferPopupMode.value = 'copy';
+    isTransferPopupOpen.value = true;
+  };
+
+  const handleTransferPopupClose = () => {
+    isTransferPopupOpen.value = false;
+  };
+
+  const handleRemoveFromVacancy = () => {
+    popups.removeFromVacancy.open();
+  };
+
+  const handleRefuseCandidate = async (data: {
+    sendEmail: boolean;
+    subject?: string;
+    body?: string;
+  }) => {
+    if (!props.stages || !props.candidate) {
+      console.error('[handkeRefuseCandidate] Недостаточно данных');
+      return;
+    }
+
+    const rejectedStage = props.stages.find(
+      stage => stage.name === 'Отклоненные' || stage.id === 3
+    );
+    if (!rejectedStage) {
+      console.error('[handkeRefuseCandidate] Этап "Отклонённые" не найден');
+      return;
+    }
+
+    try {
+      const updateData: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        stage: rejectedStage.id,
+      };
+
+      const updated = await updateCandidate(updateData);
+      emit('candidate-moved', updated.data);
+
+      if (data.sendEmail && data.subject && data.body) {
+        sendEmail({
+          subject: data.subject,
+          body: data.body,
+        });
+      }
+
+      popups.refuseCandidate.close();
+    } catch (err) {
+      console.error(
+        '[handleRefuseCandidate] Ошибка при отказе кандидату:',
+        err
+      );
+    }
   };
 
   const candidateActions = useCandidateActions(
@@ -118,6 +196,7 @@
     'Файл резюме',
     'Переместить в вакансию',
     'Копировать в вакансию',
+    ...(props.candidate?.vacancy_id ? ['Открепить от вакансии'] : []),
     'Отправить сообщение',
     'Отправить на оценку {-}',
     'Удалить',
@@ -128,16 +207,6 @@
     try {
       await handleDelete();
     } catch (error) {}
-  };
-
-  //  Обработчик отправки формы редактирования
-  const handleFormSubmit = async (formData: Record<string, any>) => {
-    await handleUpdate(formData, () => popups.editCandidate.isOpen.value);
-  };
-
-  //  Отмена редактирования
-  const handleFormCancel = () => {
-    popups.editCandidate.close();
   };
 
   //  Отправка письма кандидату
@@ -151,6 +220,9 @@
     onDelete: () => handleDeleteCandidate(),
     onEmail: () => popups.mailToCandidate.open(),
     onMoveToVacancy: () => handleMoveToVacancy(),
+    onRemoveFromVacancy: () => handleRemoveFromVacancy(),
+    onCopyToVacancy: () => handleCopyToVacancy(),
+    onRefuse: () => popups.refuseCandidate.open(),
   });
 
   const handleConfirmMove = async (vacancyId: number) => {
@@ -163,9 +235,9 @@
         vacancy_id: vacancyId,
       };
       const updated = await updateCandidate(movedCandidate);
-      emit('candidate-updated', updated.data);
+      emit('candidate-moved', updated.data);
 
-      popups.moveToVacancy.close();
+      // popups.moveToVacancy.close();
       // TODO: Сообщение об успехе при необходимости
     } catch (err) {
       console.error(
@@ -175,13 +247,76 @@
     }
   };
 
+  const handleConfirmCopy = async (vacancyId: number) => {
+    console.log('Обработчик копирования кандидата');
+    try {
+      // Подготовка данных для создания нового кандидата
+      // const candidateData: CandidateCreateRequest = {
+      //   firstname: props.candidate.firstname || '',
+      //   surname: props.candidate.surname,
+      //   patronymic: props.candidate.patronymic,
+      //   email: props.candidate.email,
+      //   phone: props.candidate.phone,
+      //   vacancy_id: vacancyId,
+      //   age: props.candidate.age,
+      //   location: props.candidate.location,
+      //   quickInfo: props.candidate.quickInfo,
+      //   education: props.candidate.education,
+      //   link: props.candidate.link,
+      //   experience: props.candidate.experience,
+      //   telegram: props.candidate.telegram,
+      //   skype: props.candidate.skype,
+      //   imagePath: props.candidate.imagePath,
+      //   isPng: props.candidate.isPng,
+      //   resume: props.candidate.resume,
+      //   resumePath: props.candidate.resumePath,
+      //   coverPath: props.candidate.coverPath,
+      //   stage_id: 1, // начальный этап для новой вакансии
+      //   // Копирование связей (если нужно)
+      //   skills: props.candidate.skills?.map(s => s.id) || [],
+      //   tags: Array.isArray(props.candidate.tags)
+      //     ? props.candidate.tags.filter((t): t is number => typeof t === 'number')
+      //     : [],
+      //   // attachments и customFields требуют особой обработки
+      // };
+      //   const response = await createCandidate(candidateData);
+      //   if (response?.data) {
+      //     // Обновить список кандидатов (через emit или refetch)
+      //     emit('candidate-updated', response.data); // или новый emit 'candidate-copied'
+      //     popups.copyToVacancy.close();
+      //   }
+    } catch (err) {
+      console.error('[handleConfirmCopy] Ошибка при копировании:', err);
+    }
+  };
+
+  const handleTransferCandidateConfirm = async (vaccancyId: number) => {
+    if (transferPopupMode.value === 'move') {
+      await handleConfirmMove(vaccancyId);
+    } else {
+      await handleConfirmCopy(vaccancyId);
+    }
+
+    handleTransferPopupClose();
+  };
+
+  //  Обработчик отправки формы редактирования
+  const handleFormSubmit = async (formData: Record<string, any>) => {
+    await handleUpdate(formData, () => popups.editCandidate.isOpen.value);
+  };
+
+  //  Отмена редактирования
+  const handleFormCancel = () => {
+    popups.editCandidate.close();
+  };
+
   const handleConfirmTransfer = async (stageName: string) => {
-    if (!stages.value || !props.candidate) {
+    if (!props.stages || !props.candidate) {
       console.error('[handleConfirmTransfer] Недостаточно данных для переноса');
       return;
     }
 
-    const targetStage = stages.value.find(stage => stage.name === stageName);
+    const targetStage = props.stages.find(stage => stage.name === stageName);
     if (!targetStage) {
       console.error(`[handleConfirmTransfer] Этап ${stageName} не найден.`);
       return;
@@ -196,10 +331,8 @@
         stage: targetStage.id,
       };
 
-      console.log('upadateData: ', updateData);
-
       const updated = await updateCandidate(updateData);
-      emit('candidate-updated', updated.data);
+      emit('candidate-moved', updated.data);
     } catch (err) {
       console.error(
         '[handleConfirmTransfer] Ошибка при переносе кандидата на другой этап: ',
@@ -208,12 +341,43 @@
     }
   };
 
-  /**
-   * Вычисляет название следующего этапа относительно текущего
-   * @param currentStageId - ID текущего этапа кандидата
-   * @param stagesList - Список всех этапов
-   * @returns Название следующего этапа или пустая строка
-   */
+  const handleConfirmRemove = async () => {
+    try {
+      const updateData: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        vacancy_id: null,
+        stage: 1,
+      };
+
+      const response = await updateCandidate(updateData);
+      if (response && typeof response === 'object' && response.data) {
+        vacancy.value = null;
+        vacancyName.value = 'Вакансия не определена';
+
+        emit('candidate-moved', response.data as Candidate);
+
+        popups.removeFromVacancy.close();
+      }
+    } catch (error: any) {
+      console.error(
+        '[handleConfirmRemove] Ошибка при откреплении от вакансии:',
+        error
+      );
+      const errors = candidateActions.parseServerErrors(error);
+
+      // TODO: Обработка ошибок (показать сообщение пользователю)
+      // Показать ошибку пользователю
+      // Вариант 1: alert (простой)
+      // alert(errors._general || 'Не удалось открепить кандидата от вакансии');
+
+      // Вариант 2: Использовать toast/notification компонент
+      // showNotification('error', errors._general || 'Ошибка при откреплении');
+    }
+  };
+
   const getNextStageName = (
     currentStageId: number | null | undefined,
     stagesList: Stage[]
@@ -243,20 +407,50 @@
   watch(
     () => props.candidate,
     async newCandidate => {
-      if (stages.value && stages.value.length > 0 && newCandidate) {
+      if (props.stages && props.stages.length > 0 && newCandidate) {
         selectedLabel.value = getNextStageName(
           newCandidate.stage,
-          stages.value
+          props.stages
         );
       }
     },
     { immediate: true }
   );
 
+  watch(
+    () => props.vacancy,
+    newVacancy => {
+      if (newVacancy) {
+        vacancy.value = newVacancy;
+        vacancyName.value = newVacancy.name || 'Вакансия не определена';
+      } else if (props.vacancy === null) {
+        vacancy.value = null;
+        vacancyName.value = 'Вакансия не определена';
+      }
+    },
+    { immediate: true }
+  );
+
+  watch(
+    () => props.candidate?.vacancy_id,
+    async newVacancyId => {
+      if (!props.vacancy && newVacancyId) {
+        vacancy.value = await getVacancyById(newVacancyId.toString());
+        vacancyName.value = vacancy.value
+          ? vacancy.value?.name
+          : 'Вакансия не определена';
+      } else if (!props.vacancy && !newVacancyId) {
+        vacancy.value = null;
+        vacancyName.value = 'Вакансия не определена';
+      }
+    },
+    { immediate: true }
+  );
+
   watchEffect(() => {
-    if (stages.value && stages.value.length > 0) {
+    if (props.stages && props.stages.length > 0) {
       options.value = [
-        ...stages.value
+        ...props.stages
           .filter(stage => stage.id !== props.candidate.stage)
           .map(stage => stage.name),
       ];
@@ -264,31 +458,9 @@
       if (props.candidate) {
         selectedLabel.value = getNextStageName(
           props.candidate.stage,
-          stages.value
+          props.stages
         );
       }
-    }
-  });
-
-  onMounted(async () => {
-    if (props.candidate?.vacancy_id) {
-      vacancyName.value = await getVacancyName(props.candidate.vacancy_id);
-    } else {
-      vacancyName.value = 'Вакансия не определена';
-    }
-
-    stages.value = await getFunnelStages();
-    if (stages.value && stages.value.length > 0) {
-      options.value = [
-        ...stages.value
-          .filter(stage => stage.id !== props.candidate.stage)
-          .map(stage => stage.name),
-      ];
-
-      selectedLabel.value = getNextStageName(
-        props.candidate?.stage,
-        stages.value
-      );
     }
   });
 </script>
@@ -339,11 +511,27 @@
       @close="popups.deleteCandidate.close"
       @confirm="confirmDelete"
     />
-    <CandidateMoveToVacancyPopup
-      :isOpen="popups.moveToVacancy.isOpen"
+    <CandidateTransferToVacancyPopup
+      :isOpen="isTransferPopupOpen"
       :candidate="candidate"
-      @close="popups.moveToVacancy.close"
-      @confirm="handleConfirmMove"
+      :mode="transferPopupMode"
+      @confirm="handleTransferCandidateConfirm"
+      @close="handleTransferPopupClose"
+    />
+    <CandidateRemoveFromVacancyPopup
+      v-if="candidate.vacancy_id"
+      :isOpen="popups.removeFromVacancy.isOpen"
+      :candidate="candidate"
+      :vacancyName="vacancyName"
+      @close="popups.removeFromVacancy.close"
+      @confirm="handleConfirmRemove"
+    />
+    <CandidateRefusePopup
+      :isOpen="popups.refuseCandidate.isOpen"
+      :candidateName="`${candidate.firstname || ''} ${candidate.surname || ''}`"
+      :vacancyName="vacancyName"
+      @close="popups.refuseCandidate.close"
+      @submit="handleRefuseCandidate"
     />
   </div>
 </template>

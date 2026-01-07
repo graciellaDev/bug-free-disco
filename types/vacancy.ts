@@ -83,3 +83,5 @@ export interface ApiResponseVacancy {
   message: string;
   data: Vacancy;
 }
+
+export type TransferMode = 'move' | 'copy';

@@ -56,7 +56,7 @@ export interface Candidate {
   stage?: number | null;
   attachments?: AttachmentCandidate[] | null;
   skills?: SkillCandidate[] | null;
-  tags?: TagCandidate[] | null;
+  tags?: TagCandidate[] | number[] | null;
   customFields?: CustomFieldCandidate[] | null;
   created_at?: string;
   updated_at?: string;

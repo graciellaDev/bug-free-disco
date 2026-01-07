@@ -51,7 +51,7 @@
           class="flex pl-2.5 text-sm font-medium text-slate-custom"
           @click="
             ['dateStart', 'dateWork', 'status'].includes(header.key) &&
-              sortBy(header.key)
+            sortBy(header.key)
           "
           :class="{
             'cursor-pointer select-none': [
@@ -1749,7 +1749,7 @@
     loadingItem.value = true;
     try {
       const fullData = await fetchApplicationDetail(vacancy.id);
-      
+
       detailedVacancy.value = fullData.data;
       vacancy.value = detailedVacancy.value;
       if (detailedVacancy.value.status.name == 'На рассмотрении') {
@@ -1793,7 +1793,6 @@
       }
 
       selectedVacancy.value = vacancy; // open popup
-      
     } catch (error) {
       error.value = 'Ошибка загрузки деталей заявки.';
       console.error(error);
