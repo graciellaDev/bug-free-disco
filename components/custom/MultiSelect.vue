@@ -1,12 +1,12 @@
 <template>
   <div class="dropdown-wrapper cursor-pointer relative" ref="dropDown">
-    <div class="dropdown-selected-option relative border border-athens rounded-ten py-9px px-15px bg-athens-gray"
+    <div class="dropdown-selected-option relative border border-athens rounded-ten py-9px pr-30px pl-15px bg-athens-gray"
       @click="toggleDropDown">
       <div>
         <div :class="{
           'text-bali': !selectedOptions.length,
           'text-space': selectedOptions.length
-        }" class="text-sm truncate">
+        }" class="text-sm">
           {{ displayValue }}
         </div>
         <!-- Стрелка -->
@@ -32,7 +32,7 @@
           @click.stop="toggleOptionSelect(option)">
           <label class="flex items-center w-full cursor-pointer">
             <!-- Скрытый чекбокс -->
-            <input type="checkbox" :checked="isSelected(option)" @change="toggleOptionSelect(option)" class="hidden" />
+            <input type="checkbox" :checked="isSelected(option)" class="hidden" @click.stop />
             <!-- Кастомный чекбокс -->
             <div class="w-5 h-5 flex items-center justify-center border rounded-md check-item mr-[6px]" :class="{
               'bg-dodger border-dodger': isSelected(option),
@@ -143,7 +143,6 @@ const toggleOptionSelect = (option) => {
 // Сброс выбора
 const resetSelection = () => {
   selectedOptions.value = []
-  console.log('resetSelection: Cleared selectedOptions')
   emit('update:modelValue', [])
 }
 
@@ -161,11 +160,9 @@ watch(() => props.options, (newOptions) => {
     const validOptions = selectedOptions.value.filter(selected => {
       const selectedValue = getOptionValue(selected)
       const isValid = newOptions.some(opt => getOptionValue(opt) === selectedValue)
-      console.log('Checking option:', { selectedValue, isValid })
       return isValid
     })
     if (validOptions.length !== selectedOptions.value.length) {
-      console.log('watch: updating selectedOptions', { validOptions })
       selectedOptions.value = validOptions
       emit('update:modelValue', validOptions.map(getOptionValue))
     }
@@ -174,7 +171,6 @@ watch(() => props.options, (newOptions) => {
 
 // Синхронизация modelValue → selectedOptions
 watch(() => props.modelValue, (newValue) => {
-  console.log('watch: modelValue changed', { newValue, selectedOptions: selectedOptions.value })
   if (!Array.isArray(newValue)) {
     selectedOptions.value = []
     return
@@ -187,7 +183,6 @@ watch(() => props.modelValue, (newValue) => {
         return option || null
       })
       .filter(val => val !== null)
-    console.log('watch: updated selectedOptions', { selectedOptions: selectedOptions.value })
     const newValues = selectedOptions.value.map(getOptionValue)
     if (JSON.stringify(newValues) !== JSON.stringify(newValue)) {
       emit('update:modelValue', newValues)
@@ -197,7 +192,6 @@ watch(() => props.modelValue, (newValue) => {
 
 // Обработка initialValue
 watch(() => props.initialValue, (newInitial) => {
-  console.log('watch: initialValue changed', { newInitial, selectedOptions: selectedOptions.value })
   if (newInitial.length > 0 && JSON.stringify(newInitial) !== JSON.stringify(selectedOptions.value.map(getOptionValue))) {
     selectedOptions.value = newInitial
       .map(val => {
@@ -205,7 +199,6 @@ watch(() => props.initialValue, (newInitial) => {
         return option || null
       })
       .filter(val => val !== null)
-    console.log('watch: updated selectedOptions from initialValue', { selectedOptions: selectedOptions.value })
     emit('update:modelValue', selectedOptions.value.map(getOptionValue))
   }
 }, { immediate: true })
