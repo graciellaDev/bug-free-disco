@@ -29,7 +29,7 @@
             <div
               class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-10 max-h-400px overflow-y-scroll"
               v-if="isDropDownVisible">
-              <template v-for="(option) in props.options" :key="index">
+              <template v-for="(option) in props.options" :key="option.id">
                 <div
                   class="option font-normal py-13px px-15px hover:bg-athens-gray cursor-pointer first:rounded-t-ten last:rounded-b-ten"
                    @click="toggleOptionSelect(option)">

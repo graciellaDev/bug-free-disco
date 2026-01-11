@@ -120,7 +120,6 @@
       :style="{
         maxWidth: width,
         top: lgSize ? '10%' : 'auto',
-        paddingBottom: lgSize ? '7.86%' : '0',
       }"
     >
       <div

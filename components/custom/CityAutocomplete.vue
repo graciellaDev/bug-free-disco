@@ -7,7 +7,7 @@
       class="bg-athens-gray border text-sm border-athens rounded-ten min-h-10 pl-15px w-full py-[9px] pr-15px"
       :placeholder="isFocused ? '' : placeholder"
       :class="{ focused: isFocused, 'has-value': search || selectedCity }"
-      @focus="handleFocus"
+      @focus="(event) => handleFocus(event)"
       @blur="handleBlur"
       @keydown.esc="closeList"
       @keydown.enter.prevent="selectFirstResult"
@@ -22,7 +22,7 @@
     </button>
     <transition name="slide-fade">
       <ul
-        v-if="filteredCities.length && isOpen && search"
+        v-if="(filteredCities.length && isOpen) || (props.isOpen && isOpen && !search)"
         class="absolute left-0 right-0 max-h-52 overflow-y-auto bg-white z-10 shadow-shadow-droplist rounded-plus border border-athens mt-1"
       >
         <li
@@ -31,11 +31,12 @@
           @mousedown.prevent="selectCity(city)"
           class="text-slate-custom hover:text-space cursor-pointer hover:bg-zumthor py-10px px-15px border-b border-athens last:border-b-0"
         >
-          {{ city.name }}
+          {{ city.name || city.city }}
         </li>
       </ul>
       <div
-        v-else-if="search && isOpen && !filteredCities.length"
+        v-else-if="isOpen && !filteredCities.length"
+        @mousedown.prevent="clearCity"
         class="absolute left-0 right-0 bg-white z-10 shadow-shadow-droplist rounded-plus border border-athens mt-1"
       >
         <div class="text-slate-custom text-sm font-normal py-10px px-15px">
@@ -56,13 +57,17 @@ const props = defineProps({
     default: () => [],
   },
   modelValue: {
-    type: [String, Number, null],
+    type: [String, Number, null, Object],
     default: null,
   },
   placeholder: {
     type: String,
     default: 'Введите название города',
   },
+  isOpen: {
+    type: Boolean,
+    default: false,
+  }
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -70,12 +75,11 @@ const emit = defineEmits(['update:modelValue'])
 const search = ref('')
 const isFocused = ref(false)
 const isOpen = ref(false)
-const inputRef = ref(null)
 const wrapperRef = ref(null)
 const isEditing = ref(false) // Флаг для отслеживания редактирования
 
 const selectedCity = computed(() => {
-  if (!props.modelValue) {
+  if (!props.modelValue && !props.isOpen) {
     return null
   }
   return props.options.find(city => 
@@ -89,23 +93,27 @@ const displayValue = computed(() => {
 })
 
 const filteredCities = computed(() => {
-  if (!search.value) {
+  if (!search.value && !props.isOpen) {
     return []
   }
   
-  const searchLower = search.value.toLowerCase()
+  const searchLower = search.value ? search.value.toLowerCase() : ''
   
   return props.options.filter(city => {
-    const name = city.name ? city.name.toLowerCase() : ''
+    
+    const name = (city.name || city.city).toString().toLowerCase()
     return name.includes(searchLower)
   }).slice(0, 10) // Ограничиваем до 10 результатов
 })
 
-const handleFocus = () => {
+const handleFocus = (event) => {
   isFocused.value = true
+  if (event.target.value) {
+    return
+  }
   // При фокусе показываем название выбранного города для возможности редактирования
   search.value = selectedCity.value ? selectedCity.value.name : ''
-  if (search.value) {
+  if (search.value || props.isOpen) {
     isOpen.value = true
   }
 }
@@ -142,7 +150,8 @@ const handleInput = async (event) => {
     emit('update:modelValue', null)
     isOpen.value = false
   } else {
-    // Если текст изменился и не совпадает с выбранным городом, очищаем выбор
+  
+   // Если текст изменился и не совпадает с выбранным городом, очищаем выбор
     if (selectedCity.value && inputValue !== selectedCity.value.name) {
       emit('update:modelValue', null)
     }
@@ -158,7 +167,7 @@ const handleInput = async (event) => {
 
 const selectCity = async (city) => {
   const cityId = city.id || city.value
-  const cityName = city.name || ''
+  const cityName = city.name || city.city || ''
   emit('update:modelValue', cityId)
   // Ждем обновления DOM и computed свойств
   await nextTick()
