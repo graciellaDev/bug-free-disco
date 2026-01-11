@@ -63,6 +63,7 @@ const addTag = () => {
         } else {
             tags.value = [...tags.value, currentTag.value];
         }
+        emit('enter', tags.value);
     }
     clearInput();
 };
@@ -80,7 +81,7 @@ const removeTag = (index) => {
     emit('delete', tags.value);
 };
 
-const emit = defineEmits(['update:modelValue', 'delete']);
+const emit = defineEmits(['update:modelValue', 'delete', 'enter']);
 
 // Очистка поля ввода
 const clearInput = () => {

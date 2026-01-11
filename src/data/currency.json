@@ -1,17 +1,21 @@
 [
   {
+    "id": "RUR",
     "name": "RUB (рубль)",
     "value": 0
   },
   {
+    "id": "USD",
     "name": "USD (доллар)",
     "value": 1
   },
   {
+    "id": "EUR",
     "name": "EUR (евро)",
     "value": 2
   },
   {
+    "id": "KZT",
     "name": "KZT (тенге)",
     "value": 3
   }
