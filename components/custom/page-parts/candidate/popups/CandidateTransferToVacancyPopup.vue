@@ -112,13 +112,16 @@
         </p>
       </div>
       <div class="mb-35px flex gap-x-15px text-black">
-        <div class="flex w-[50%] flex-col gap-y-15px">
+        <div v-if="mode === 'move'" class="flex w-[50%] flex-col gap-y-15px">
           <p class="font-medium">Из вакансии</p>
           <p class="w-[100%] rounded-ten bg-athens-gray px-11px py-10px">
             {{ vacancyName ? vacancyName : 'Вакансия не определена' }}
           </p>
         </div>
-        <div class="flex w-[50%] flex-col gap-y-15px">
+        <div
+          class="flex flex-col gap-y-15px"
+          :class="mode === 'move' ? 'w-[50%]' : 'w-[100%]'"
+        >
           <p class="font-medium">В вакансию</p>
           <MyDropdown
             :options="
