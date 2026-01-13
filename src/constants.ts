@@ -246,47 +246,31 @@ export const HH_DRIVER_LICENSE_TYPES = [
 ];
 
 export const HH_ADDITIONAL_CONDITIONS = [
-        {
-            "id": "with_address",
-            "name": "Только с адресом"
-        },
-        {
-            "id": "accept_handicapped",
-            "name": "Только доступные для людей с инвалидностью"
-        },
-        {
-            "id": "not_from_agency",
-            "name": "Без вакансий агентств"
-        },
-        {
-            "id": "accept_kids",
-            "name": "Только доступные для соискателей от 14 лет"
-        },
-        {
-            "id": "accredited_it",
-            "name": "Только аккредитованные ИТ-компании"
-        },
-        {
-            "id": "low_performance",
-            "name": "Только вакансии, у которых меньше 10 откликов"
-        },
-        {
-            "id": "internship",
-            "name": "Стажировка"
-        },
-        {
-            "id": "night_shifts",
-            "name": "Вечерние или ночные смены"
-        },
-        {
-            "id": "with_salary",
-            "name": "Указан доход"
-        },
-        {
-            "id": "accept_teens",
-            "name": "Только доступные для соискателей от 16 лет"
-        }
-]
+  {
+    id: "accept_handicapped",
+    name: "Cоискатели с инвалидностью"
+  },
+  {
+    id: "accept_incomplete_resumes",
+    name: "С неполным резюме"
+  },
+  {
+    id: "accept_temporary",
+    name: "Соискатели с временным трудоустройством"
+  },
+  {
+    id: "age_restriction_14",
+    name: "От 14 лет"
+  },
+  {
+    id: "age_restriction_16",
+    name: "От 16 лет"
+  },
+  {
+    id: "auto_response",
+    name: "Кандидаты с автооткликами"
+  },
+];
 
 export const HH_BILLING_TYPES = [
         {
