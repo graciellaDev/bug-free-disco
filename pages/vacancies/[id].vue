@@ -48,10 +48,6 @@
       filter.vacancy_id = vacancy.value.id;
     }
 
-    if (selectedStageId.value !== null) {
-      filter.stage = selectedStageId.value;
-    }
-
     return filter;
   });
 
@@ -133,7 +129,9 @@
     loading: loadingCandidates,
     loadPage: handlePageChange,
     refresh: refreshCandidates,
-  } = useCandidateList(candidateFilter, false);
+    pagination,
+    loadNext,
+  } = useCandidateList(candidateFilter, 'infinite', false);
 
   const {
     candidateFormData,
@@ -182,19 +180,32 @@
       }));
   });
 
-  // const filteredCandidatesList = computed(() => {
-  //   if (!candidatesList.value || !vacancy.value?.id) {
-  //     return [];
-  //   }
+  const filteredCandidatesList = computed(() => {
+    if (!candidatesList.value) {
+      return [];
+    }
 
-  //   return candidatesList.value.filter(
-  //     candidate => candidate.vacancy_id === vacancy.value?.id
-  //   );
-  // });
+    if (selectedStageId.value === null) {
+      return candidatesList.value;
+    }
+
+    return candidatesList.value.filter(
+      candidate => candidate.stage === selectedStageId.value
+    );
+  });
 
   const isInitialLoading = computed(
     () => isLoadingVacancy.value || isLoadingVacancies.value
   );
+
+  const selectedStage = computed(() => {
+    if (selectedStageId.value === null || !stages.value.length) {
+      return null;
+    }
+    return (
+      stages.value.find(stage => stage.id === selectedStageId.value) || null
+    );
+  });
 
   const getVacancyId = (): string => {
     const vacancyId = Array.isArray(route.params.id)
@@ -264,7 +275,7 @@
    * @param movedCandidateId - ID перемещённого кандидата
    */
   const switchToNextCandidate = async (movedCandidateId: number) => {
-    const currentList = candidatesList.value || [];
+    const currentList = filteredCandidatesList.value || [];
 
     // Если список пуст, очищаем выбранного кандидата
     if (currentList.length === 0) {
@@ -339,14 +350,14 @@
   const handleSelectionChange = (newSelected: Record<number, boolean>) => {
     selected.value = newSelected;
 
-    const listToUse = candidatesList.value || [];
+    const listToUse = filteredCandidatesList.value || [];
     allSelected.value =
       listToUse.length > 0 &&
       listToUse.every(candidate => newSelected[candidate.id]);
   };
 
   const handleSelectAll = (isSelected: boolean) => {
-    const listToUse = candidatesList.value || [];
+    const listToUse = filteredCandidatesList.value || [];
     if (!listToUse.length) return;
 
     if (isSelected) {
@@ -440,15 +451,16 @@
     }
   };
 
-  const handleClickAll = () => {
-    handleStageClick(null);
+  const handleClickAll = async () => {
+    selectedStageId.value = null;
+    isActiveAll.value = true;
+
+    await refreshCandidates();
   };
 
   const handleStageClick = (stageId: number | null) => {
     selectedStageId.value = stageId;
     isActiveAll.value = stageId === null;
-
-    // refreshCandidates();
 
     if (selectedCandidate.value) {
       const matchesFilter =
@@ -476,7 +488,7 @@
   });
 
   watch(
-    () => candidatesList.value,
+    () => filteredCandidatesList.value,
     async newCandidates => {
       if (
         newCandidates &&
@@ -584,10 +596,10 @@
       <UiDotsLoader />
     </div>
     <div v-else>
-      <div v-if="candidatesList.length > 0" class="flex gap-x-15px">
+      <div v-if="filteredCandidatesList.length > 0" class="flex gap-x-15px">
         <div class="w-[375px] rounded-sixteen bg-white">
           <CandidateList
-            :candidates="candidatesList || []"
+            :candidates="filteredCandidatesList || []"
             :selected="selected"
             :show-checkboxes="true"
             :all-selected="allSelected"
@@ -616,6 +628,10 @@
       <div v-else-if="vacancy && !loadingCandidates" class="text-center">
         Кандидаты в вакансии
         <strong>{{ vacancy?.name }}</strong>
+        <span v-if="selectedStage && selectedStage.name !== 'Все'">
+          для этапа
+          <strong>{{ selectedStage.name }}</strong>
+        </span>
         не найдены.
       </div>
     </div>

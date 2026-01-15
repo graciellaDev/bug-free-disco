@@ -21,6 +21,7 @@ export async function getCandidates(page = 1, filters?: Record<string, any>) {
     if (filters) {
       Object.assign(queryParams, filters);
     }
+
     const response = await apiGet<ApiCandidatesResponse['data']>(
       '/candidates',
       { ...queryParams }
@@ -107,19 +108,6 @@ export async function updateCandidate(
 export async function deleteCandidate(id: number): Promise<void> {
   await apiDelete(`/candidates/${id}`);
 }
-
-// export async function moveCandidateToVacancy(
-//   vacancyId: number,
-//   candidate: Pick<Candidate, 'id' | 'firstname' | 'email' | 'phone'>
-// ): Promise<CandidateUpdateResponse> {
-//   const updateData: CandidateUpdateRequest = {
-//     firstname: candidate.firstname,
-//     email: candidate.email,
-//     phone: candidate.phone,
-//     vacancy_id: vacancyId,
-//   };
-//   return await apiPut(`/candidates/${candidate.id}`, updateData);
-// }
 
 /**
  * Загружает фотографию кандидата на фронтенд-сервер (Nuxt API route)

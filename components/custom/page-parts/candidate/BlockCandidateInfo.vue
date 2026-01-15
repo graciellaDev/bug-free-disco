@@ -138,7 +138,7 @@
     }
 
     const rejectedStage = props.stages.find(
-      stage => stage.name === 'Отклоненные' || stage.id === 3
+      stage => stage.name === 'Отклоненные' || stage.id === 4
     );
     if (!rejectedStage) {
       console.error('[handkeRefuseCandidate] Этап "Отклонённые" не найден');

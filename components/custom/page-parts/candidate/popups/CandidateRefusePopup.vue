@@ -61,6 +61,17 @@
       }
     }
   );
+
+  watch(
+    () => formData.value.sendEmail,
+    sendEmail => {
+      if (!sendEmail) {
+        formData.value.subject = 'Отказ';
+        formData.value.body = `<strong>Привет, ${props.candidateName}!</strong><br />
+      К сожалению, мы не можем рассмотреть Вашу кандидатуру на вакансию "${props.vacancyName}".`;
+      }
+    }
+  );
 </script>
 
 <template>

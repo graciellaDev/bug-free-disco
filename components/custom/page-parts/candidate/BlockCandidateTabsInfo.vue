@@ -1,7 +1,6 @@
 <script setup lang="ts">
   import { ref } from 'vue';
   import BtnTab from '~/components/custom/BtnTab.vue';
-  import type { Candidate } from '@/types/candidates';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
   import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
   import FileUpload from '~/components/custom/FileUpload.vue';
@@ -11,7 +10,8 @@
   import ChatInput from '~/components/chat/ChatInput.vue';
   import { useForms } from '~/stores/forms';
 
-  // import UiButton from '~/components/ui/UiButton.vue';
+  import type { Candidate } from '@/types/candidates';
+  // import type { TimelineGroup }
 
   const newName = ref('');
   const newEmail = ref('');
@@ -67,7 +67,7 @@
   const dropdownOptions = ['Опция 1', 'Опция 2', 'Опция 3'];
 
   // const timelineGroups = ref<TimelineGroup[]>([]);
-  const timelineGroups = ref([]);
+  // const timelineGroups = ref([]);
 
   const timelineGroups = ref([
     {
