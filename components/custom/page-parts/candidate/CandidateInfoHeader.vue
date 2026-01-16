@@ -3,7 +3,7 @@
   import BtnIcon from '~/components/custom/BtnIcon.vue';
   import MyTooltip from '~/components/custom/MyTooltip.vue';
   import DotsDropdown from '~/components/custom/DotsDropdown.vue';
-  import type { Candidate } from '@/types/candidates';
+  // import type { Candidate } from '@/types/candidates';
 
   const props = defineProps<{
     isFunnel: boolean;

@@ -15,19 +15,21 @@ export function getRefuseFormConfig(sendEmail: boolean): FormConfig {
         label: 'Тема письма',
         type: 'text',
         required: sendEmail,
+        hidden: !sendEmail,
         validation: sendEmail
           ? {
               required: true,
               message: 'Тема письма обязательна для заполнения',
             }
           : undefined,
-        disabled: !sendEmail,
+        // disabled: !sendEmail,
       },
       {
         name: 'body',
         label: 'Содержание письма',
         type: 'custom',
         component: TiptapEditor,
+        hidden: !sendEmail,
         required: sendEmail,
         row: 5,
         validation: sendEmail
@@ -37,7 +39,7 @@ export function getRefuseFormConfig(sendEmail: boolean): FormConfig {
               message: 'Напишите хоть что-нибудь... Не менее 10 символов',
             }
           : undefined,
-        disabled: !sendEmail,
+        // disabled: !sendEmail,
       },
     ],
   };

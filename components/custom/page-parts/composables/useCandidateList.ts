@@ -4,6 +4,7 @@ import type { DataListConfig } from '@/types/data-list';
 
 export function useCandidateList(
   filters?: Ref<Record<string, any>>,
+  mode?: 'pagination' | 'infinite',
   autoLoad?: boolean
 ) {
   const config: DataListConfig<Candidate> = {
@@ -22,7 +23,7 @@ export function useCandidateList(
       };
     },
     fetchParams: filters,
-    mode: 'pagination',
+    mode: mode ? mode : 'pagination',
     autoLoad: true,
   };
 

@@ -24,6 +24,7 @@
     selectedLabel.value = label;
     showDropdown.value = false;
     emit('update:modelValue', label);
+    emit('confirm-transfer', label);
   };
 
   const confirmTransfer = () => {
