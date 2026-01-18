@@ -491,6 +491,7 @@ import {
   getAreas as getAreasHh,
   getAddresses as getAddressesHh
 } from '@/utils/hhAccount'
+import { addDraft as addDraftAvito, getProfile as profileAvito } from '@/utils/avitoAccount'
 import { getVacancy } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
 
@@ -766,6 +767,14 @@ for (let key of platforms.value) {
             // data.value.billing_types = key.types ? key.types[6] : null
             console.log('types - ', key['types'])
           }
+        } else if (key.platform == 'avito') {
+          const profile = await profileAvito()  
+          if (!profile.error) {
+            key.isAuthenticated = true
+            key.data = profile.data.data
+            isPlatforms.value = true
+            console.log('Avito profile - ', profile.data)
+          }
         }
         data.value.platform = key
     }
@@ -854,7 +863,12 @@ const savePublication = async () => {
     return
   }
   statusValidate.value = true
-  if (data.value.additional_conditions.length > 0) {
+  
+  // Определяем текущую платформу
+  const currentPlatform = data.value.platform?.platform || 'hh'
+  
+  // Обработка дополнительных условий (актуально для hh.ru)
+  if (data.value.additional_conditions && data.value.additional_conditions.length > 0) {
     const boolConditions = [
         'accept_handicapped', 
         'accept_incomplete_resumes', 
@@ -880,15 +894,28 @@ const savePublication = async () => {
         }
       }
     });
-    //delete data.value.additional_conditions
-    const response = await addDraftHh(data.value)
-    if (response.error) {
-      status.value = response.error
-    } else {
-      status.value = 'Вакансия успешно опубликована'
-    }
-    console.log('response - ', response);
   }
+  
+  let response;
+  
+  // Выбираем функцию публикации в зависимости от платформы
+  if (currentPlatform === 'avito') {
+    response = await addDraftAvito(data.value)
+  } else if (currentPlatform === 'hh') {
+    response = await addDraftHh(data.value)
+  } else {
+    status.value = `Платформа ${currentPlatform} пока не поддерживается`
+    return
+  }
+  
+  // Обработка результата
+  if (response?.error || response?.errorDraft) {
+    status.value = response.error || response.errorDraft || 'Ошибка при публикации вакансии'
+  } else {
+    status.value = 'Вакансия успешно опубликована'
+  }
+  
+  console.log('response - ', response);
 }
 
 const updateSkills = (el) => {

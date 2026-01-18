@@ -658,3 +658,69 @@ export const getAddresses = async () => {
       return result.value;
     }
 }
+
+/**
+ * Получение количества просмотров вакансии из API hh.ru
+ * @returns Массив городов с id и name
+ */
+export const getVacancyCountViews = async (id: string) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return null;
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+      const response = await $fetch<PlatformHhResponse>(`/hh/publications/${id}/count-visitors`, {
+          baseURL: config.public.apiBase as string, // https://admin.job-ly.ru/api
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${serverToken}`,
+            'X-Auth-User': userToken,
+          },
+      });
+      result.value.data = response.data;
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        handle401Error();
+      } else {
+        result.value.error = err.response?._data?.message || 'Ошибка при получении количества просмотров';
+      }
+    } finally {
+      return result.value;
+    }
+  }
+
+/**
+ * Получение количества просмотров вакансии из API hh.ru
+ * @returns Массив городов с id и name
+ */
+export const getVacancyResponses = async (id: string) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return null;
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+      const response = await $fetch<PlatformHhResponse>(`/hh/vacancy-responses/${id}`, {
+          baseURL: config.public.apiBase as string, // https://admin.job-ly.ru/api
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${serverToken}`,
+            'X-Auth-User': userToken,
+          },
+      });
+      result.value.data = response.data;
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        handle401Error();
+      } else {
+        result.value.error = err.response?._data?.message || 'Ошибка при получении количества просмотров';
+      }
+    } finally {
+      return result.value;
+    }
+}

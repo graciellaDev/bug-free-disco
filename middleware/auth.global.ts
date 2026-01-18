@@ -43,26 +43,38 @@ export default defineNuxtRouteMiddleware(
           error: profileError,
           status,
         } = await getProfile();
-        if (status == 401) {
-          await getServerToken();
+        
+        // Если токен просрочен (401), пытаемся обновить его
+        if (status === 401) {
+          const newServerToken = await getServerToken();
+          
+          // Если не удалось обновить токен, редиректим на авторизацию
+          if (!newServerToken) {
+            if (import.meta.client) {
+              return navigateTo('/auth');
+            }
+            return;
+          }
+          
+          // Проверяем профиль с новым токеном
           const {
-            data: profileUser,
-            error: profileError,
+            data: profileUserUpdate,
+            error: profileErrorUpdate,
             status: statusUpdate,
           } = await getProfile();
-          if (statusUpdate == 401) {
-            if (profileError == 'Unauthorized') {
-              if (import.meta.client) {
-                return navigateTo('/auth');
-              }
-              return;
+          
+          // Если после обновления токена все еще 401, токен пользователя просрочен
+          if (statusUpdate === 401) {
+            if (import.meta.client) {
+              return navigateTo('/auth');
             }
+            return;
           }
-          // Избегаем бесконечного цикла - не делаем редирект на тот же путь во время SSR
-          if (import.meta.client) {
-            return navigateTo({ path: to.path });
-          }
+          
+          // Если токен успешно обновлен и профиль получен, продолжаем выполнение
+          return;
         } else {
+          // Токен валиден, продолжаем выполнение
           return;
         }
       } catch (error: any) {
