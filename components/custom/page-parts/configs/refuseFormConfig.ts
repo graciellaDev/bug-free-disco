@@ -22,6 +22,7 @@ export function getRefuseFormConfig(sendEmail: boolean): FormConfig {
               message: 'Тема письма обязательна для заполнения',
             }
           : undefined,
+        // disabled: !sendEmail,
       },
       {
         name: 'body',
@@ -38,6 +39,7 @@ export function getRefuseFormConfig(sendEmail: boolean): FormConfig {
               message: 'Напишите хоть что-нибудь... Не менее 10 символов',
             }
           : undefined,
+        // disabled: !sendEmail,
       },
     ],
   };
