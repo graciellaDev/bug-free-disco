@@ -248,9 +248,8 @@
   };
 
   const handleConfirmCopy = async (vacancyId: number) => {
-    console.log('Обработчик копирования кандидата');
+    // console.log('Обработчик копирования кандидата');
     try {
-      // Подготовка данных для создания нового кандидата
       const candidateData: CandidateCreateRequest = {
         firstname: props.candidate.firstname || '',
         surname: props.candidate.surname,
