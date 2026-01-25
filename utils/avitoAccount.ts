@@ -126,3 +126,34 @@ export const auth = async () => {
     return result.value;
   }
 };
+
+/**
+ * Отвязка профиля Avito
+ * @returns Результат отвязки
+ */
+export const unlinkProfile = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/auth', {
+      method: 'DELETE',
+      baseURL: config.public.apiBase as string,
+      headers: createAuthHeaders(serverToken, userToken),
+    });
+
+    result.value.data = response;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error(true);
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при отвязке профиля';
+    }
+  } finally {
+    return result.value;
+  }
+};
