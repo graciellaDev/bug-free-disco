@@ -660,7 +660,7 @@ import {
     getAllPublications, 
     getProfile, auth as authHh, 
     unlinkProfile, 
-    publishVacancyToHh, 
+    publishVacancy as publishVacancyToHh, 
     getRoles, 
     getAvailableTypes,
     getVacancyCountViews,
