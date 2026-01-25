@@ -482,16 +482,25 @@ import {
   HH_BILLING_TYPES,
 } from '@/src/constants'
 import experience from '~/src/data/experience.json'
-import { inject, watch, computed } from 'vue'
+import { inject, watch, computed, defineProps } from 'vue'
+
+const props = defineProps({
+  selectedPlatform: {
+    type: String,
+    default: null
+  }
+})
 import { 
   getProfile as profileHh, 
   getAvailableTypes as typesHh, 
   addDraft as addDraftHh,
+  publishVacancy as publishVacancyToHh,
   getRoles as getRolesHh,
   getAreas as getAreasHh,
   getAddresses as getAddressesHh
 } from '@/utils/hhAccount'
 import { addDraft as addDraftAvito, getProfile as profileAvito } from '@/utils/avitoAccount'
+import { getProfile as profileRabota } from '@/utils/rabotaAccount'
 import { getVacancy } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
 
@@ -756,27 +765,79 @@ if (!inject('isPlatforms')) {
       }
 }
 
+// Определяем платформу из props или из inject
+const getPlatformName = (platformName) => {
+  // Преобразуем формат 'hh.ru' в 'hh', 'avito.ru' в 'avito', 'rabota.ru' в 'rabota'
+  if (platformName === 'hh.ru') return 'hh'
+  if (platformName === 'avito.ru') return 'avito'
+  if (platformName === 'rabota.ru') return 'rabota'
+  return platformName
+}
+
 for (let key of platforms.value) {
     if (!isPlatforms.value) {
-        if (key.platform == 'hh') {
-          const profile = await profileHh()  
-          if (!profile.error) {
-            key.isAuthenticated = true
-            key.data = profile.data.data
-            isPlatforms.value = true
-            // data.value.billing_types = key.types ? key.types[6] : null
-            console.log('types - ', key['types'])
+        // Если передан selectedPlatform через props, используем его
+        if (props.selectedPlatform) {
+          const targetPlatform = getPlatformName(props.selectedPlatform)
+          if (key.platform === targetPlatform) {
+            if (key.platform == 'hh') {
+              const profile = await profileHh()  
+              if (!profile.error) {
+                key.isAuthenticated = true
+                key.data = profile.data.data
+                isPlatforms.value = true
+                console.log('types - ', key['types'])
+              }
+            } else if (key.platform == 'avito') {
+              const profile = await profileAvito()  
+              if (!profile.error) {
+                key.isAuthenticated = true
+                key.data = profile.data.data
+                isPlatforms.value = true
+                console.log('Avito profile - ', profile.data)
+              }
+            } else if (key.platform == 'rabota') {
+              const profile = await profileRabota()  
+              if (!profile.error && profile.data) {
+                key.isAuthenticated = true
+                key.data = profile.data.data
+                isPlatforms.value = true
+                console.log('Rabota profile - ', profile.data)
+              }
+            }
+            data.value.platform = key
+            break // Используем найденную платформу
           }
-        } else if (key.platform == 'avito') {
-          const profile = await profileAvito()  
-          if (!profile.error) {
-            key.isAuthenticated = true
-            key.data = profile.data.data
-            isPlatforms.value = true
-            console.log('Avito profile - ', profile.data)
+        } else {
+          // Старая логика, если платформа не передана
+          if (key.platform == 'hh') {
+            const profile = await profileHh()  
+            if (!profile.error) {
+              key.isAuthenticated = true
+              key.data = profile.data.data
+              isPlatforms.value = true
+              // data.value.billing_types = key.types ? key.types[6] : null
+              console.log('types - ', key['types'])
+            }
+          } else if (key.platform == 'avito') {
+            const profile = await profileAvito()  
+            if (!profile.error) {
+              key.isAuthenticated = true
+              key.data = profile.data.data
+              isPlatforms.value = true
+              console.log('Avito profile - ', profile.data)
+            }
+          } else if (key.platform == 'rabota') {
+            const profile = await profileRabota()  
+            if (!profile.error && profile.data) {
+              key.isAuthenticated = true
+              key.data = profile.data.data
+              isPlatforms.value = true
+              console.log('Rabota profile - ', profile.data)
+            }
           }
+          data.value.platform = key
         }
-        data.value.platform = key
     }
 }
 
@@ -897,25 +958,41 @@ const savePublication = async () => {
   }
   
   let response;
-  
-  // Выбираем функцию публикации в зависимости от платформы
+  if (currentPlatform !== 'avito' && currentPlatform !== 'hh' && currentPlatform !== 'rabota') {
+   status.value = `Платформа ${currentPlatform} пока не поддерживается`
+   return
+  }
+  // Выбираем функцию в зависимости от платформы и флага isDraft
   if (currentPlatform === 'avito') {
+    // Для avito.ru пока только создание черновика
     response = await addDraftAvito(data.value)
-  } else if (currentPlatform === 'hh') {
-    response = await addDraftHh(data.value)
-  } else {
-    status.value = `Платформа ${currentPlatform} пока не поддерживается`
-    return
+  } 
+  if (currentPlatform === 'hh') {
+    if (isDraft.value || isDraft.value === 'true'
+    ) {
+      response = await addDraftHh(data.value)
+    } else {
+      response = await publishVacancyToHh(data.value)
+    }
+  }
+  if (currentPlatform === 'rabota') {
+    if (isDraft.value) {
+      response = await addDraftRabota(data.value)
+    } else {
+      response = await publishVacancyToRabota(data.value)
+    }
   }
   
   // Обработка результата
   if (response?.error || response?.errorDraft) {
-    status.value = response.error || response.errorDraft || 'Ошибка при публикации вакансии'
+    status.value = response.error || response.errorDraft || 'Ошибка при сохранении вакансии'
   } else {
-    status.value = 'Вакансия успешно опубликована'
+    if (isDraft.value) {
+      status.value = 'Вакансия успешно сохранена в черновике'
+    } else {
+      status.value = 'Вакансия успешно опубликована'
+    }
   }
-  
-  console.log('response - ', response);
 }
 
 const updateSkills = (el) => {

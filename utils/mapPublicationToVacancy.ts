@@ -347,7 +347,13 @@ export function mapPublicationToVacancy(
   if (currentVacancyId !== undefined) {
     vacancyData.base_id = currentVacancyId;
     console.log(`Добавлен base_id: ${currentVacancyId}`);
+    
+    // Добавляем vacancy_platform_id если есть импортируемая вакансия
+    if (publication.id !== undefined) {
+      vacancyData.vacancy_platform_id = publication.id;
+    }
   }
-  
+
+
   return vacancyData;
 }
