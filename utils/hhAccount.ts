@@ -526,7 +526,7 @@ export const getData = async (url: any) => {
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
-export const publishVacancyToHh = async (draftData: DraftDataHh) => {
+export const publishVacancy = async (data: DraftDataHh) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -534,14 +534,51 @@ export const publishVacancyToHh = async (draftData: DraftDataHh) => {
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });
 
-  try {
-    // Сначала создаем черновик
-    const draftResult = await addDraft(draftData);
-    
-    if (draftResult?.errorDraft) {
-      result.value.error = draftResult.errorDraft;
-      return result.value;
+  const bodyData = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      if (value.length > 0) {
+        if (value[0] !== null) {
+          console.log(`${key}[0][id]` + value[0].id)
+          bodyData.append(`${key}[0][id]`, value[0].id);
+          // for (let index in value[0]) {
+          //     alert(`${key}[0][${index}]` + value[0][index])
+          //     bodyData.append(`${key}[0][${index}]`, value[0][index]);
+          // }
+        }
+      }
+    } else {
+      if (typeof value === 'object' && value !== null) {
+        const objValue = value as Record<string, any>;
+        if (Object.keys(objValue).length > 0) {
+          for (let index in objValue) {
+            console.log('API: ' + `${key}[${index}]` + `${objValue[index]}`);
+            bodyData.append(`${key}[${index}]`, `${objValue[index]}`);
+          }
+        }
+      } else {
+        bodyData.append(key, value as string);
+      }
+
     }
+    // if (key == 'professional_roles' ) {
+    //     bodyData.append('professional_roles[0][id]', data.professional_roles[0].id);
+    // } else {
+    //     bodyData.append(key, value);
+    // }
+  })
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/hh/publication', {
+      method: 'POST',
+      baseURL: config.public.apiBase as string, 
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: bodyData,
+    });
 
     // Если черновик создан успешно, публикуем его
     // TODO: Добавить эндпоинт для публикации, если он есть в API
@@ -556,7 +593,7 @@ export const publishVacancyToHh = async (draftData: DraftDataHh) => {
     //   body: { vacancy_id: draftResult.draft?.id },
     // });
 
-    result.value.data = draftResult.draft;
+    result.value.data = response.data;
   } catch (err: any) {
     if (err.response?.status === 401) {
       handle401Error();

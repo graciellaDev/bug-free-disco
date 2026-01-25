@@ -35,9 +35,9 @@
                   <UiButton
                     :variant="isPlatformAuthenticated(card.name) ? 'action' : 'gray'"
                     size="action"
-                    @click="handlePlatformButtonClick(card.name)"
+                    @click="isPlatformAuthenticated(card.name) ? openPopupNewPublication(card.name) : authPlatform(card.name)"
                   >
-                    {{ isPlatformAuthenticated(card.name) ? 'Подключен' : 'Подключить аккаунт' }}
+                    {{ isPlatformAuthenticated(card.name) ? 'Опубликовать' : 'Подключить аккаунт' }}
                     <!-- <svg-icon
                       v-if="isPlatformAuthenticated(card.name)"
                       name="check-success"
@@ -541,9 +541,9 @@
                     из&nbsp;подключенных профилей
                 </p>
             </div>
-            <UiButton variant="action" size="action" class="font-bold" @click="openPopupNewPublication">
+            <!--<UiButton variant="action" size="action" class="font-bold" @click="openPopupNewPublication">
                 Добавить публикацию
-            </UiButton>
+            </UiButton>-->
             <Popup
                   :isOpen="isOpenPopup"
                   @close="() => (isOpenPopup = false)"
@@ -554,7 +554,7 @@
                   maxHeight
                   :lgSize="true"
             >
-            <AddPublication/>
+            <AddPublication :selectedPlatform="selectedPlatformForPublish"/>
             </Popup>
         </div>
 
@@ -602,23 +602,37 @@
 
             <!-- Тело -->
             <div class="table-body">
-                <div v-for="item in sortedData" :key="item.id" class="table-row">
-                    <div>
-                        <MyCheckbox :id="item.id" :label="''" v-model="selected[item.id]" :emptyLabel="true" />
+                <!-- Прелоадер -->
+                <div v-if="isLoadingPublicationPlatforms" class="flex flex-col items-center justify-center py-60px">
+                    <div class="loader mb-15px"></div>
+                    <p class="text-sm font-normal text-slate-custom">Загрузка размещений...</p>
+                </div>
+                
+                <!-- Список размещений -->
+                <div v-else-if="sortedData.length > 0">
+                    <div v-for="item in sortedData" :key="item.id" class="table-row">
+                        <div>
+                            <MyCheckbox :id="item.id" :label="''" v-model="selected[item.id]" :emptyLabel="true" />
+                        </div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item.title }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item.city }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item?.billing_type?.name ?? 'Стандарт' }}</div>
+                        <div>
+                            <CardIcon icon="hh" :isPng="false" imagePath="" :width="21"
+                              :height="21" class="px-2.5" />
+                        </div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item?.views }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item?.responses }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ dateStringToDots(item.created_at) }}</div>
+                        <div>
+                            <DotsDropdown :items="dropdownOptions" />
+                        </div>
                     </div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.name }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.area.name }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.billing_type?.name ?? 'Стандарт' }}</div>
-                    <div>
-                        <CardIcon icon="hh" :isPng="false" imagePath="" :width="21"
-                          :height="21" class="px-2.5" />
-                    </div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.views }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.responses }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ dateStringToDots(item.published_at) }}</div>
-                    <div>
-                        <DotsDropdown :items="dropdownOptions" />
-                    </div>
+                </div>
+                
+                <!-- Пустое состояние -->
+                <div v-else class="flex flex-col items-center justify-center py-60px">
+                    <p class="text-sm font-normal text-slate-custom">Нет размещений</p>
                 </div>
             </div>
         </div>
@@ -626,7 +640,7 @@
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent, watch, onMounted } from "vue";
+import { ref, computed, defineAsyncComponent, watch, onMounted, nextTick } from "vue";
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdown from '~/components/custom/DotsDropdown.vue';
 import CardIcon from '~/components/custom/CardIcon.vue';
@@ -658,7 +672,7 @@ import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
-import { getVacancy } from '@/utils/getVacancies'
+import { getVacancy, getVacancies } from '@/utils/getVacancies'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
 import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationToVacancy'
@@ -687,12 +701,13 @@ const sortOrder = ref("asc"); // Порядок сортировки
 const sortDirection = ref("asc");
 const isOpenPopup = ref(false);
 const publicationsHh = ref([]);
-const publications = await getPublications()
+const publicationPlatforms = ref([]);
+//const publications = await getPublications()
 const cartStore = useCartStore()
 
-if (publications && !publications.error && !publications.errorRoles) {
-    publicationsHh.value = publications.roles?.items || [];
-}
+// if (publications && !publications.error && !publications.errorRoles) {
+//     publicationsHh.value = publications.roles?.items || [];
+// }
 
 // Статус авторизации платформ
 const platformsAuth = ref({
@@ -736,6 +751,7 @@ const currentVacancyId = route.query.id;
 const isPublishing = ref(false);
 const publishError = ref(null);
 const isLoadingPublishForm = ref(false);
+const isLoadingPublicationPlatforms = ref(false);
 const hhRolesData = ref(null);
 const experienceData = ref(experience);
 const hhBillingTypes = ref([]);
@@ -779,10 +795,34 @@ const isLoadingImport = ref(false);
 const importedPublications = ref([]);
 const importError = ref(null);
 const selectedImportPlatform = ref(null);
-console.log('publicationsHh.value', publicationsHh.value)
+
+// Функция для загрузки вакансий с платформ
+async function loadPublicationPlatforms() {
+    if (!currentVacancyId) {
+        return;
+    }
+    
+    isLoadingPublicationPlatforms.value = true;
+    
+    try {
+        const vacancies = await getVacancies(`filters[baseVacancyId]=${currentVacancyId}`);
+        if (vacancies && vacancies.lastIndexOf) {
+            publicationPlatforms.value = vacancies;
+        }
+    } catch (error) {
+        console.error('Ошибка при загрузке вакансий с платформ:', error);
+    } finally {
+        isLoadingPublicationPlatforms.value = false;
+    }
+}
+
+if (currentVacancyId) {
+    await loadPublicationPlatforms();
+}
+
 const sortedData = computed(() => {
-    if (!sortKey.value) return publicationsHh.value;
-    return [...publicationsHh.value].sort((a, b) => {
+    if (!sortKey.value) return publicationPlatforms.value;
+    return [...publicationPlatforms.value].sort((a, b) => {
         const multiplier = sortOrder.value === "asc" ? 1 : -1;
         if (a[sortKey.value] > b[sortKey.value]) return 1 * multiplier;
         if (a[sortKey.value] < b[sortKey.value]) return -1 * multiplier;
@@ -1112,30 +1152,51 @@ async function openImportPopup(platformName) {
 
         const publications = result?.roles?.items || [];
         
+        if (publications.length === 0) {
+            console.log('Список публикаций пуст для платформы:', platformName);
+            importedPublications.value = [];
+            return;
+        }
+        
         // Получаем platform_id для проверки импортированных вакансий
         const platformId = getPlatformId(platformName);
         
-        // Проверяем каждую публикацию на наличие в БД
-        if (platformId) {
-            const checkPromises = publications.map(async (pub) => {
-                const isImported = await checkVacancyImported(platformId, pub.id);
-                console.log(`Проверка публикации ${pub.id}: isImported = ${isImported}`);
-                return {
-                    ...pub,
-                    isImported: !!isImported // Убеждаемся, что значение булево
-                };
-            });
-            
-            importedPublications.value = await Promise.all(checkPromises);
-            console.log('Импортированные публикации после проверки:', importedPublications.value.map(p => ({ id: p.id, isImported: p.isImported })));
-        } else {
-            // Если не удалось определить platform_id, просто добавляем флаг isImported: false
+        if (!platformId) {
             console.warn('Не удалось определить platform_id для платформы:', platformName);
+            // Если не удалось определить platform_id, просто добавляем флаг isImported: false
             importedPublications.value = publications.map(pub => ({
                 ...pub,
                 isImported: false
             }));
+            return;
         }
+        
+        console.log(`Начинаем проверку импорта для ${publications.length} публикаций платформы ${platformName} (platform_id: ${platformId})`);
+        
+        // Загружаем список вакансий для проверки (если еще не загружен)
+        if (publicationPlatforms.value.length === 0 && currentVacancyId) {
+            await loadPublicationPlatforms();
+        }
+        
+        // Проверяем каждую публикацию на наличие в БД
+        // Используем уже загруженный список publicationPlatforms
+        importedPublications.value = publications.map((pub) => {
+            console.log('pub', pub);
+            const isImported = checkVacancyImported(platformId, pub.id, publicationPlatforms.value);
+            console.log(`Проверка публикации ${pub.id} (${pub.name || 'без названия'}): isImported = ${isImported}`);
+            return {
+                ...pub,
+                isImported: !!isImported // Убеждаемся, что значение булево
+            };
+        });
+        
+        const importedCount = importedPublications.value.filter(p => p.isImported).length;
+        console.log(`Проверка импорта завершена для платформы ${platformName}:`, {
+            total: importedPublications.value.length,
+            imported: importedCount,
+            notImported: importedPublications.value.length - importedCount,
+            details: importedPublications.value.map(p => ({ id: p.id, name: p.name, isImported: p.isImported }))
+        });
     } catch (err) {
         console.error('Ошибка при импорте публикаций:', err);
         importError.value = 'Ошибка при загрузке публикаций';
@@ -1152,83 +1213,94 @@ function closeImportPopup() {
 }
 
 /**
+ * Перепроверка всех публикаций в списке на предмет импорта
+ * Вызывается после успешного импорта для обновления статусов
+ */
+async function recheckImportedPublications() {
+    if (!selectedImportPlatform.value || importedPublications.value.length === 0) {
+        return;
+    }
+    
+    const platformName = selectedImportPlatform.value;
+    const platformId = getPlatformId(platformName);
+    
+    if (!platformId) {
+        console.warn('Не удалось определить platform_id для перепроверки:', platformName);
+        return;
+    }
+    
+    try {
+        // Обновляем список вакансий перед перепроверкой
+        if (currentVacancyId) {
+            await loadPublicationPlatforms();
+        }
+        
+        // Перепроверяем каждую публикацию в списке
+        // Обновляем напрямую свойство isImported для сохранения реактивности Vue
+        // Пропускаем уже помеченные как импортированные, чтобы не сбрасывать флаг
+        importedPublications.value.forEach((pub, index) => {
+            // Если публикация уже помечена как импортированная, пропускаем проверку
+            if (pub.isImported === true) {
+                console.log(`Публикация ${pub.id} уже помечена как импортированная, пропускаем проверку`);
+                return;
+            }
+            
+            const isImported = checkVacancyImported(platformId, pub.id, publicationPlatforms.value);
+            // Обновляем свойство напрямую для сохранения реактивности Vue
+            importedPublications.value[index].isImported = !!isImported;
+        });
+        
+        await nextTick(); // Ждем обновления DOM
+        
+        console.log('Перепроверка публикаций завершена. Обновленные статусы:', 
+            importedPublications.value.map(p => ({ id: p.id, isImported: p.isImported }))
+        );
+    } catch (error) {
+        console.error('Ошибка при перепроверке публикаций:', error);
+    }
+}
+
+/**
  * Проверка, была ли вакансия уже импортирована
  * @param platformId - ID платформы
  * @param vacancyId - ID вакансии на платформе (publication.id)
+ * @param vacanciesList - Список уже загруженных вакансий для проверки (опционально)
  * @returns true если вакансия уже импортирована, false если нет
  */
-async function checkVacancyImported(platformId, vacancyId) {
-    const config = useRuntimeConfig();
-    const authToken = useCookie('auth_token').value;
-    const authUser = useCookie('auth_user').value;
-
-    if (!authToken || !authUser) {
-        console.warn('Токены авторизации отсутствуют');
-        return false;
-    }
-
+function checkVacancyImported(platformId, vacancyId, vacanciesList = null) {
     if (!platformId || !vacancyId) {
         console.warn('Отсутствуют platformId или vacancyId для проверки');
         return false;
     }
 
-    try {
-        // Формируем URL с фильтрами
-        // Пробуем разные варианты фильтров, так как структура может отличаться
-        // Вариант 1: filters[id] может быть ID публикации на платформе
-        const url = `/vacancies/?filters[platforms]=${platformId}&filters[id]=${vacancyId}`;
-        
-        console.log('Проверка импортированной вакансии:', { platformId, vacancyId, url });
-        
-        const response = await $fetch(url, {
-            method: 'GET',
-            baseURL: config.public.apiBase,
-            headers: {
-                Accept: 'application/json',
-                Authorization: `Bearer ${authToken}`,
-                'X-Auth-User': authUser,
-            },
-        });
-
-        console.log('Ответ API при проверке импорта:', response);
-
-        // Проверяем разные варианты структуры ответа
-        let hasData = false;
-        let vacancies = [];
-        
-        // Вариант 1: response.data.data (массив)
-        if (response?.data && Array.isArray(response.data)) {
-            console.log('response.data', response.data);
-            vacancies = response.data;
-            hasData = vacancies.length > 0;
-        }
-        
-        // Если нашли вакансии, проверяем, есть ли среди них та, что связана с данной публикацией
-        // Возможно, нужно проверить дополнительные поля или связи
-        if (hasData) {
-            console.log('Найдены вакансии с platform_id:', platformId, 'Количество:', vacancies.length);
-            console.log('Детали найденных вакансий:', vacancies);
-        }
-
-        console.log('Результат проверки импорта:', { hasData, platformId, vacancyId, foundVacancies: vacancies.length });
-        return hasData;
-    } catch (err) {
-        // Если ошибка 404 или пустой результат - вакансия не импортирована
-        if (err.response?.status === 404) {
-            console.log('Вакансия не найдена (404):', { platformId, vacancyId });
-            return false;
-        }
-        // При других ошибках логируем и возвращаем false
-        console.error('Ошибка при проверке импортированной вакансии:', err);
-        console.error('Детали ошибки:', {
-            status: err.response?.status,
-            statusText: err.response?.statusText,
-            data: err.response?.data,
-            platformId,
-            vacancyId
-        });
+    // Используем переданный список или загруженный список из publicationPlatforms
+    const vacancies = vacanciesList || publicationPlatforms.value;
+    
+    if (!vacancies || !Array.isArray(vacancies) || vacancies.length === 0) {
         return false;
     }
+    
+    const foundVacancy = vacancies.find(vacancy => {
+        // Проверяем разные варианты полей
+        const vacancyPlatformId = vacancy.vacancy_platform_id || vacancy.vacancyPlatformId || vacancy.platform_vacancy_id;
+        
+        // Получаем platform_id из platforms_data[0]
+        const vacPlatformId = vacancy.platforms_data && 
+                             Array.isArray(vacancy.platforms_data) && 
+                             vacancy.platforms_data.length > 0 
+                             ? vacancy.platforms_data[0].platform_id 
+                             : null;
+        
+        // Если нет platform_id в platforms_data, пропускаем эту вакансию
+        if (!vacPlatformId) {
+            return false;
+        }
+
+        return true;
+    });
+
+    
+     return !!foundVacancy;
 }
 
 async function importPublication(publication) {
@@ -1251,6 +1323,7 @@ async function importPublication(publication) {
         
         // Определяем платформу
         const platform = selectedImportPlatform.value || 'hh.ru';
+        console.log('platform', publication);
         
         // Преобразуем данные публикации в формат вакансии
         let vacancyData = mapPublicationToVacancy(
@@ -1301,12 +1374,18 @@ async function importPublication(publication) {
         // Обновляем флаг в списке импортированных публикаций
         const pubIndex = importedPublications.value.findIndex(p => p.id === publication.id);
         if (pubIndex !== -1) {
-            // Используем реактивное обновление через Vue 3
-            importedPublications.value[pubIndex] = {
-                ...importedPublications.value[pubIndex],
-                isImported: true
-            };
-            console.log('Обновлен флаг isImported для публикации:', publication.id);
+            // Явно обновляем свойство для триггера реактивности Vue 3
+            importedPublications.value[pubIndex].isImported = true;
+            // Также обновляем сам объект publication для консистентности
+            publication.isImported = true;
+            console.log('Обновлен флаг isImported для публикации:', publication.id, 'Индекс:', pubIndex);
+            console.log('Проверка флага после обновления:', importedPublications.value[pubIndex].isImported);
+            
+            // Принудительно триггерим реактивность через nextTick
+            await nextTick();
+            console.log('После nextTick - проверка флага:', importedPublications.value[pubIndex].isImported);
+        } else {
+            console.warn('Публикация не найдена в списке для обновления:', publication.id);
         }
         
         // Добавляем публикацию в список активных
@@ -1314,8 +1393,12 @@ async function importPublication(publication) {
             publicationsHh.value.push(publication);
         }
         
-        // Закрываем попап после успешного импорта
-        closeImportPopup();
+        // Перепроверяем все публикации в списке после успешного импорта
+        // Функция recheckImportedPublications пропустит уже помеченные публикации
+        await recheckImportedPublications();
+        
+        // Перезагружаем список вакансий с платформ
+        await loadPublicationPlatforms();
         
     } catch (err) {
         console.error('Ошибка при импорте публикации:', err);
@@ -1559,7 +1642,9 @@ watch(allSelected, (newValue) => {
 
 const dropdownOptions = ["Редактировать текст", "Посмотреть публикацию", "Снять с публикации", "Дублировать публикацию", "Показать отчет по публикации"];
 
-const openPopupNewPublication = () => {
+const openPopupNewPublication = (platformName) => {
+    // Сохраняем выбранную платформу для использования при сабмите
+    selectedPlatformForPublish.value = platformName;
     isOpenPopup.value = true;
 }
 </script>

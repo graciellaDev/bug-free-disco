@@ -157,3 +157,50 @@ export const unlinkProfile = async () => {
     return result.value;
   }
 };
+
+/**
+ * Публикация вакансии на avito.ru
+ * @param draftData - Данные вакансии в формате DraftDataHh
+ * @returns Результат публикации
+ */
+export const publishVacancy = async (draftData: DraftDataHh) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    // Сначала создаем черновик
+    const draftResult = await addDraft(draftData);
+    
+    if (draftResult?.errorDraft) {
+      result.value.error = draftResult.errorDraft;
+      return result.value;
+    }
+
+    // Если черновик создан успешно, публикуем его
+    // TODO: Добавить эндпоинт для публикации, если он есть в API
+    // const publishResponse = await $fetch<PlatformHhResponse>('/hh/vacancies/publish', {
+    //   method: 'POST',
+    //   baseURL: config.public.apiBase as string,
+    //   headers: {
+    //     'Accept': 'application/json',
+    //     'Authorization': `Bearer ${serverToken}`,
+    //     'X-Auth-User': userToken,
+    //   },
+    //   body: { vacancy_id: draftResult.draft?.id },
+    // });
+
+    result.value.data = draftResult.draft;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при публикации вакансии';
+    }
+  } finally {
+    return result.value;
+  }
+}
