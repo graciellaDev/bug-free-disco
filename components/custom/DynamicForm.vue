@@ -324,103 +324,150 @@
       :class="['mb-4', rowFields.length > 1 ? 'flex gap-15px' : '']"
     >
       <!-- Поля в строке -->
-      <div
-        v-for="field in rowFields"
-        :key="field.name"
-        v-show="!field.hidden"
-        :class="[
-          rowFields.length > 1
-            ? field.colSpan
-              ? 'flex-shrink-0 flex-grow-0'
-              : 'flex-1'
-            : 'w-full',
-        ]"
-        :style="getFieldStyle(field, rowFields)"
-      >
-        <!-- Лейбл поля (не показываем для checkbox, т.к. у него свой лейбл) -->
-        <label
-          v-if="field.type !== 'checkbox'"
-          :for="field.name"
-          class="mb-2 block text-sm font-medium text-space"
+      <template v-for="field in rowFields" :key="field.name">
+        <!-- Для кастомных компонентов используем класс для скрытия (сохраняем состояние) -->
+        <div
+          v-if="field.type === 'custom' && field.component"
+          :class="[
+            'field-custom-container',
+            field.hidden ? 'field-hidden' : 'field-visible',
+            rowFields.length > 1
+              ? field.colSpan
+                ? 'flex-shrink-0 flex-grow-0'
+                : 'flex-1'
+              : 'w-full',
+          ]"
+          :style="getFieldStyle(field, rowFields)"
         >
-          {{ field.label }}
-          <span
-            v-if="field.required || field.validation?.required"
-            class="text-red-500"
+          <!-- Лейбл поля -->
+          <label
+            :for="field.name"
+            class="mb-2 block text-sm font-medium text-space"
           >
-            *
+            {{ field.label }}
+            <span
+              v-if="field.required || field.validation?.required"
+              class="text-red-500"
+            >
+              *
+            </span>
+          </label>
+
+          <!-- Кастомный компонент -->
+          <component
+            :is="field.component"
+            :id="field.name"
+            :model-value="formData[field.name]"
+            @update:model-value="(value: any) => (formData[field.name] = value)"
+            @blur="handleFieldBlur(field.name)"
+            :placeholder="field.placeholder"
+            :class="`field-custom-component ${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
+            :disabled="field.disabled || loading"
+            v-bind="field.props || {}"
+          />
+
+          <!-- Сообщение об ошибке -->
+          <span
+            v-if="formErrors[field.name] || serverErrors?.[field.name]"
+            class="mt-1 block text-xs text-red-500"
+          >
+            {{ formErrors[field.name] || serverErrors?.[field.name] }}
           </span>
-        </label>
+        </div>
 
-        <!-- Поле ввода: text, email, tel, number -->
-        <MyInput
-          v-if="['text', 'email', 'tel', 'number'].includes(field.type)"
-          :id="field.name"
-          :model-value="formData[field.name]"
-          @update:model-value="(value: any) => (formData[field.name] = value)"
-          @blur="handleFieldBlur(field.name)"
-          :type="field.type"
-          :placeholder="field.placeholder"
-          :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
-          :readonly="field.disabled || loading"
-        />
+        <!-- Для остальных полей используем стандартную логику с v-if -->
+        <Transition v-else name="field-slide" :duration="300">
+          <div
+            v-if="!field.hidden"
+            :class="[
+              rowFields.length > 1
+                ? field.colSpan
+                  ? 'flex-shrink-0 flex-grow-0'
+                  : 'flex-1'
+                : 'w-full',
+            ]"
+            :style="getFieldStyle(field, rowFields)"
+          >
+            <!-- Лейбл поля (не показываем для checkbox, т.к. у него свой лейбл) -->
+            <label
+              v-if="field.type !== 'checkbox'"
+              :for="field.name"
+              class="mb-2 block text-sm font-medium text-space"
+            >
+              {{ field.label }}
+              <span
+                v-if="field.required || field.validation?.required"
+                class="text-red-500"
+              >
+                *
+              </span>
+            </label>
 
-        <!-- Поле textarea -->
-        <MyTextarea
-          v-else-if="field.type === 'textarea'"
-          :id="field.name"
-          :model-value="formData[field.name]"
-          @update:model-value="(value: any) => (formData[field.name] = value)"
-          @blur="handleFieldBlur(field.name)"
-          :placeholder="field.placeholder"
-          :max-height="field.maxHeight"
-          :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
-        />
+            <!-- Поле ввода: text, email, tel, number -->
+            <MyInput
+              v-if="['text', 'email', 'tel', 'number'].includes(field.type)"
+              :id="field.name"
+              :model-value="formData[field.name]"
+              @update:model-value="
+                (value: any) => (formData[field.name] = value)
+              "
+              @blur="handleFieldBlur(field.name)"
+              :type="field.type"
+              :placeholder="field.placeholder"
+              :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
+              :readonly="field.disabled || loading"
+            />
 
-        <!-- Поле select (dropdown) -->
-        <MyDropdown
-          v-else-if="field.type === 'select'"
-          :id="field.name"
-          :model-value="formData[field.name]"
-          @update:model-value="(value: any) => (formData[field.name] = value)"
-          :options="field.options || []"
-          :placeholder="field.placeholder || 'Выберите значение'"
-          :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
-        />
+            <!-- Поле textarea -->
+            <MyTextarea
+              v-else-if="field.type === 'textarea'"
+              :id="field.name"
+              :model-value="formData[field.name]"
+              @update:model-value="
+                (value: any) => (formData[field.name] = value)
+              "
+              @blur="handleFieldBlur(field.name)"
+              :placeholder="field.placeholder"
+              :max-height="field.maxHeight"
+              :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
+            />
 
-        <!-- Поле checkbox -->
-        <MyCheckbox
-          v-else-if="field.type === 'checkbox'"
-          :id="field.name"
-          :model-value="formData[field.name]"
-          @update:model-value="(value: any) => (formData[field.name] = value)"
-          :label="field.label"
-          :class="field.class"
-          :empty-label="false"
-        />
+            <!-- Поле select (dropdown) -->
+            <MyDropdown
+              v-else-if="field.type === 'select'"
+              :id="field.name"
+              :model-value="formData[field.name]"
+              @update:model-value="
+                (value: any) => (formData[field.name] = value)
+              "
+              :options="field.options || []"
+              :placeholder="field.placeholder || 'Выберите значение'"
+              :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
+            />
 
-        <!-- Кастомный компонент -->
-        <component
-          v-else-if="field.type === 'custom' && field.component"
-          :is="field.component"
-          :id="field.name"
-          :model-value="formData[field.name]"
-          @update:model-value="(value: any) => (formData[field.name] = value)"
-          @blur="handleFieldBlur(field.name)"
-          :placeholder="field.placeholder"
-          :class="`${field.class || ''} ${formErrors[field.name] || serverErrors?.[field.name] ? 'border-red-500' : ''}`"
-          :disabled="field.disabled || loading"
-          v-bind="field.props || {}"
-        />
+            <!-- Поле checkbox -->
+            <MyCheckbox
+              v-else-if="field.type === 'checkbox'"
+              :id="field.name"
+              :model-value="formData[field.name]"
+              @update:model-value="
+                (value: any) => (formData[field.name] = value)
+              "
+              :label="field.label"
+              :class="field.class"
+              :empty-label="false"
+            />
 
-        <!-- Сообщение об ошибке (клиентская валидация или серверная) -->
-        <span
-          v-if="formErrors[field.name] || serverErrors?.[field.name]"
-          class="mt-1 block text-xs text-red-500"
-        >
-          {{ formErrors[field.name] || serverErrors?.[field.name] }}
-        </span>
-      </div>
+            <!-- Сообщение об ошибке (клиентская валидация или серверная) -->
+            <span
+              v-if="formErrors[field.name] || serverErrors?.[field.name]"
+              class="mt-1 block text-xs text-red-500"
+            >
+              {{ formErrors[field.name] || serverErrors?.[field.name] }}
+            </span>
+          </div>
+        </Transition>
+      </template>
     </div>
 
     <!-- Кнопки действий -->
@@ -449,3 +496,104 @@
     </div>
   </form>
 </template>
+
+<style scoped>
+  /* Анимация появления и скрытия полей формы */
+  .field-slide-enter-active {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .field-slide-leave-active {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .field-slide-enter-from {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    margin-bottom: 0;
+  }
+
+  .field-slide-enter-to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+    margin-bottom: 1rem;
+  }
+
+  .field-slide-leave-from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+    margin-bottom: 1rem;
+  }
+
+  .field-slide-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    margin-bottom: 0;
+  }
+
+  /* Анимация для кастомных компонентов (используем классы вместо Transition) */
+  .field-custom-container {
+    transition:
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      margin-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .field-custom-container.field-hidden {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    margin-bottom: 0;
+    pointer-events: none;
+  }
+
+  .field-custom-container.field-visible {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+    margin-bottom: 1rem;
+  }
+
+  /* Синхронное скрытие панели инструментов TiptapEditor */
+  .field-custom-container.field-hidden
+    .field-custom-component
+    :deep(section.buttons) {
+    opacity: 0 !important;
+    transform: translateY(-8px) !important;
+    transition:
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .field-custom-container.field-visible
+    .field-custom-component
+    :deep(section.buttons) {
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .field-custom-container.field-hidden
+    .field-custom-component
+    :deep(.editor-content) {
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .field-custom-container.field-visible
+    .field-custom-component
+    :deep(.editor-content) {
+    opacity: 1;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+</style>

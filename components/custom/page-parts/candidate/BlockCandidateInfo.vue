@@ -251,40 +251,40 @@
     console.log('Обработчик копирования кандидата');
     try {
       // Подготовка данных для создания нового кандидата
-      // const candidateData: CandidateCreateRequest = {
-      //   firstname: props.candidate.firstname || '',
-      //   surname: props.candidate.surname,
-      //   patronymic: props.candidate.patronymic,
-      //   email: props.candidate.email,
-      //   phone: props.candidate.phone,
-      //   vacancy_id: vacancyId,
-      //   age: props.candidate.age,
-      //   location: props.candidate.location,
-      //   quickInfo: props.candidate.quickInfo,
-      //   education: props.candidate.education,
-      //   link: props.candidate.link,
-      //   experience: props.candidate.experience,
-      //   telegram: props.candidate.telegram,
-      //   skype: props.candidate.skype,
-      //   imagePath: props.candidate.imagePath,
-      //   isPng: props.candidate.isPng,
-      //   resume: props.candidate.resume,
-      //   resumePath: props.candidate.resumePath,
-      //   coverPath: props.candidate.coverPath,
-      //   stage_id: 1, // начальный этап для новой вакансии
-      //   // Копирование связей (если нужно)
-      //   skills: props.candidate.skills?.map(s => s.id) || [],
-      //   tags: Array.isArray(props.candidate.tags)
-      //     ? props.candidate.tags.filter((t): t is number => typeof t === 'number')
-      //     : [],
-      //   // attachments и customFields требуют особой обработки
-      // };
-      //   const response = await createCandidate(candidateData);
-      //   if (response?.data) {
-      //     // Обновить список кандидатов (через emit или refetch)
-      //     emit('candidate-updated', response.data); // или новый emit 'candidate-copied'
-      //     popups.copyToVacancy.close();
-      //   }
+      const candidateData: CandidateCreateRequest = {
+        firstname: props.candidate.firstname || '',
+        surname: props.candidate.surname,
+        patronymic: props.candidate.patronymic ? props.candidate.patronymic : undefined ,
+        email: props.candidate.email,
+        phone: props.candidate.phone ? props.candidate.phone : undefined,
+        vacancy_id: vacancyId,
+        age: props.candidate.age,
+        location: props.candidate.location,
+        quickInfo: props.candidate.quickInfo,
+        education: props.candidate.education,
+        link: props.candidate.link,
+        experience: props.candidate.experience ? props.candidate.experience : undefined,
+        telegram: props.candidate.telegram,
+        skype: props.candidate.skype,
+        imagePath: props.candidate.imagePath,
+        isPng: props.candidate.isPng,
+        resume: props.candidate.resume,
+        resumePath: props.candidate.resumePath,
+        coverPath: props.candidate.coverPath,
+        stage_id: 1, // начальный этап для новой вакансии
+        // Копирование связей (если нужно)
+        skills: props.candidate.skills?.map(s => s.id) || [],
+        tags: Array.isArray(props.candidate.tags)
+          ? props.candidate.tags.filter((t): t is number => typeof t === 'number')
+          : [],
+        // attachments и customFields требуют особой обработки
+      };
+        const response = await createCandidate(candidateData);
+        if (response?.data) {
+          // Обновить список кандидатов (через emit или refetch)
+          emit('candidate-updated', response.data); // или новый emit 'candidate-copied'
+          handleTransferPopupClose();
+        }
     } catch (err) {
       console.error('[handleConfirmCopy] Ошибка при копировании:', err);
     }
