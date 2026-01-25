@@ -317,7 +317,7 @@ export function getPlatformId(platformName: string): number | undefined {
  */
 export function mapPublicationToVacancy(
   publication: any,
-  platform: 'hh.ru' | 'avito.ru',
+  platform: 'hh.ru' | 'avito.ru' | 'rabota.ru',
   currentVacancyId?: number,
   platformId?: number
 ): any {
@@ -327,6 +327,9 @@ export function mapPublicationToVacancy(
     vacancyData = mapHhPublicationToVacancy(publication, currentVacancyId);
   } else if (platform === 'avito.ru') {
     vacancyData = mapAvitoPublicationToVacancy(publication, currentVacancyId);
+  } else if (platform === 'rabota.ru') {
+    // rabota.ru имеет такую же структуру данных как hh.ru
+    vacancyData = mapHhPublicationToVacancy(publication, currentVacancyId);
   } else {
     throw new Error(`Маппинг для платформы ${platform} не поддерживается`);
   }
@@ -337,7 +340,7 @@ export function mapPublicationToVacancy(
     vacancyData.platform_id = finalPlatformId;
     console.log(`Добавлен platform_id: ${finalPlatformId} для платформы: ${platform}`);
   } else {
-    console.warn(`Не удалось определить platform_id для платформы: ${platform}. Доступные платформы: hh.ru, avito.ru`);
+    console.warn(`Не удалось определить platform_id для платформы: ${platform}. Доступные платформы: hh.ru, avito.ru, rabota.ru`);
   }
   
   // Добавляем base_id (base_vacancy_id) если есть текущая вакансия

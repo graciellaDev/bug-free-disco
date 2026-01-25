@@ -208,6 +208,12 @@
     //     errorAuthPlatform.value = 'Пожалуйста, введите данные авторизации';
     //     return;
     // }
+    
+    // Сохраняем текущий URL для возврата после авторизации
+    const currentRoute = useRoute();
+    const returnUrl = currentRoute.fullPath; // Сохраняем полный путь с query параметрами
+    setCookie('auth_return_url', returnUrl, 1);
+    
     if (platform == 'hh') {
       const config = useRuntimeConfig();
       const tokenCookie = useCookie('auth_user');
@@ -348,18 +354,33 @@ onBeforeMount(async () => {
 
 onMounted(async () => {
     const query = useRoute().query
+    const returnUrlCookie = useCookie('auth_return_url')
+    let shouldRedirect = false
+    let redirectUrl = null
+    
     if (query.popup_account === 'true' && query.platform == 'hh' && query.message === 'success') {
         const hhId = useCookie('process_auth')
         if (hhId != undefined && hhId.value) {
             const response = await authHh()
             if (!error) {
-                window.location.href = response.data.url_auth
                 platforms[0].isAuthenticated = true
                 platforms[0].data = response.data
+                shouldRedirect = true
             } else {
                 errorAuthPlatform.value = error
             }
         }
+    }
+    
+    // Редирект на исходную страницу, если была сохранена
+    if (shouldRedirect && returnUrlCookie.value) {
+        redirectUrl = returnUrlCookie.value
+        // Очищаем cookie
+        returnUrlCookie.value = null
+        // Удаляем cookie через setCookie с прошедшей датой
+        setCookie('auth_return_url', '', -1)
+        // Редирект на исходную страницу
+        await navigateTo(redirectUrl)
     }
 })
 </script>

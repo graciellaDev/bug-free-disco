@@ -652,7 +652,8 @@ import {
     getVacancyCountViews,
     getVacancyResponses
 } from "~/utils/hhAccount";
-import { getProfile as getProfileAvito, auth as authAvito } from "~/utils/avitoAccount";
+import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito } from "~/utils/avitoAccount";
+import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota } from "~/utils/rabotaAccount";
 import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
@@ -799,6 +800,11 @@ function setCookie(name, value, days) {
 async function authPlatform(platformName) {
     authError.value[platformName] = null;
 
+    // Сохраняем текущий URL для возврата после авторизации
+    const currentRoute = useRoute();
+    const returnUrl = currentRoute.fullPath; // Сохраняем полный путь с query параметрами
+    setCookie('auth_return_url', returnUrl, 1);
+
     if (platformName === 'hh.ru') {
         const config = useRuntimeConfig();
         const tokenCookie = useCookie('auth_user');
@@ -809,6 +815,11 @@ async function authPlatform(platformName) {
         const tokenCookie = useCookie('auth_user');
         setCookie('process_auth', 'true', 1);
         window.location.href = config.public.apiBase + `/code-avito?customerToken=${tokenCookie.value}`;
+    } else if (platformName === 'rabota.ru') {
+        const config = useRuntimeConfig();
+        const tokenCookie = useCookie('auth_user');
+        setCookie('process_auth', 'true', 1);
+        window.location.href = config.public.apiBase + `/code-rabota?customerToken=${tokenCookie.value}`;
     } else {
         authError.value[platformName] = `Платформа ${platformName} пока не поддерживается`;
     }
@@ -1079,10 +1090,17 @@ async function openImportPopup(platformName) {
     isLoadingImport.value = true;
 
     try {
-        // Для hh.ru загружаем и активные, и архивные публикации
+        // Для hh.ru и rabota.ru загружаем и активные, и архивные публикации
         let result;
         if (platformName === 'hh.ru') {
             result = await getAllPublications();
+        } else if (platformName === 'rabota.ru') {
+            result = await getAllPublicationsRabota();
+        } else if (platformName === 'avito.ru') {
+            // Для avito.ru пока используем общий подход или показываем сообщение
+            importError.value = `Импорт публикаций для платформы ${platformName} пока не поддерживается`;
+            isLoadingImport.value = false;
+            return;
         } else {
             result = await getPublications();
         }
@@ -1326,7 +1344,20 @@ async function confirmUnlink() {
     unlinkError.value = null;
 
     try {
-        const result = await unlinkProfile();
+        let result;
+        
+        // Выбираем функцию отвязки в зависимости от платформы
+        if (platformToUnlink.value === 'hh.ru') {
+            result = await unlinkProfile();
+        } else if (platformToUnlink.value === 'avito.ru') {
+            result = await unlinkProfileAvito();
+        } else if (platformToUnlink.value === 'rabota.ru') {
+            result = await unlinkProfileRabota();
+        } else {
+            unlinkError.value = `Отвязка профиля для платформы ${platformToUnlink.value} пока не поддерживается`;
+            isUnlinking.value = false;
+            return;
+        }
 
         if (result?.error) {
             unlinkError.value = result.error;
@@ -1351,25 +1382,38 @@ onMounted(async () => {
     ])
 
     // Проверяем авторизацию hh.ru
-    const { data, error } = await getProfile();
-    if (!error && data) {
+    const hhProfile = await getProfile();
+    if (hhProfile && !hhProfile.error && hhProfile.data) {
         platformsAuth.value['hh.ru'] = true;
     }
 
     // Проверяем авторизацию avito.ru
-    const { data: avitoData, error: avitoError } = await getProfileAvito();
-    if (!avitoError && avitoData) {
+    const avitoProfile = await getProfileAvito();
+    console.log('avitoProfile', avitoProfile);
+    if (avitoProfile && !avitoProfile.error && avitoProfile.data) {
         platformsAuth.value['avito.ru'] = true;
     }
 
-    // Обработка редиректа после авторизации hh.ru
+    // Проверяем авторизацию rabota.ru
+    const rabotaProfile = await getProfileRabota();
+    console.log('rabotaProfile', rabotaProfile);
+    if (rabotaProfile && !rabotaProfile.error && rabotaProfile.data) {
+        platformsAuth.value['rabota.ru'] = true;
+    }
+
+    // Обработка редиректа после авторизации
     const query = useRoute().query;
+    const returnUrlCookie = useCookie('auth_return_url');
+    let shouldRedirect = false;
+    let redirectUrl = null;
+
     if (query.popup_account === 'true' && query.platform === 'hh' && query.message === 'success') {
         const processAuth = useCookie('process_auth');
         if (processAuth.value) {
             const response = await authHh();
             if (response && response.data) {
                 platformsAuth.value['hh.ru'] = true;
+                shouldRedirect = true;
             }
         }
     }
@@ -1381,8 +1425,32 @@ onMounted(async () => {
             const response = await authAvito();
             if (response && response.data) {
                 platformsAuth.value['avito.ru'] = true;
+                shouldRedirect = true;
             }
         }
+    }
+
+    // Обработка редиректа после авторизации rabota.ru
+    if (query.popup_account === 'true' && query.platform === 'rabota' && query.message === 'success') {
+        const processAuth = useCookie('process_auth');
+        if (processAuth.value) {
+            const response = await authRabota();
+            if (response && response.data) {
+                platformsAuth.value['rabota.ru'] = true;
+                shouldRedirect = true;
+            }
+        }
+    }
+
+    // Редирект на исходную страницу, если была сохранена
+    if (shouldRedirect && returnUrlCookie.value) {
+        redirectUrl = returnUrlCookie.value;
+        // Очищаем cookie
+        returnUrlCookie.value = null;
+        // Удаляем cookie через setCookie с прошедшей датой
+        setCookie('auth_return_url', '', -1);
+        // Редирект на исходную страницу
+        await navigateTo(redirectUrl);
     }
   })
 
