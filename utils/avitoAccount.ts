@@ -103,7 +103,7 @@ export const getProfile = async () => {
 export const auth = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
-    return null;
+    return { data: null, error: 'Токен авторизации не найден' };
   }
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });
@@ -117,8 +117,16 @@ export const auth = async () => {
 
     result.value.data = response;
   } catch (err: any) {
+    // Улучшенная обработка ошибок
     if (err.response?.status === 401) {
       handle401Error(true);
+      result.value.error = 'Требуется повторная авторизация';
+    } else if (err.response?.status === 400) {
+      // Ошибка валидации (возможно, неправильный код авторизации или redirect_uri)
+      result.value.error = err.response?._data?.message || 'Ошибка валидации авторизации. Проверьте redirect_uri и параметры запроса';
+    } else if (err.response?.status === 403) {
+      // Доступ запрещен (возможно, неправильный client_id или scope)
+      result.value.error = err.response?._data?.message || 'Доступ запрещен. Проверьте client_id и разрешения приложения';
     } else {
       result.value.error = err.response?._data?.message || 'Ошибка при авторизации на Avito';
     }
