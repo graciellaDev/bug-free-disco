@@ -52,7 +52,7 @@
               Выберите специализацию
             </p>
             <DropDownRoles
-            :options="data.industry?.roles || []"
+            :options="professionsOptions"
             :selected="data.professional_roles[0]"
             v-model="data.professional_roles[0]"
             @update:model-value="($event) => handleIdUpdate('professional_roles', $event)"
@@ -69,8 +69,8 @@
                 Опыт работы
               </p>
               <DropDownTypes 
-              :options=experience
-              :selected="findValue(experience, globCurrentVacancy?.experience)"
+              :options=experienceOptions
+              :selected="findValue(experienceOptions, globCurrentVacancy?.experience)"
               v-model="data.experience"
               @update:model-value="($event) => handleIdUpdate('experience', $event)"
               ></DropDownTypes>
@@ -91,8 +91,8 @@
               Тип занятости
             </p>
             <DropDownTypes 
-            :options=HH_EMPLOYMENT_TYPES
-            :selected="findValue(HH_EMPLOYMENT_TYPES, globCurrentVacancy?.employment) || HH_EMPLOYMENT_TYPES[0]"
+            :options=employmentTypesOptions
+            :selected="findValue(employmentTypesOptions, globCurrentVacancy?.employment) || employmentTypesOptions[0]"
             v-model="data.employment_form"
             @update:model-value="($event) => handleIdUpdate('employment_form', $event)"
             ></DropDownTypes>
@@ -310,10 +310,17 @@
           <div class="mt-15px mb-25px">
           <TiptapEditor 
             v-model="data.description" 
-            class="mb-15px" 
+            class="mb-15px"
+            @update:model-value="($event) => updateDescriptionValidation($event)"
           />
-          <p class="text-xs text-bali font-normal">
-            Максимум 700 символов. Использовано 0 символов.
+          <p 
+            class="text-xs font-normal"
+            :class="descriptionLength < 200 ? 'text-red-custom' : 'text-bali'"
+          >
+            Минимум 200 символов. Максимум 700 символов. Использовано {{ descriptionLength }} символов.
+            <span v-if="descriptionLength < 200" class="text-red-custom font-medium">
+              (Требуется еще {{ 200 - descriptionLength }} символов)
+            </span>
           </p>
         </div>
         <div class="flex gap-25px">
@@ -413,11 +420,36 @@
           </div>
         </div>
         <div class="w-full justify-start flex gap-25px mb-6">
-            <DropDownTypes 
-            :options=HH_BILLING_TYPES
-            :selected="data.billing_types"
-            v-model="data.billing_types"
-            ></DropDownTypes>
+           <template v-if="currentPlatform === 'hh' && tariffsOptions.length > 0">
+              <DropDownTypes 
+                :options="tariffsOptions"
+                :selected="tariffsOptions[0]"
+                placeholder="Выберите тариф"
+                @update:model-value="($event) => handleTariffUpdate($event)"
+              ></DropDownTypes>
+            </template>
+            <template v-else-if="currentPlatform === 'hh'">
+              <DropDownTypes 
+                :options="HH_BILLING_TYPES"
+                :selected="data.billing_types"
+                placeholder="Выберите тариф"
+                v-model="data.billing_types"
+              ></DropDownTypes>
+            </template>
+            <!-- <template v-if="data.platform?.platform === 'hh' && tariffsOptions.length > 0">
+              <DropDownTypes 
+                :options="tariffsOptions"
+                :selected="selectedTariff"
+                @update:model-value="($event) => handleTariffUpdate($event)"
+              ></DropDownTypes>
+            </template>
+            <template v-else>
+              <DropDownTypes 
+                :options=HH_BILLING_TYPES
+                :selected="data.billing_types"
+                v-model="data.billing_types"
+              ></DropDownTypes>
+            </template> -->
             <UiButton @click="savePublication" variant="action" size="semiaction" class="font-semibold">
               Опубликовать
             </UiButton>
@@ -434,14 +466,18 @@
           </p>
           <div class="grid grid-cols-2 gap-5px">
             <template v-for="(field, key) in validFields" :key="key">
-              <a 
-                :href="`#${key}`" 
-                v-if="field.status === false"
-                @click.prevent="scrollToElement(key)"
-                class="text-red-custom hover:text-red-custom-hover underline cursor-pointer"
-              >
-                {{ field.name }}
-              </a>
+              <div v-if="field.status === false" class="flex flex-col">
+                <a 
+                  :href="`#${key}`" 
+                  @click.prevent="scrollToElement(key)"
+                  class="text-red-custom hover:text-red-custom-hover underline cursor-pointer"
+                >
+                  {{ field.name }}
+                </a>
+                <span v-if="field.error" class="text-xs text-red-custom mt-1">
+                  {{ field.error }}
+                </span>
+              </div>
             </template>
           </div>
         </div>
@@ -497,10 +533,21 @@ import {
   publishVacancy as publishVacancyToHh,
   getRoles as getRolesHh,
   getAreas as getAreasHh,
-  getAddresses as getAddressesHh
+  getAddresses as getAddressesHh,
+  getAvailablePublications as getAvailablePublicationsHh
 } from '@/utils/hhAccount'
 import { addDraft as addDraftAvito, getProfile as profileAvito } from '@/utils/avitoAccount'
-import { getProfile as profileRabota } from '@/utils/rabotaAccount'
+import { 
+  getProfile as profileRabota, 
+  addDraft as addDraftRabota, 
+  publishVacancy as publishVacancyToRabota,
+  getProfessions as getProfessionsRabota,
+  getRegions as getRegionsRabota,
+  getEmploymentTypes as getEmploymentTypesRabota,
+  getWorkSchedules as getWorkSchedulesRabota,
+  getExperienceLevels as getExperienceLevelsRabota,
+  getEducationLevels as getEducationLevelsRabota
+} from '@/utils/rabotaAccount'
 import { getVacancy } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
 
@@ -527,6 +574,16 @@ const route = useRoute();
 const phrases = ref(null)
 const data = ref({})
 const addresses = ref([])
+const tariffsHh = ref([])
+
+// Справочники для rabota.ru
+const rabotaProfessions = ref([])
+const rabotaRegions = ref([])
+const rabotaEmploymentTypes = ref([])
+const rabotaWorkSchedules = ref([])
+const rabotaExperienceLevels = ref([])
+const rabotaEducationLevels = ref([])
+
 const validFields = ref({
   name: {
     status: true,
@@ -535,6 +592,7 @@ const validFields = ref({
   description: {
     status: true,
     name: 'Описание вакансии',
+    error: null,
   },
   professional_roles: {
     status: true,
@@ -594,7 +652,6 @@ const handleIdUpdate = (property, value) => {
   } else {
     data.value[property] = value ? { id: value.id } : null
   }
-  console.log('property - ', property, 'value - ', value);
 }
 
 const handleSalaryRangeUpdate = (property, value) => {
@@ -607,11 +664,18 @@ const handleSalaryRangeUpdate = (property, value) => {
   }
 }
 
+const handleTariffUpdate = (tariff) => {
+  if (tariff) {
+    data.value.vacancy_properties = {property_type: tariff.property_type}
+  } else {
+    data.value.vacancy_properties = null
+  }
+}
+
 data.value.salary_range = {
   from: null,
   to: null,
 }
-console.log('globCurrentVacancy.value', globCurrentVacancy.value);
 data.value.professional_roles = [null]
 data.value.work_format = []
 data.value.fly_in_fly_out_duration = []
@@ -641,6 +705,7 @@ data.value.response_letter_required = false
 data.value.billing_types = HH_BILLING_TYPES[0]
 data.value.contacts = null
 data.value.executor_email = null
+data.value.vacancy_properties = null
 
 
 // Список городов из API hh.ru
@@ -653,6 +718,115 @@ const citiesOptions = computed(() => {
   }))
 })
 
+// Computed свойства для выбора справочников в зависимости от платформы
+const currentPlatform = computed(() => {
+  return data.value.platform?.platform || 'hh'
+})
+
+const professionsOptions = computed(() => {
+  if (currentPlatform.value === 'rabota' && rabotaProfessions.value.length > 0) {
+    return rabotaProfessions.value.map(prof => ({
+      id: prof.id || prof.profession_id,
+      name: prof.name || prof.title,
+      roles: prof.roles || []
+    }))
+  }
+  // Для hh.ru используем существующую логику
+  return data.value.industry?.roles || []
+})
+
+const employmentTypesOptions = computed(() => {
+  if (currentPlatform.value === 'rabota' && rabotaEmploymentTypes.value.length > 0) {
+    return rabotaEmploymentTypes.value.map(emp => ({
+      id: emp.id || emp.employment_type_id,
+      name: emp.name || emp.title
+    }))
+  }
+  return HH_EMPLOYMENT_TYPES
+})
+
+const workSchedulesOptions = computed(() => {
+  if (currentPlatform.value === 'rabota' && rabotaWorkSchedules.value.length > 0) {
+    return rabotaWorkSchedules.value.map(schedule => ({
+      id: schedule.id || schedule.work_schedule_id,
+      name: schedule.name || schedule.title
+    }))
+  }
+  return HH_WORK_SCHEDULE_BY_DAYS
+})
+
+const experienceOptions = computed(() => {
+  if (currentPlatform.value === 'rabota' && rabotaExperienceLevels.value.length > 0) {
+    return rabotaExperienceLevels.value.map(exp => ({
+      id: exp.id || exp.experience_id,
+      name: exp.name || exp.title
+    }))
+  }
+  return experience
+})
+
+const educationOptions = computed(() => {
+  if (currentPlatform.value === 'rabota' && rabotaEducationLevels.value.length > 0) {
+    return rabotaEducationLevels.value.map(edu => ({
+      id: edu.id || edu.education_id,
+      name: edu.name || edu.title
+    }))
+  }
+  return HH_EDUCATION_LAVEL
+})
+
+// Функция для загрузки справочников в зависимости от платформы
+const loadDictionaries = async (platform) => {
+  if (platform === 'rabota') {
+    // Загружаем справочники rabota.ru
+    const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult] = await Promise.all([
+      getProfessionsRabota(),
+      getRegionsRabota(),
+      getEmploymentTypesRabota(),
+      getWorkSchedulesRabota(),
+      getExperienceLevelsRabota(),
+      getEducationLevelsRabota()
+    ])
+    
+    if (professionsResult?.data) {
+      rabotaProfessions.value = Array.isArray(professionsResult.data) ? professionsResult.data : (professionsResult.data.items || [])
+    }
+    if (regionsResult?.data) {
+      rabotaRegions.value = Array.isArray(regionsResult.data) ? regionsResult.data : (regionsResult.data.items || [])
+      // Также обновляем cities для использования в форме
+      cities.value = rabotaRegions.value.map(region => ({
+        id: region.id || region.region_id,
+        name: region.name || region.title
+      }))
+    }
+    if (employmentResult?.data) {
+      rabotaEmploymentTypes.value = Array.isArray(employmentResult.data) ? employmentResult.data : (employmentResult.data.items || [])
+    }
+    if (schedulesResult?.data) {
+      rabotaWorkSchedules.value = Array.isArray(schedulesResult.data) ? schedulesResult.data : (schedulesResult.data.items || [])
+    }
+    if (experienceResult?.data) {
+      rabotaExperienceLevels.value = Array.isArray(experienceResult.data) ? experienceResult.data : (experienceResult.data.items || [])
+    }
+    if (educationResult?.data) {
+      rabotaEducationLevels.value = Array.isArray(educationResult.data) ? educationResult.data : (educationResult.data.items || [])
+    }
+  } else {
+    // Загружаем справочники hh.ru (по умолчанию)
+    const { roles, errorRoles } = await getRolesHh()
+    if (!errorRoles) {
+      currectRole.value = roles.categories
+    }
+    
+    // Загрузка списка городов из API hh.ru
+    const { data: areasData, error: areasError } = await getAreasHh()
+    if (!areasError && areasData) {
+      cities.value = areasData
+    }
+  }
+}
+
+// Загружаем справочники по умолчанию (hh.ru)
 const { roles, errorRoles } = await getRolesHh()
 if (!errorRoles) {
   currectRole.value = roles.categories
@@ -668,6 +842,60 @@ const { data: addressesData, error: addressesError } = await getAddressesHh()
 if (!addressesError && addressesData) {
   addresses.value = addressesData.items
 }
+
+// Преобразование тарифов из tariffsHh в формат для DropDownTypes
+// const tariffsOptions = computed(() => {
+//   if (!tariffsHh.value || !Array.isArray(tariffsHh.value)) {
+//     return []
+//   }
+//   return tariffsHh.value.map(tariff => ({
+//     id: tariff.id || tariff.property_type || tariff.name,
+//     name: tariff.name || tariff.property_type || tariff.id,
+//     property_type: tariff.property_type || tariff.id,
+//     description: tariff.description || '',
+//     available_publications_count: tariff.available_publications_count || 0
+//   }))
+// })
+
+// console.log('tariffsOptions - ', tariffsOptions.value)
+
+// Переменная для хранения тарифов
+const tariffsOptions = ref([]);
+
+// Функция для загрузки тарифов для платформы hh
+const loadTariffsForHh = async (employerId) => {
+  try {
+    const tariffsResult = await getAvailablePublicationsHh(employerId)
+    if (tariffsResult && tariffsResult.types && Array.isArray(tariffsResult.types)) {
+      tariffsOptions.value = tariffsResult.types
+      // Устанавливаем первый тариф по умолчанию, если есть и vacancy_properties не установлен
+      if (tariffsOptions.value.length > 0 && !data.value.vacancy_properties) {
+        const firstTariff = tariffsOptions.value[0]
+        handleTariffUpdate({
+          id: firstTariff.id || firstTariff.property_type || firstTariff.name,
+          name: firstTariff.name || firstTariff.property_type || firstTariff.id,
+          property_type: firstTariff.property_type || firstTariff.id
+        })
+      }
+    } else {
+      console.warn('Не удалось загрузить тарифы или неверный формат данных:', tariffsResult);
+      tariffsOptions.value = [];
+    }
+  } catch (error) {
+    console.error('Ошибка при загрузке тарифов:', error);
+    tariffsOptions.value = [];
+  }
+}
+
+// Получение выбранного тарифа для отображения в DropDownTypes
+// const selectedTariff = computed(() => {
+//   console.log('selectedTariff - ', data.value.vacancy_properties);
+//   if (!data.value.vacancy_properties || data.value.vacancy_properties.length === 0) {
+//     return null
+//   }
+//   const propertyType = data.value.vacancy_properties.properties[0].property_type
+//   return tariffsOptions.value.find(tariff => tariff.property_type === propertyType) || null
+// })
 
 const vacancyId = route.query.id
 if (vacancyId) {
@@ -713,7 +941,6 @@ if (globCurrentVacancy.value) {
   }
 
   if (globCurrentVacancy.value['salary_from']) {
-    console.log('salary_from - ', globCurrentVacancy.value.salary_from);
       data.value.salary_range.from = globCurrentVacancy.value.salary_from
   }
   if (globCurrentVacancy.value.salary_to) {
@@ -760,9 +987,13 @@ if (!inject('isPlatforms')) {
       platforms.value[0].data = {email: data.data.email }
     }
     const { types, errorTypes } = await typesHh(data.data.employer.id, data.data.manager.id)
-      if (!error && !errorTypes) {
-        platforms.value[0].types = types
-      }
+    if (!error && !errorTypes) {
+      platforms.value[0].types = types
+    }
+    // Загружаем тарифы для платформы hh
+    if (data.data?.employer?.id) {
+      await loadTariffsForHh(data.data.employer.id)
+    }
 }
 
 // Определяем платформу из props или из inject
@@ -782,11 +1013,11 @@ for (let key of platforms.value) {
           if (key.platform === targetPlatform) {
             if (key.platform == 'hh') {
               const profile = await profileHh()  
-              if (!profile.error) {
+              if (!profile.error && profile.data?.data?.employer?.id) {
+                await loadTariffsForHh(profile.data.data.employer.id)
                 key.isAuthenticated = true
                 key.data = profile.data.data
                 isPlatforms.value = true
-                console.log('types - ', key['types'])
               }
             } else if (key.platform == 'avito') {
               const profile = await profileAvito()  
@@ -794,7 +1025,6 @@ for (let key of platforms.value) {
                 key.isAuthenticated = true
                 key.data = profile.data.data
                 isPlatforms.value = true
-                console.log('Avito profile - ', profile.data)
               }
             } else if (key.platform == 'rabota') {
               const profile = await profileRabota()  
@@ -802,7 +1032,8 @@ for (let key of platforms.value) {
                 key.isAuthenticated = true
                 key.data = profile.data.data
                 isPlatforms.value = true
-                console.log('Rabota profile - ', profile.data)
+                // Загружаем справочники rabota.ru
+                await loadDictionaries('rabota')
               }
             }
             data.value.platform = key
@@ -812,12 +1043,12 @@ for (let key of platforms.value) {
           // Старая логика, если платформа не передана
           if (key.platform == 'hh') {
             const profile = await profileHh()  
-            if (!profile.error) {
+            if (!profile.error && profile.data?.data?.employer?.id) {
+              await loadTariffsForHh(profile.data.data.employer.id)
               key.isAuthenticated = true
               key.data = profile.data.data
               isPlatforms.value = true
               // data.value.billing_types = key.types ? key.types[6] : null
-              console.log('types - ', key['types'])
             }
           } else if (key.platform == 'avito') {
             const profile = await profileAvito()  
@@ -825,7 +1056,6 @@ for (let key of platforms.value) {
               key.isAuthenticated = true
               key.data = profile.data.data
               isPlatforms.value = true
-              console.log('Avito profile - ', profile.data)
             }
           } else if (key.platform == 'rabota') {
             const profile = await profileRabota()  
@@ -833,10 +1063,18 @@ for (let key of platforms.value) {
               key.isAuthenticated = true
               key.data = profile.data.data
               isPlatforms.value = true
-              console.log('Rabota profile - ', profile.data)
+              // Загружаем справочники rabota.ru
+              await loadDictionaries('rabota')
             }
           }
           data.value.platform = key
+          data.value.vacancy_properties = {
+                properties: [
+                  {
+                    property_type: tariffsOptions.value[0]
+                  }
+                ]
+          }
         }
     }
 }
@@ -855,11 +1093,14 @@ const workFormatOptions = HH_WORK_FORMAT.map(format => ({
     value: format.id
 }))
 
-// Преобразование HH_WORK_SCHEDULE_BY_DAYS для MultiSelect (id -> value)
-const workScheduleOptions = HH_WORK_SCHEDULE_BY_DAYS.map(schedule => ({
+// Преобразование графика работы для MultiSelect (id -> value)
+const workScheduleOptions = computed(() => {
+  const schedules = workSchedulesOptions.value
+  return schedules.map(schedule => ({
     ...schedule,
     value: schedule.id
-}))
+  }))
+})
 
 // Преобразование HH_WORKING_HOURS для MultiSelect (id -> value)
 const workingHoursOptions = HH_WORKING_HOURS.map(hours => ({
@@ -879,9 +1120,52 @@ const driverLicenseOptions = HH_DRIVER_LICENSE_TYPES.map(license => ({
   value: license.id
 }))
 
+// Функция для подсчета символов в тексте (без HTML тегов)
+const getTextLength = (htmlString) => {
+  if (!htmlString) return 0;
+  // Проверяем, что мы на клиенте
+  if (typeof document === 'undefined') return 0;
+  // Создаем временный элемент для извлечения текста
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlString;
+  const text = tempDiv.textContent || tempDiv.innerText || '';
+  return text.trim().length;
+}
+
+// Computed для подсчета длины description
+const descriptionLength = computed(() => {
+  return getTextLength(data.value.description);
+})
+
+// Функция для валидации description при изменении
+const updateDescriptionValidation = (value) => {
+  const length = getTextLength(value);
+  if (length < 200) {
+    validFields.value.description.status = false;
+    validFields.value.description.error = `Описание должно содержать минимум 200 символов. Сейчас: ${length} символов.`;
+  } else {
+    validFields.value.description.status = true;
+    validFields.value.description.error = null;
+  }
+}
+
 const validateFields = () => { 
   let isValid = true;
   for (const key in validFields.value) {
+    // Специальная валидация для description
+    if (key === 'description') {
+      const length = getTextLength(data.value[key]);
+      if (!data.value[key] || length < 200) {
+        isValid = false;
+        validFields.value[key].status = false;
+        validFields.value[key].error = `Описание должно содержать минимум 200 символов. Сейчас: ${length} символов.`;
+      } else {
+        validFields.value[key].status = true;
+        validFields.value[key].error = null;
+      }
+      continue;
+    }
+    
     if (data.value[key] == null 
          || data.value[key] == undefined 
          || data.value[key] == '' 
@@ -892,7 +1176,8 @@ const validateFields = () => {
       validFields.value[key].status = false
     } else {
       if (key == 'address' || key == 'area') {
-        if (data.value[key].id == undefined || data.value[key].id == null) {
+        if (data.value[key].id === undefined || data.value[key].id === null) {
+          isValid = false
           validFields.value[key].status = false
         } else {
           validFields.value[key].status = true
@@ -962,6 +1247,7 @@ const savePublication = async () => {
    status.value = `Платформа ${currentPlatform} пока не поддерживается`
    return
   }
+  
   // Выбираем функцию в зависимости от платформы и флага isDraft
   if (currentPlatform === 'avito') {
     // Для avito.ru пока только создание черновика
@@ -1015,6 +1301,20 @@ watch(() => data.value.employment_form, (newValue) => {
     data.value.experience_days = []
   }
 })
+
+// Автоматическая загрузка справочников при смене платформы
+watch(() => data.value.platform?.platform, async (newPlatform) => {
+  if (newPlatform) {
+    await loadDictionaries(newPlatform)
+  }
+})
+
+// Автоматическая валидация description при изменении
+watch(() => data.value.description, (newValue) => {
+  if (newValue !== undefined && newValue !== null) {
+    updateDescriptionValidation(newValue)
+  }
+}, { immediate: true })
 
 onBeforeMount(async () => {
 })

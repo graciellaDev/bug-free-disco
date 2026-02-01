@@ -664,7 +664,8 @@ import {
     getRoles, 
     getAvailableTypes,
     getVacancyCountViews,
-    getVacancyResponses
+    getVacancyResponses,
+    getAddresses
 } from "~/utils/hhAccount";
 import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito } from "~/utils/avitoAccount";
 import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota } from "~/utils/rabotaAccount";
@@ -1063,7 +1064,35 @@ async function confirmPublish() {
     publishError.value = null;
 
     try {
+        // Проверяем, что professional_role выбран
+        if (!publishFormData.value.professional_role || !publishFormData.value.professional_role.id) {
+            publishError.value = 'Выберите специализацию';
+            isPublishing.value = false;
+            return;
+        }
+
+        // Получаем адреса работодателя, если работа не удаленная
+        let employerAddress = null;
+        if (publishFormData.value.workSpace !== '3') {
+            const addressesResult = await getAddresses();
+            console.log('Адреса работодателя:', addressesResult);
+            if (addressesResult?.data) {
+                // Проверяем разные форматы ответа
+                const addresses = addressesResult.data.items || addressesResult.data || [];
+                if (Array.isArray(addresses) && addresses.length > 0) {
+                    // Используем первый доступный адрес работодателя
+                    employerAddress = addresses[0];
+                    console.log('Выбранный адрес:', employerAddress);
+                }
+            }
+        }
+
         // Формируем данные для публикации на hh.ru
+        const professionalRoleId = publishFormData.value.professional_role.id;
+        // Преобразуем id в строку (FormData всегда работает со строками)
+        const roleId = String(professionalRoleId);
+        console.log('Professional role ID:', roleId, 'тип:', typeof roleId, 'исходное значение:', professionalRoleId);
+        
         const hhVacancyData = {
             name: publishFormData.value.name,
             code: publishFormData.value.code || '',
@@ -1071,9 +1100,7 @@ async function confirmPublish() {
             days: '30',
             workSpace: publishFormData.value.workSpace || '1',
             areas: [{ id: '1' }], // TODO: Реализовать маппинг локации
-            professional_roles: publishFormData.value.professional_role
-                ? [{ id: publishFormData.value.professional_role.id, ...publishFormData.value.professional_role }]
-                : [],
+            professional_roles: [{ id: roleId }],
             employment_form: publishFormData.value.employment_form,
             work_schedule_by_days: publishFormData.value.work_schedule_by_days,
             education_level: publishFormData.value.education_level,
@@ -1085,6 +1112,14 @@ async function confirmPublish() {
             driver_license_types: null,
             salary_range: {},
         };
+
+        // Добавляем адрес только если работа не удаленная и есть адрес работодателя
+        if (publishFormData.value.workSpace !== '3' && employerAddress && employerAddress.id) {
+            hhVacancyData.address = {
+                id: String(employerAddress.id)
+                // show_metro_only не передаем, если false - API может не требовать это поле
+            };
+        }
 
         // Добавляем диапазон зарплаты, если указан
         if (publishFormData.value.salary_from || publishFormData.value.salary_to) {
@@ -1502,13 +1537,25 @@ onMounted(async () => {
     }
 
     // Обработка редиректа после авторизации avito.ru
-    if (query.popup_account === 'true' && query.platform === 'avito' && query.message === 'success') {
+    if (query.popup_account === 'true' && query.platform === 'avito') {
         const processAuth = useCookie('process_auth');
         if (processAuth.value) {
-            const response = await authAvito();
-            if (response && response.data) {
-                platformsAuth.value['avito.ru'] = true;
-                shouldRedirect = true;
+            // Обработка ошибки авторизации
+            if (query.error) {
+                authError.value['avito.ru'] = query.error_description || query.error || 'Ошибка авторизации Avito';
+                setCookie('process_auth', '', -1); // Очищаем cookie
+                return;
+            }
+            
+            // Обработка успешной авторизации
+            if (query.message === 'success' || query.code) {
+                const response = await authAvito();
+                if (response && response.data) {
+                    platformsAuth.value['avito.ru'] = true;
+                    shouldRedirect = true;
+                } else {
+                    authError.value['avito.ru'] = response?.error || 'Ошибка при получении токенов авторизации';
+                }
             }
         }
     }

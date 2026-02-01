@@ -22,4 +22,5 @@
   "[scss]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+  "CodeGPT.apiKey": "Ollama",
 }
