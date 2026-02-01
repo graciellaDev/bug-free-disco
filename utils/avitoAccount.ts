@@ -167,6 +167,141 @@ export const unlinkProfile = async () => {
 };
 
 /**
+ * Получение публикаций с avito.ru
+ * @param includeArchived - Включать ли архивные публикации
+ * @returns Список публикаций
+ */
+export const getPublications = async (includeArchived: boolean = false) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return null;
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const params: Record<string, any> = {};
+    if (includeArchived) {
+      params.archived = true;
+    }
+
+    const response = await $fetch<PlatformHhResponse>('/avito/publications', {
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      params,
+    });
+
+    result.value.roles = response.data;
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      result.value.errorRoles = err.response._data.message;
+    }
+    if (err.response?.status === 401) {
+      handle401Error();
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
+ * Получение всех публикаций Avito.ru (активных и архивных)
+ * @returns Список всех публикаций
+ */
+export const getAllPublications = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return null;
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    // Получаем активные публикации
+    const activeResponse = await $fetch<PlatformHhResponse>('/avito/publications', {
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    const activeItems = activeResponse.data?.items || [];
+    
+    // Помечаем активные публикации, если статус не указан
+    const activeWithStatus = activeItems.map((item: any) => ({
+      ...item,
+      status: item.status || 'published',
+    }));
+
+    let allItems = [...activeWithStatus];
+
+    // Пытаемся получить архивные публикации
+    try {
+      const archivedResponse = await $fetch<PlatformHhResponse>('/avito/publications', {
+        baseURL: config.public.apiBase as string,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+        params: { archived: true },
+      });
+
+      const archivedItems = archivedResponse.data?.items || [];
+      
+      // Помечаем архивные публикации
+      const archivedWithStatus = archivedItems.map((item: any) => ({
+        ...item,
+        status: 'archived',
+      }));
+
+      allItems = [...activeWithStatus, ...archivedWithStatus];
+    } catch (archivedErr: any) {
+      // Если запрос архивных публикаций не поддерживается, 
+      // проверяем статус в активных публикациях
+      console.log('Архивные публикации не доступны через отдельный запрос, проверяем статус в активных');
+      
+      // Фильтруем публикации по статусу, если он есть в ответе
+      const itemsWithStatus = activeItems.map((item: any) => {
+        // Если статус уже есть и он архивный, оставляем его
+        if (item.status && (item.status === 'archived' || item.status === 'closed')) {
+          return {
+            ...item,
+            status: 'archived',
+          };
+        }
+        return {
+          ...item,
+          status: item.status || 'published',
+        };
+      });
+      
+      allItems = itemsWithStatus;
+    }
+
+    result.value.roles = {
+      ...activeResponse.data,
+      items: allItems,
+    };
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      result.value.errorRoles = err.response._data.message;
+    }
+    if (err.response?.status === 401) {
+      handle401Error();
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
  * Публикация вакансии на avito.ru
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
