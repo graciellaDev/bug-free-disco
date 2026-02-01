@@ -180,13 +180,80 @@ export const getAllPublications = async () => {
       },
     });
 
-    const activeItems = activeResponse.data?.items || [];
+    // Получаем вакансии из ответа (структура может быть разной)
+    const activeItems = activeResponse.data?.response?.vacancies || 
+                        activeResponse.data?.items || 
+                        activeResponse.data?.vacancies || 
+                        [];
     
-    // Помечаем активные публикации, если статус не указан
-    const activeWithStatus = activeItems.map((item: any) => ({
-      ...item,
-      status: item.status || 'published',
-    }));
+    // Нормализуем структуру данных для единообразия с другими платформами
+    const activeWithStatus = activeItems.map((item: any) => {
+      // Функция для нормализации региона
+      const normalizeRegion = (item: any) => {
+        // Если уже есть area с правильной структурой
+        if (item.area && typeof item.area === 'object' && item.area.name) {
+          return item.area;
+        }
+        
+        // Пробуем region (может быть объектом или строкой)
+        if (item.region) {
+          if (typeof item.region === 'string') {
+            return { name: item.region };
+          }
+          if (typeof item.region === 'object') {
+            return { 
+              name: item.region.name || item.region.title || item.region.city || item.region.region || ''
+            };
+          }
+        }
+        
+        // Пробуем address (может содержать город/регион)
+        if (item.address) {
+          if (typeof item.address === 'string') {
+            return { name: item.address };
+          }
+          if (typeof item.address === 'object') {
+            const city = item.address.city || item.address.name || item.address.title;
+            if (city) {
+              return { name: city };
+            }
+          }
+        }
+        
+        // Пробуем location
+        if (item.location) {
+          if (typeof item.location === 'string') {
+            return { name: item.location };
+          }
+          if (typeof item.location === 'object') {
+            return { 
+              name: item.location.name || item.location.city || item.location.title || ''
+            };
+          }
+        }
+        
+        // Пробуем region_id - если есть ID, но нет названия, оставляем null
+        // (название можно будет получить из справочника, но для таблицы это не критично)
+        return null;
+      };
+      
+      // Нормализуем поля для соответствия формату таблицы импорта
+      const normalized: any = {
+        ...item,
+        // Название вакансии (rabota может использовать title)
+        name: item.name || item.title || '',
+        // ID вакансии
+        id: item.id || item.vacancy_id || item.vacancyId,
+        // Регион - нормализуем с помощью функции
+        area: normalizeRegion(item),
+        // Зарплата (rabota использует salary)
+        salary: item.salary || item.salary_range || null,
+        // Статус
+        status: item.status || 'published',
+      };
+      
+      return normalized;
+    });
 
     let allItems = [...activeWithStatus];
 
@@ -202,13 +269,69 @@ export const getAllPublications = async () => {
         params: { archived: true },
       });
 
-      const archivedItems = archivedResponse.data?.items || [];
+      // Получаем архивные вакансии из ответа
+      const archivedItems = archivedResponse.data?.response?.vacancies || 
+                            archivedResponse.data?.items || 
+                            archivedResponse.data?.vacancies || 
+                            [];
       
-      // Помечаем архивные публикации
-      const archivedWithStatus = archivedItems.map((item: any) => ({
-        ...item,
-        status: 'archived',
-      }));
+      // Нормализуем структуру данных для архивных публикаций
+      const archivedWithStatus = archivedItems.map((item: any) => {
+        // Функция для нормализации региона (та же, что и для активных)
+        const normalizeRegion = (item: any) => {
+          if (item.area && typeof item.area === 'object' && item.area.name) {
+            return item.area;
+          }
+          if (item.region) {
+            if (typeof item.region === 'string') {
+              return { name: item.region };
+            }
+            if (typeof item.region === 'object') {
+              return { 
+                name: item.region.name || item.region.title || item.region.city || item.region.region || ''
+              };
+            }
+          }
+          if (item.address) {
+            if (typeof item.address === 'string') {
+              return { name: item.address };
+            }
+            if (typeof item.address === 'object') {
+              const city = item.address.city || item.address.name || item.address.title;
+              if (city) {
+                return { name: city };
+              }
+            }
+          }
+          if (item.location) {
+            if (typeof item.location === 'string') {
+              return { name: item.location };
+            }
+            if (typeof item.location === 'object') {
+              return { 
+                name: item.location.name || item.location.city || item.location.title || ''
+              };
+            }
+          }
+          return null;
+        };
+        
+        const normalized: any = {
+          ...item,
+          // Название вакансии
+          name: item.name || item.title || '',
+          // ID вакансии
+          id: item.id || item.vacancy_id || item.vacancyId,
+          // Регион - нормализуем с помощью функции
+          area: normalizeRegion(item),
+          // Зарплата
+          salary: item.salary || item.salary_range || null,
+          // Статус - архивная
+          status: 'archived',
+        };
+        
+        return normalized;
+      });
 
       allItems = [...activeWithStatus, ...archivedWithStatus];
     } catch (archivedErr: any) {
@@ -218,17 +341,66 @@ export const getAllPublications = async () => {
       
       // Фильтруем публикации по статусу, если он есть в ответе
       const itemsWithStatus = activeItems.map((item: any) => {
+        // Функция для нормализации региона (та же, что и для активных)
+        const normalizeRegion = (item: any) => {
+          if (item.area && typeof item.area === 'object' && item.area.name) {
+            return item.area;
+          }
+          if (item.region) {
+            if (typeof item.region === 'string') {
+              return { name: item.region };
+            }
+            if (typeof item.region === 'object') {
+              return { 
+                name: item.region.name || item.region.title || item.region.city || item.region.region || ''
+              };
+            }
+          }
+          if (item.address) {
+            if (typeof item.address === 'string') {
+              return { name: item.address };
+            }
+            if (typeof item.address === 'object') {
+              const city = item.address.city || item.address.name || item.address.title;
+              if (city) {
+                return { name: city };
+              }
+            }
+          }
+          if (item.location) {
+            if (typeof item.location === 'string') {
+              return { name: item.location };
+            }
+            if (typeof item.location === 'object') {
+              return { 
+                name: item.location.name || item.location.city || item.location.title || ''
+              };
+            }
+          }
+          return null;
+        };
+        
+        // Нормализуем структуру данных
+        const normalized: any = {
+          ...item,
+          // Название вакансии
+          name: item.name || item.title || '',
+          // ID вакансии
+          id: item.id || item.vacancy_id || item.vacancyId,
+          // Регион - нормализуем с помощью функции
+          area: normalizeRegion(item),
+          // Зарплата
+          salary: item.salary || item.salary_range || null,
+        };
+        
         // Если статус уже есть и он архивный, оставляем его
         if (item.status && (item.status === 'archived' || item.status === 'closed')) {
-          return {
-            ...item,
-            status: 'archived',
-          };
+          normalized.status = 'archived';
+        } else {
+          normalized.status = item.status || 'published';
         }
-        return {
-          ...item,
-          status: item.status || 'published',
-        };
+        
+        return normalized;
       });
 
       allItems = itemsWithStatus;
