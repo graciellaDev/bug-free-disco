@@ -24,4 +24,5 @@
   },
   "typescript.tsserver.nodePath": "/home/kay/.nvm/versions/node/v22.14.0/bin/node",
   "typescript.tsserver.maxTsServerMemory": 8192,
+  "CodeGPT.apiKey": "Ollama",
 }

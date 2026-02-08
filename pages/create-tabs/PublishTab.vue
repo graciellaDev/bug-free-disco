@@ -35,9 +35,9 @@
                   <UiButton
                     :variant="isPlatformAuthenticated(card.name) ? 'action' : 'gray'"
                     size="action"
-                    @click="handlePlatformButtonClick(card.name)"
+                    @click="isPlatformAuthenticated(card.name) ? openPopupNewPublication(card.name) : authPlatform(card.name)"
                   >
-                    {{ isPlatformAuthenticated(card.name) ? 'Подключен' : 'Подключить аккаунт' }}
+                    {{ isPlatformAuthenticated(card.name) ? 'Опубликовать' : 'Подключить аккаунт' }}
                     <!-- <svg-icon
                       v-if="isPlatformAuthenticated(card.name)"
                       name="check-success"
@@ -510,9 +510,9 @@
                                     variant="action"
                                     size="small"
                                     @click="importPublication(pub)"
-                                    :disabled="!!pub.isImported"
+                                    :disabled="!!pub.isImported || isLoadingImport"
                                 >
-                                    {{ pub.isImported ? 'Импортировано' : 'Импорт' }}
+                                    {{ pub.isImported ? 'Импортировано' : (isLoadingImport ? 'Импорт...' : 'Импорт') }}
                                 </UiButton>
                             </div>
                         </div>
@@ -541,9 +541,9 @@
                     из&nbsp;подключенных профилей
                 </p>
             </div>
-            <UiButton variant="action" size="action" class="font-bold" @click="openPopupNewPublication">
+            <!--<UiButton variant="action" size="action" class="font-bold" @click="openPopupNewPublication">
                 Добавить публикацию
-            </UiButton>
+            </UiButton>-->
             <Popup
                   :isOpen="isOpenPopup"
                   @close="() => (isOpenPopup = false)"
@@ -554,7 +554,7 @@
                   maxHeight
                   :lgSize="true"
             >
-            <AddPublication/>
+            <AddPublication :selectedPlatform="selectedPlatformForPublish"/>
             </Popup>
         </div>
 
@@ -602,23 +602,37 @@
 
             <!-- Тело -->
             <div class="table-body">
-                <div v-for="item in sortedData" :key="item.id" class="table-row">
-                    <div>
-                        <MyCheckbox :id="item.id" :label="''" v-model="selected[item.id]" :emptyLabel="true" />
+                <!-- Прелоадер -->
+                <div v-if="isLoadingPublicationPlatforms" class="flex flex-col items-center justify-center py-60px">
+                    <div class="loader mb-15px"></div>
+                    <p class="text-sm font-normal text-slate-custom">Загрузка размещений...</p>
+                </div>
+                
+                <!-- Список размещений -->
+                <div v-else-if="sortedData.length > 0">
+                    <div v-for="item in sortedData" :key="item.id" class="table-row">
+                        <div>
+                            <MyCheckbox :id="item.id" :label="''" v-model="selected[item.id]" :emptyLabel="true" />
+                        </div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item.title }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item.city }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item?.billing_type?.name ?? 'Стандарт' }}</div>
+                        <div>
+                            <CardIcon icon="hh" :isPng="false" imagePath="" :width="21"
+                              :height="21" class="px-2.5" />
+                        </div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item?.views }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ item?.responses }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ dateStringToDots(item.created_at) }}</div>
+                        <div>
+                            <DotsDropdown :items="dropdownOptions" />
+                        </div>
                     </div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.name }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.area.name }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.billing_type?.name ?? 'Стандарт' }}</div>
-                    <div>
-                        <CardIcon icon="hh" :isPng="false" imagePath="" :width="21"
-                          :height="21" class="px-2.5" />
-                    </div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.views }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ item.responses }}</div>
-                    <div class="text-sm font-medium text-space px-2.5">{{ dateStringToDots(item.published_at) }}</div>
-                    <div>
-                        <DotsDropdown :items="dropdownOptions" />
-                    </div>
+                </div>
+                
+                <!-- Пустое состояние -->
+                <div v-else class="flex flex-col items-center justify-center py-60px">
+                    <p class="text-sm font-normal text-slate-custom">Нет размещений</p>
                 </div>
             </div>
         </div>
@@ -626,7 +640,7 @@
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent, watch, onMounted } from "vue";
+import { ref, computed, defineAsyncComponent, watch, onMounted, nextTick } from "vue";
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdown from '~/components/custom/DotsDropdown.vue';
 import CardIcon from '~/components/custom/CardIcon.vue';
@@ -646,19 +660,20 @@ import {
     getAllPublications, 
     getProfile, auth as authHh, 
     unlinkProfile, 
-    publishVacancyToHh, 
+    publishVacancy as publishVacancyToHh, 
     getRoles, 
     getAvailableTypes,
     getVacancyCountViews,
-    getVacancyResponses
+    getVacancyResponses,
+    getAddresses
 } from "~/utils/hhAccount";
-import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito } from "~/utils/avitoAccount";
+import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito, getPublications as getPublicationsAvito, getAllPublications as getAllPublicationsAvito } from "~/utils/avitoAccount";
 import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota } from "~/utils/rabotaAccount";
 import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
-import { getVacancy } from '@/utils/getVacancies'
+import { getVacancy, getVacancies } from '@/utils/getVacancies'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
 import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationToVacancy'
@@ -687,12 +702,13 @@ const sortOrder = ref("asc"); // Порядок сортировки
 const sortDirection = ref("asc");
 const isOpenPopup = ref(false);
 const publicationsHh = ref([]);
-const publications = await getPublications()
+const publicationPlatforms = ref([]);
+//const publications = await getPublications()
 const cartStore = useCartStore()
 
-if (publications && !publications.error && !publications.errorRoles) {
-    publicationsHh.value = publications.roles?.items || [];
-}
+// if (publications && !publications.error && !publications.errorRoles) {
+//     publicationsHh.value = publications.roles?.items || [];
+// }
 
 // Статус авторизации платформ
 const platformsAuth = ref({
@@ -736,6 +752,7 @@ const currentVacancyId = route.query.id;
 const isPublishing = ref(false);
 const publishError = ref(null);
 const isLoadingPublishForm = ref(false);
+const isLoadingPublicationPlatforms = ref(false);
 const hhRolesData = ref(null);
 const experienceData = ref(experience);
 const hhBillingTypes = ref([]);
@@ -779,10 +796,34 @@ const isLoadingImport = ref(false);
 const importedPublications = ref([]);
 const importError = ref(null);
 const selectedImportPlatform = ref(null);
-console.log('publicationsHh.value', publicationsHh.value)
+
+// Функция для загрузки вакансий с платформ
+async function loadPublicationPlatforms() {
+    if (!currentVacancyId) {
+        return;
+    }
+    
+    isLoadingPublicationPlatforms.value = true;
+    
+    try {
+        const vacancies = await getVacancies(`filters[baseVacancyId]=${currentVacancyId}`);
+        if (vacancies && vacancies.lastIndexOf) {
+            publicationPlatforms.value = vacancies;
+        }
+    } catch (error) {
+        console.error('Ошибка при загрузке вакансий с платформ:', error);
+    } finally {
+        isLoadingPublicationPlatforms.value = false;
+    }
+}
+
+if (currentVacancyId) {
+    await loadPublicationPlatforms();
+}
+
 const sortedData = computed(() => {
-    if (!sortKey.value) return publicationsHh.value;
-    return [...publicationsHh.value].sort((a, b) => {
+    if (!sortKey.value) return publicationPlatforms.value;
+    return [...publicationPlatforms.value].sort((a, b) => {
         const multiplier = sortOrder.value === "asc" ? 1 : -1;
         if (a[sortKey.value] > b[sortKey.value]) return 1 * multiplier;
         if (a[sortKey.value] < b[sortKey.value]) return -1 * multiplier;
@@ -1023,7 +1064,35 @@ async function confirmPublish() {
     publishError.value = null;
 
     try {
+        // Проверяем, что professional_role выбран
+        if (!publishFormData.value.professional_role || !publishFormData.value.professional_role.id) {
+            publishError.value = 'Выберите специализацию';
+            isPublishing.value = false;
+            return;
+        }
+
+        // Получаем адреса работодателя, если работа не удаленная
+        let employerAddress = null;
+        if (publishFormData.value.workSpace !== '3') {
+            const addressesResult = await getAddresses();
+            console.log('Адреса работодателя:', addressesResult);
+            if (addressesResult?.data) {
+                // Проверяем разные форматы ответа
+                const addresses = addressesResult.data.items || addressesResult.data || [];
+                if (Array.isArray(addresses) && addresses.length > 0) {
+                    // Используем первый доступный адрес работодателя
+                    employerAddress = addresses[0];
+                    console.log('Выбранный адрес:', employerAddress);
+                }
+            }
+        }
+
         // Формируем данные для публикации на hh.ru
+        const professionalRoleId = publishFormData.value.professional_role.id;
+        // Преобразуем id в строку (FormData всегда работает со строками)
+        const roleId = String(professionalRoleId);
+        console.log('Professional role ID:', roleId, 'тип:', typeof roleId, 'исходное значение:', professionalRoleId);
+        
         const hhVacancyData = {
             name: publishFormData.value.name,
             code: publishFormData.value.code || '',
@@ -1031,9 +1100,7 @@ async function confirmPublish() {
             days: '30',
             workSpace: publishFormData.value.workSpace || '1',
             areas: [{ id: '1' }], // TODO: Реализовать маппинг локации
-            professional_roles: publishFormData.value.professional_role
-                ? [{ id: publishFormData.value.professional_role.id, ...publishFormData.value.professional_role }]
-                : [],
+            professional_roles: [{ id: roleId }],
             employment_form: publishFormData.value.employment_form,
             work_schedule_by_days: publishFormData.value.work_schedule_by_days,
             education_level: publishFormData.value.education_level,
@@ -1045,6 +1112,14 @@ async function confirmPublish() {
             driver_license_types: null,
             salary_range: {},
         };
+
+        // Добавляем адрес только если работа не удаленная и есть адрес работодателя
+        if (publishFormData.value.workSpace !== '3' && employerAddress && employerAddress.id) {
+            hhVacancyData.address = {
+                id: String(employerAddress.id)
+                // show_metro_only не передаем, если false - API может не требовать это поле
+            };
+        }
 
         // Добавляем диапазон зарплаты, если указан
         if (publishFormData.value.salary_from || publishFormData.value.salary_to) {
@@ -1090,17 +1165,14 @@ async function openImportPopup(platformName) {
     isLoadingImport.value = true;
 
     try {
-        // Для hh.ru и rabota.ru загружаем и активные, и архивные публикации
+        // Для hh.ru, rabota.ru и avito.ru загружаем и активные, и архивные публикации
         let result;
         if (platformName === 'hh.ru') {
             result = await getAllPublications();
         } else if (platformName === 'rabota.ru') {
             result = await getAllPublicationsRabota();
         } else if (platformName === 'avito.ru') {
-            // Для avito.ru пока используем общий подход или показываем сообщение
-            importError.value = `Импорт публикаций для платформы ${platformName} пока не поддерживается`;
-            isLoadingImport.value = false;
-            return;
+            result = await getAllPublicationsAvito();
         } else {
             result = await getPublications();
         }
@@ -1112,30 +1184,59 @@ async function openImportPopup(platformName) {
 
         const publications = result?.roles?.items || [];
         
+        if (publications.length === 0) {
+            console.log('Список публикаций пуст для платформы:', platformName);
+            importedPublications.value = [];
+            return;
+        }
+        
         // Получаем platform_id для проверки импортированных вакансий
         const platformId = getPlatformId(platformName);
         
-        // Проверяем каждую публикацию на наличие в БД
-        if (platformId) {
-            const checkPromises = publications.map(async (pub) => {
-                const isImported = await checkVacancyImported(platformId, pub.id);
-                console.log(`Проверка публикации ${pub.id}: isImported = ${isImported}`);
-                return {
-                    ...pub,
-                    isImported: !!isImported // Убеждаемся, что значение булево
-                };
-            });
-            
-            importedPublications.value = await Promise.all(checkPromises);
-            console.log('Импортированные публикации после проверки:', importedPublications.value.map(p => ({ id: p.id, isImported: p.isImported })));
-        } else {
-            // Если не удалось определить platform_id, просто добавляем флаг isImported: false
+        if (!platformId) {
             console.warn('Не удалось определить platform_id для платформы:', platformName);
+            // Если не удалось определить platform_id, просто добавляем флаг isImported: false
             importedPublications.value = publications.map(pub => ({
                 ...pub,
                 isImported: false
             }));
+            return;
         }
+        
+        console.log(`Начинаем проверку импорта для ${publications.length} публикаций платформы ${platformName} (platform_id: ${platformId})`);
+        
+        // Загружаем список вакансий для проверки (если еще не загружен)
+        if (publicationPlatforms.value.length === 0 && currentVacancyId) {
+            await loadPublicationPlatforms();
+        }
+        
+        // Проверяем каждую публикацию на наличие в БД
+        // Используем уже загруженный список publicationPlatforms
+        importedPublications.value = publications.map((pub) => {
+            // Для hh.ru используем pub.id, для rabota.ru ID может быть в разных форматах
+            const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
+            console.log(`Проверка публикации для платформы ${platformName}:`, {
+                publicationId,
+                pubId: pub.id,
+                pubVacancyId: pub.vacancy_id,
+                pubVacancyIdAlt: pub.vacancyId,
+                name: pub.name || pub.title || 'без названия'
+            });
+            const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
+            console.log(`Результат проверки публикации ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
+            return {
+                ...pub,
+                isImported: !!isImported // Убеждаемся, что значение булево
+            };
+        });
+        
+        const importedCount = importedPublications.value.filter(p => p.isImported).length;
+        console.log(`Проверка импорта завершена для платформы ${platformName}:`, {
+            total: importedPublications.value.length,
+            imported: importedCount,
+            notImported: importedPublications.value.length - importedCount,
+            details: importedPublications.value.map(p => ({ id: p.id, name: p.name, isImported: p.isImported }))
+        });
     } catch (err) {
         console.error('Ошибка при импорте публикаций:', err);
         importError.value = 'Ошибка при загрузке публикаций';
@@ -1152,128 +1253,273 @@ function closeImportPopup() {
 }
 
 /**
- * Проверка, была ли вакансия уже импортирована
- * @param platformId - ID платформы
- * @param vacancyId - ID вакансии на платформе (publication.id)
- * @returns true если вакансия уже импортирована, false если нет
+ * Перепроверка всех публикаций в списке на предмет импорта
+ * Вызывается после успешного импорта для обновления статусов
  */
-async function checkVacancyImported(platformId, vacancyId) {
-    const config = useRuntimeConfig();
-    const authToken = useCookie('auth_token').value;
-    const authUser = useCookie('auth_user').value;
-
-    if (!authToken || !authUser) {
-        console.warn('Токены авторизации отсутствуют');
-        return false;
+async function recheckImportedPublications() {
+    if (!selectedImportPlatform.value || importedPublications.value.length === 0) {
+        return;
     }
-
-    if (!platformId || !vacancyId) {
-        console.warn('Отсутствуют platformId или vacancyId для проверки');
-        return false;
+    
+    const platformName = selectedImportPlatform.value;
+    const platformId = getPlatformId(platformName);
+    
+    if (!platformId) {
+        console.warn('Не удалось определить platform_id для перепроверки:', platformName);
+        return;
     }
-
+    
     try {
-        // Формируем URL с фильтрами
-        // Пробуем разные варианты фильтров, так как структура может отличаться
-        // Вариант 1: filters[id] может быть ID публикации на платформе
-        const url = `/vacancies/?filters[platforms]=${platformId}&filters[id]=${vacancyId}`;
+        // Обновляем список вакансий перед перепроверкой
+        if (currentVacancyId) {
+            await loadPublicationPlatforms();
+        }
         
-        console.log('Проверка импортированной вакансии:', { platformId, vacancyId, url });
-        
-        const response = await $fetch(url, {
-            method: 'GET',
-            baseURL: config.public.apiBase,
-            headers: {
-                Accept: 'application/json',
-                Authorization: `Bearer ${authToken}`,
-                'X-Auth-User': authUser,
-            },
+        // Перепроверяем каждую публикацию в списке
+        // Обновляем напрямую свойство isImported для сохранения реактивности Vue
+        // Пропускаем уже помеченные как импортированные, чтобы не сбрасывать флаг
+        importedPublications.value.forEach((pub, index) => {
+            // Если публикация уже помечена как импортированная, пропускаем проверку
+            if (pub.isImported === true) {
+                // Для rabota.ru ID может быть в разных форматах
+                const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
+                console.log(`Публикация ${publicationId} уже помечена как импортированная, пропускаем проверку`);
+                return;
+            }
+            
+            // Для rabota.ru ID может быть в разных форматах
+            const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
+            const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
+            // Обновляем свойство напрямую для сохранения реактивности Vue
+            importedPublications.value[index].isImported = !!isImported;
+            
+            if (isImported) {
+                console.log(`Публикация ${publicationId} найдена в БД после перепроверки`);
+            }
         });
-
-        console.log('Ответ API при проверке импорта:', response);
-
-        // Проверяем разные варианты структуры ответа
-        let hasData = false;
-        let vacancies = [];
         
-        // Вариант 1: response.data.data (массив)
-        if (response?.data && Array.isArray(response.data)) {
-            console.log('response.data', response.data);
-            vacancies = response.data;
-            hasData = vacancies.length > 0;
-        }
+        await nextTick(); // Ждем обновления DOM
         
-        // Если нашли вакансии, проверяем, есть ли среди них та, что связана с данной публикацией
-        // Возможно, нужно проверить дополнительные поля или связи
-        if (hasData) {
-            console.log('Найдены вакансии с platform_id:', platformId, 'Количество:', vacancies.length);
-            console.log('Детали найденных вакансий:', vacancies);
-        }
-
-        console.log('Результат проверки импорта:', { hasData, platformId, vacancyId, foundVacancies: vacancies.length });
-        return hasData;
-    } catch (err) {
-        // Если ошибка 404 или пустой результат - вакансия не импортирована
-        if (err.response?.status === 404) {
-            console.log('Вакансия не найдена (404):', { platformId, vacancyId });
-            return false;
-        }
-        // При других ошибках логируем и возвращаем false
-        console.error('Ошибка при проверке импортированной вакансии:', err);
-        console.error('Детали ошибки:', {
-            status: err.response?.status,
-            statusText: err.response?.statusText,
-            data: err.response?.data,
-            platformId,
-            vacancyId
-        });
-        return false;
+        console.log('Перепроверка публикаций завершена. Обновленные статусы:', 
+            importedPublications.value.map(p => ({ id: p.id, isImported: p.isImported }))
+        );
+    } catch (error) {
+        console.error('Ошибка при перепроверке публикаций:', error);
     }
 }
 
+/**
+ * Проверка, была ли вакансия уже импортирована
+ * @param platformId - ID платформы
+ * @param vacancyId - ID вакансии на платформе (publication.id)
+ * @param vacanciesList - Список уже загруженных вакансий для проверки (опционально)
+ * @returns true если вакансия уже импортирована, false если нет
+ */
+function checkVacancyImported(platformId, vacancyId, vacanciesList = null) {
+    if (!platformId || !vacancyId) {
+        console.warn('Отсутствуют platformId или vacancyId для проверки:', { platformId, vacancyId });
+        return false;
+    }
+
+    // Используем переданный список или загруженный список из publicationPlatforms
+    const vacancies = vacanciesList || publicationPlatforms.value;
+    
+    if (!vacancies || !Array.isArray(vacancies) || vacancies.length === 0) {
+        console.log(`Проверка дубликатов: список вакансий пуст для platformId=${platformId}, vacancyId=${vacancyId}`);
+        return false;
+    }
+    
+    // Преобразуем vacancyId в строку для сравнения (может быть число или строка)
+    const vacancyIdStr = String(vacancyId);
+    const platformIdNum = Number(platformId);
+    
+    console.log(`Проверка дубликатов: ищем platformId=${platformIdNum}, vacancyId=${vacancyIdStr} в ${vacancies.length} вакансиях`);
+    
+    const foundVacancy = vacancies.find((vacancy, index) => {
+        // Получаем platform_id из platforms_data[0]
+        const platformData = vacancy.platforms_data && 
+                            Array.isArray(vacancy.platforms_data) && 
+                            vacancy.platforms_data.length > 0 
+                            ? vacancy.platforms_data[0] 
+                            : null;
+        
+        const vacPlatformId = platformData?.platform_id || null;
+        
+        // Проверяем, что platform_id совпадает
+        if (!vacPlatformId || Number(vacPlatformId) !== platformIdNum) {
+            return false;
+        }
+        
+        // Проверяем разные варианты полей для vacancy_platform_id
+        // Сначала проверяем в platforms_data[0], затем в корне объекта
+        const vacancyPlatformId = platformData?.vacancy_platform_id ||
+                                  platformData?.vacancyPlatformId ||
+                                  platformData?.platform_vacancy_id ||
+                                  vacancy.vacancy_platform_id || 
+                                  vacancy.vacancyPlatformId || 
+                                  vacancy.platform_vacancy_id;
+        
+        // Логируем для отладки (только для первых нескольких вакансий)
+        if (index < 3) {
+            console.log(`Проверка вакансии #${index}:`, {
+                vacancyId: vacancy.id,
+                vacPlatformId,
+                vacancyPlatformId,
+                platformData: platformData ? Object.keys(platformData) : null,
+                vacancyKeys: Object.keys(vacancy).filter(k => k.includes('platform') || k.includes('Platform'))
+            });
+        }
+        
+        // Если есть vacancy_platform_id, проверяем совпадение
+        if (vacancyPlatformId !== undefined && vacancyPlatformId !== null) {
+            const isMatch = String(vacancyPlatformId) === vacancyIdStr;
+            if (isMatch) {
+                console.log(`✓ Найдена импортированная вакансия: vacancy.id=${vacancy.id}, platform_id=${vacPlatformId}, vacancy_platform_id=${vacancyPlatformId}, ищем=${vacancyIdStr}`);
+            }
+            return isMatch;
+        }
+        
+        // Если vacancy_platform_id нет, но platform_id совпадает, 
+        // это может быть вакансия, созданная напрямую (не импортированная)
+        // В этом случае не считаем её дубликатом
+        return false;
+    });
+
+    return !!foundVacancy;
+}
+
 async function importPublication(publication) {
+    // Проверяем, не импортирована ли уже эта публикация
+    if (publication.isImported) {
+        importError.value = 'Эта публикация уже импортирована';
+        return;
+    }
+    
     isLoadingImport.value = true;
     importError.value = null;
     
     try {
-        // Получаем статистику публикации
-        const { data: countViews, error: countViewsError } = await getVacancyCountViews(publication.id);
-        if (!countViewsError && countViews) {
-            publication.countViews = countViews;
+        // Определяем платформу
+        const platform = selectedImportPlatform.value || 'hh.ru';
+        
+        // Проверяем, что платформа выбрана
+        if (!platform) {
+            importError.value = 'Платформа не выбрана';
+            return;
         }
         
-        const { data: responses, error: responsesError } = await getVacancyResponses(publication.id);
-        if (!responsesError && responses) {
-            if (responses.items.length > 0) {
-                publication.responses = responses.items.length;
+        // Получаем platform_id для проверки дубликатов
+        const platformId = getPlatformId(platform);
+        if (!platformId) {
+            importError.value = `Не удалось определить ID платформы для ${platform}`;
+            return;
+        }
+        
+        // Проверяем на дубликаты перед импортом
+        if (currentVacancyId) {
+            await loadPublicationPlatforms();
+            // Для rabota.ru ID может быть в разных форматах
+            const publicationId = publication.id || publication.vacancy_id || publication.vacancyId;
+            if (publicationId) {
+                const isDuplicate = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
+                if (isDuplicate) {
+                    importError.value = 'Эта публикация уже импортирована в систему';
+                    // Обновляем флаг в списке
+                    const pubIndex = importedPublications.value.findIndex(p => (p.id === publicationId || p.id === publication.id));
+                    if (pubIndex !== -1) {
+                        importedPublications.value[pubIndex].isImported = true;
+                    }
+                    return;
+                }
             }
         }
         
-        // Определяем платформу
-        const platform = selectedImportPlatform.value || 'hh.ru';
+        // Получаем статистику публикации (только для hh.ru, для других платформ может не поддерживаться)
+        // Необязательно, не блокируем импорт при ошибке
+        if (platform === 'hh.ru') {
+            try {
+                const { data: countViews, error: countViewsError } = await getVacancyCountViews(publication.id);
+                if (!countViewsError && countViews) {
+                    publication.countViews = countViews;
+                }
+            } catch (err) {
+                console.warn('Не удалось получить статистику просмотров:', err);
+            }
+            
+            try {
+                const { data: responses, error: responsesError } = await getVacancyResponses(publication.id);
+                if (!responsesError && responses) {
+                    if (responses.items && responses.items.length > 0) {
+                        publication.responses = responses.items.length;
+                    }
+                }
+            } catch (err) {
+                console.warn('Не удалось получить статистику откликов:', err);
+            }
+        } else {
+            // Для других платформ (rabota.ru, avito.ru) статистика может быть в самой публикации
+            if (publication.countViews !== undefined) {
+                publication.countViews = publication.countViews;
+            }
+            if (publication.responses !== undefined || publication.response_count !== undefined) {
+                publication.responses = publication.responses || publication.response_count || 0;
+            }
+        }
         
         // Преобразуем данные публикации в формат вакансии
         let vacancyData = mapPublicationToVacancy(
             publication, 
             platform, 
-            currentVacancyId ? Number(currentVacancyId) : undefined
+            currentVacancyId ? Number(currentVacancyId) : undefined,
+            platformId
         );
         
         // Проверяем, что platform_id добавлен
         if (!vacancyData.platform_id) {
-            console.warn('platform_id не был добавлен в данные вакансии');
+            console.warn('platform_id не был добавлен в данные вакансии, используем полученный platformId');
+            vacancyData.platform_id = platformId;
+        }
+        
+        // Логируем данные для отладки (только для rabota.ru)
+        if (platform === 'rabota.ru') {
+            console.log('Импорт вакансии rabota.ru - исходные данные публикации:', {
+                id: publication.id,
+                title: publication.title,
+                name: publication.name,
+                region: publication.region,
+                area: publication.area,
+                address: publication.address,
+                salary: publication.salary,
+                employment_type: publication.employment_type,
+                work_schedule: publication.work_schedule,
+                experience: publication.experience,
+                education: publication.education,
+                profession: publication.profession,
+                skills: publication.skills
+            });
+            console.log('Импорт вакансии rabota.ru - преобразованные данные:', {
+                publicationId: publication.id,
+                name: vacancyData.name,
+                description: vacancyData.description?.substring(0, 100) + '...',
+                platform_id: vacancyData.platform_id,
+                base_id: vacancyData.base_id,
+                vacancy_platform_id: vacancyData.vacancy_platform_id,
+                location: vacancyData.location,
+                salary_from: vacancyData.salary_from,
+                salary_to: vacancyData.salary_to,
+                currency: vacancyData.currency,
+                employment: vacancyData.employment,
+                schedule: vacancyData.schedule,
+                experience: vacancyData.experience,
+                education: vacancyData.education,
+                place: vacancyData.place,
+                specializations: vacancyData.specializations,
+                phrases: vacancyData.phrases
+            });
         }
         
         // Нормализуем данные (преобразуем типы в соответствии с валидацией)
         vacancyData = normalizeVacancyData(vacancyData);
-        
-        // Логируем данные перед отправкой для отладки
-        console.log('Данные вакансии перед отправкой:', {
-            platform_id: vacancyData.platform_id,
-            base_id: vacancyData.base_id,
-            name: vacancyData.name,
-            platform: platform
-        });
         
         // Валидируем данные перед отправкой
         const validation = validateVacancyData(vacancyData);
@@ -1288,38 +1534,81 @@ async function importPublication(publication) {
         const { data: createdVacancy, error: createError } = await createVacancy(vacancyData);
         
         if (createError) {
-            importError.value = `Ошибка при создании вакансии: ${createError.message || createError}`;
+            const errorMessage = createError?.response?.data?.message || createError?.message || createError;
+            importError.value = `Ошибка при создании вакансии: ${errorMessage}`;
             console.error('Ошибка создания вакансии:', createError);
             return;
         }
         
+        if (!createdVacancy?.data?.id) {
+            importError.value = 'Вакансия создана, но не получен ID';
+            console.error('Не получен ID созданной вакансии:', createdVacancy);
+            return;
+        }
+        
         // Добавляем ID созданной вакансии к публикации
-        publication.vacancyId = createdVacancy?.data?.id;
+        publication.vacancyId = createdVacancy.data.id;
         publication.importedAt = new Date().toISOString();
         publication.isImported = true; // Помечаем как импортированную
         
-        // Обновляем флаг в списке импортированных публикаций
-        const pubIndex = importedPublications.value.findIndex(p => p.id === publication.id);
-        if (pubIndex !== -1) {
-            // Используем реактивное обновление через Vue 3
-            importedPublications.value[pubIndex] = {
-                ...importedPublications.value[pubIndex],
-                isImported: true
-            };
-            console.log('Обновлен флаг isImported для публикации:', publication.id);
+        // Обновляем список publicationPlatforms для проверки дубликатов
+        if (currentVacancyId) {
+            await loadPublicationPlatforms();
+            console.log(`Обновлен список publicationPlatforms после импорта, всего вакансий: ${publicationPlatforms.value.length}`);
         }
         
+        // Обновляем флаг в списке импортированных публикаций
+        // Для rabota.ru ID может быть в разных форматах
+        const publicationId = publication.id || publication.vacancy_id || publication.vacancyId;
+        const pubIndex = importedPublications.value.findIndex(p => {
+            const pubId = p.id || p.vacancy_id || p.vacancyId;
+            return pubId === publicationId;
+        });
+        if (pubIndex !== -1) {
+            // Явно обновляем свойство для триггера реактивности Vue 3
+            importedPublications.value[pubIndex].isImported = true;
+            importedPublications.value[pubIndex].vacancyId = createdVacancy.data.id;
+            // Также обновляем сам объект publication для консистентности
+            publication.isImported = true;
+            console.log(`Обновлен флаг isImported для публикации ${publicationId}`);
+            
+            // Принудительно триггерим реактивность через nextTick
+            await nextTick();
+        } else {
+            console.warn('Публикация не найдена в списке для обновления:', publicationId || publication.id);
+        }
+        
+        // Перепроверяем все публикации после успешного импорта
+        await recheckImportedPublications();
+        
         // Добавляем публикацию в список активных
-        if (!publicationsHh.value.find(p => p.id === publication.id)) {
+        if (!publicationsHh.value.find(p => p.id === publicationId || p.id === publication.id)) {
             publicationsHh.value.push(publication);
         }
         
-        // Закрываем попап после успешного импорта
-        closeImportPopup();
+        // Перепроверяем все публикации в списке после успешного импорта
+        // Функция recheckImportedPublications пропустит уже помеченные публикации
+        await recheckImportedPublications();
+        
+        // Перезагружаем список вакансий с платформ
+        if (currentVacancyId) {
+            await loadPublicationPlatforms();
+        }
+        
+        // Показываем успешное сообщение (опционально)
+        console.log('Публикация успешно импортирована:', {
+            platform: platform,
+            publicationId: publicationId || publication.id,
+            vacancyId: createdVacancy.data.id,
+            name: publication.name || publication.title,
+            platform_id: vacancyData.platform_id,
+            base_id: vacancyData.base_id
+        });
         
     } catch (err) {
         console.error('Ошибка при импорте публикации:', err);
-        importError.value = `Ошибка при импорте публикации: ${err.message || err}`;
+        const errorMessage = err?.response?.data?.message || err?.message || err?.toString() || 'Неизвестная ошибка';
+        importError.value = `Ошибка при импорте публикации: ${errorMessage}`;
     } finally {
         isLoadingImport.value = false;
     }
@@ -1419,13 +1708,25 @@ onMounted(async () => {
     }
 
     // Обработка редиректа после авторизации avito.ru
-    if (query.popup_account === 'true' && query.platform === 'avito' && query.message === 'success') {
+    if (query.popup_account === 'true' && query.platform === 'avito') {
         const processAuth = useCookie('process_auth');
         if (processAuth.value) {
-            const response = await authAvito();
-            if (response && response.data) {
-                platformsAuth.value['avito.ru'] = true;
-                shouldRedirect = true;
+            // Обработка ошибки авторизации
+            if (query.error) {
+                authError.value['avito.ru'] = query.error_description || query.error || 'Ошибка авторизации Avito';
+                setCookie('process_auth', '', -1); // Очищаем cookie
+                return;
+            }
+            
+            // Обработка успешной авторизации
+            if (query.message === 'success' || query.code) {
+                const response = await authAvito();
+                if (response && response.data) {
+                    platformsAuth.value['avito.ru'] = true;
+                    shouldRedirect = true;
+                } else {
+                    authError.value['avito.ru'] = response?.error || 'Ошибка при получении токенов авторизации';
+                }
             }
         }
     }
@@ -1559,7 +1860,9 @@ watch(allSelected, (newValue) => {
 
 const dropdownOptions = ["Редактировать текст", "Посмотреть публикацию", "Снять с публикации", "Дублировать публикацию", "Показать отчет по публикации"];
 
-const openPopupNewPublication = () => {
+const openPopupNewPublication = (platformName) => {
+    // Сохраняем выбранную платформу для использования при сабмите
+    selectedPlatformForPublish.value = platformName;
     isOpenPopup.value = true;
 }
 </script>

@@ -226,9 +226,8 @@ export function normalizeVacancyData(vacancyData: any): any {
     }
 
     // Преобразуем platform_id и base_id в числа (если они есть)
-    if (normalized.platform_id !== undefined && normalized.platform_id !== null) {
-        const platformIdNum = typeof normalized.platform_id === 'string' ? parseFloat(normalized.platform_id) : normalized.platform_id;
-        normalized.platform_id = isNaN(platformIdNum) ? undefined : platformIdNum;
+    if (normalized.id !== undefined && normalized.id !== null) {
+        normalized.vacancy_platform_id = normalized.id;
     }
     
     if (normalized.base_id !== undefined && normalized.base_id !== null) {
