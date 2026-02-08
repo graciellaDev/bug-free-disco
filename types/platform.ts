@@ -22,6 +22,12 @@ export type Resume = {
 export interface PlatformHhResponse {
   data: {
     items?: any[];
+    resources?: any[];
+    meta?: {
+      page?: number;
+      per_page?: number;
+      [key: string]: any;
+    };
     [key: string]: any;
   };
 }

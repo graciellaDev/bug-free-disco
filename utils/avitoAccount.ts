@@ -1,44 +1,69 @@
 import { createAuthHeaders, getAuthTokens, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
+import { mapVacancyToAvitoFormat } from "@/utils/mapVacancyToAvito";
 
 /**
  * Добавление черновика вакансии на Avito
- * @param data - Данные вакансии в формате DraftDataHh
+ * @param data - Данные вакансии в формате DraftDataHh или из формы AddPublication
  * @returns Результат создания черновика
  */
-export const addDraft = async (data: DraftDataHh) => {
+export const addDraft = async (data: DraftDataHh | any) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден', errorDraft: null };
   }
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null, errorDraft: null });
+  
+  // Преобразуем данные в формат Avito API
+  const avitoData = mapVacancyToAvitoFormat(data);
+  
   const bodyData = new FormData();
   
-  Object.entries(data).forEach(([key, value]) => {
+  // Обработка данных для отправки в формате FormData
+  Object.entries(avitoData).forEach(([key, value]) => {
+    if (value === null || value === undefined) {
+      return; // Пропускаем null и undefined
+    }
+    
     if (Array.isArray(value)) {
-      if (value.length > 0) {
-        if (value[0] !== null) {
-          console.log(`${key}[0][id]` + value[0].id)
-          bodyData.append(`${key}[0][id]`, value[0].id);
-        }
-      }
-    } else {
-      if (typeof value === 'object' && value !== null) {
-        const objValue = value as Record<string, any>;
-        if (Object.keys(objValue).length > 0) {
-          for (const index in objValue) {
-            console.log('API: ' + `${key}[${index}]` + `${objValue[index]}`);
-            bodyData.append(`${key}[${index}]`, `${objValue[index]}`);
+      // Массивы (например, key_skills)
+      value.forEach((item, index) => {
+        if (item !== null && item !== undefined) {
+          if (typeof item === 'object') {
+            // Для объектов в массиве (например, { id: 123 })
+            Object.entries(item).forEach(([subKey, subValue]) => {
+              if (subValue !== null && subValue !== undefined) {
+                bodyData.append(`${key}[${index}][${subKey}]`, String(subValue));
+              }
+            });
+          } else {
+            // Для примитивных значений в массиве
+            bodyData.append(`${key}[${index}]`, String(item));
           }
         }
-      } else {
-        if (value !== null && value !== undefined) {
-          bodyData.append(key, value as string);
+      });
+    } else if (typeof value === 'object') {
+      // Объекты (например, category: { id: 123 }, salary: { from: 1000, to: 2000, currency: 'RUR' })
+      Object.entries(value).forEach(([subKey, subValue]) => {
+        if (subValue !== null && subValue !== undefined) {
+          if (typeof subValue === 'object' && !Array.isArray(subValue)) {
+            // Вложенные объекты
+            Object.entries(subValue).forEach(([nestedKey, nestedValue]) => {
+              if (nestedValue !== null && nestedValue !== undefined) {
+                bodyData.append(`${key}[${subKey}][${nestedKey}]`, String(nestedValue));
+              }
+            });
+          } else {
+            bodyData.append(`${key}[${subKey}]`, String(subValue));
+          }
         }
-      }
+      });
+    } else {
+      // Примитивные значения (строки, числа, булевы)
+      bodyData.append(key, String(value));
     }
-  })
+  });
 
   try {
     const response = await $fetch<PlatformHhResponse>('/avito/drafts', {
@@ -167,6 +192,23 @@ export const unlinkProfile = async () => {
 };
 
 /**
+ * Нормализация элемента публикации Avito в единый формат
+ * Avito возвращает: { id, title, price, address, status, url, category }
+ * Нужный формат: { id, name, salary: { from, to, currency }, area: { name }, status, url }
+ */
+function normalizeAvitoItem(item: any): any {
+  return {
+    ...item,
+    // name — используется в UI для отображения названия
+    name: item.title || item.name || 'Без названия',
+    // area — используется в UI для отображения региона
+    area: item.area || { name: item.address || '—' },
+    // salary — используется в UI для отображения зарплаты
+    salary: item.salary || (item.price != null ? { from: item.price, to: null, currency: 'RUR' } : null),
+  };
+}
+
+/**
  * Получение публикаций с avito.ru
  * @param includeArchived - Включать ли архивные публикации
  * @returns Список публикаций
@@ -195,7 +237,14 @@ export const getPublications = async (includeArchived: boolean = false) => {
       params,
     });
 
-    result.value.roles = response.data;
+    // Avito API возвращает { meta, resources: [...] }, нормализуем в { items: [...] }
+    const rawItems = response.data?.resources || response.data?.items || [];
+    const normalizedItems = rawItems.map(normalizeAvitoItem);
+
+    result.value.roles = {
+      ...response.data,
+      items: normalizedItems,
+    };
   } catch (err: any) {
     if (err.response?.status === 404) {
       result.value.errorRoles = err.response._data.message;
@@ -231,11 +280,12 @@ export const getAllPublications = async () => {
       },
     });
 
-    const activeItems = activeResponse.data?.items || [];
+    // Avito API возвращает { meta, resources: [...] }
+    const activeItems = activeResponse.data?.resources || activeResponse.data?.items || [];
     
-    // Помечаем активные публикации, если статус не указан
+    // Нормализуем и помечаем активные публикации
     const activeWithStatus = activeItems.map((item: any) => ({
-      ...item,
+      ...normalizeAvitoItem(item),
       status: item.status || 'published',
     }));
 
@@ -253,11 +303,12 @@ export const getAllPublications = async () => {
         params: { archived: true },
       });
 
-      const archivedItems = archivedResponse.data?.items || [];
+      // Avito API возвращает { meta, resources: [...] }
+      const archivedItems = archivedResponse.data?.resources || archivedResponse.data?.items || [];
       
-      // Помечаем архивные публикации
+      // Нормализуем и помечаем архивные публикации
       const archivedWithStatus = archivedItems.map((item: any) => ({
-        ...item,
+        ...normalizeAvitoItem(item),
         status: 'archived',
       }));
 
@@ -269,15 +320,16 @@ export const getAllPublications = async () => {
       
       // Фильтруем публикации по статусу, если он есть в ответе
       const itemsWithStatus = activeItems.map((item: any) => {
+        const normalized = normalizeAvitoItem(item);
         // Если статус уже есть и он архивный, оставляем его
         if (item.status && (item.status === 'archived' || item.status === 'closed')) {
           return {
-            ...item,
+            ...normalized,
             status: 'archived',
           };
         }
         return {
-          ...item,
+          ...normalized,
           status: item.status || 'published',
         };
       });
@@ -302,7 +354,7 @@ export const getAllPublications = async () => {
 }
 
 /**
- * Публикация вакансии на avito.ru
+ * Публикация вакансии на avito.ru (без черновика)
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
@@ -312,36 +364,165 @@ export const publishVacancy = async (draftData: DraftDataHh) => {
     return { data: null, error: 'Токен авторизации не найден' };
   }
   
+  const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    // Сначала создаем черновик
-    const draftResult = await addDraft(draftData);
+    // Преобразуем данные в формат Avito API
+    const avitoData = mapVacancyToAvitoFormat(draftData as any);
     
-    if (draftResult?.errorDraft) {
-      result.value.error = draftResult.errorDraft;
-      return result.value;
-    }
+    const bodyData = new FormData();
+    
+    // Обработка данных для отправки в формате FormData
+    Object.entries(avitoData).forEach(([key, value]) => {
+      if (value === null || value === undefined) {
+        return; // Пропускаем null и undefined
+      }
+      
+      if (Array.isArray(value)) {
+        // Массивы (например, key_skills)
+        value.forEach((item, index) => {
+          if (item !== null && item !== undefined) {
+            if (typeof item === 'object') {
+              // Для объектов в массиве (например, { id: 123 })
+              Object.entries(item).forEach(([subKey, subValue]) => {
+                if (subValue !== null && subValue !== undefined) {
+                  bodyData.append(`${key}[${index}][${subKey}]`, String(subValue));
+                }
+              });
+            } else {
+              // Для примитивных значений в массиве
+              bodyData.append(`${key}[${index}]`, String(item));
+            }
+          }
+        });
+      } else if (typeof value === 'object') {
+        // Объекты (например, category: { id: 123 }, salary: { from: 1000, to: 2000, currency: 'RUR' })
+        Object.entries(value).forEach(([subKey, subValue]) => {
+          if (subValue !== null && subValue !== undefined) {
+            if (typeof subValue === 'object' && !Array.isArray(subValue)) {
+              // Вложенные объекты
+              Object.entries(subValue).forEach(([nestedKey, nestedValue]) => {
+                if (nestedValue !== null && nestedValue !== undefined) {
+                  bodyData.append(`${key}[${subKey}][${nestedKey}]`, String(nestedValue));
+                }
+              });
+            } else {
+              bodyData.append(`${key}[${subKey}]`, String(subValue));
+            }
+          }
+        });
+      } else {
+        // Примитивные значения (строки, числа, булевы)
+        bodyData.append(key, String(value));
+      }
+    });
 
-    // Если черновик создан успешно, публикуем его
-    // TODO: Добавить эндпоинт для публикации, если он есть в API
-    // const publishResponse = await $fetch<PlatformHhResponse>('/hh/vacancies/publish', {
-    //   method: 'POST',
-    //   baseURL: config.public.apiBase as string,
-    //   headers: {
-    //     'Accept': 'application/json',
-    //     'Authorization': `Bearer ${serverToken}`,
-    //     'X-Auth-User': userToken,
-    //   },
-    //   body: { vacancy_id: draftResult.draft?.id },
-    // });
+    // Используем эндпоинт для публикации (не черновика)
+    const response = await $fetch<PlatformHhResponse>('/avito/publications', {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: bodyData,
+    });
 
-    result.value.data = draftResult.draft;
+    result.value.data = response.data;
   } catch (err: any) {
     if (err.response?.status === 401) {
       handle401Error();
     } else {
-      result.value.error = err.response?._data?.message || 'Ошибка при публикации вакансии';
+      result.value.error = err.response?._data?.message || 'Ошибка при публикации вакансии на Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
+ * Получение списка профессий (отраслей) для Avito
+ * @param search - Поисковый запрос по названию (опционально)
+ * @returns Список профессий
+ */
+export const getProfessions = async (search?: string) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const params: Record<string, any> = {};
+    if (search) {
+      params.search = search;
+    }
+
+    const response = await $fetch<PlatformHhResponse>('/avito/professions', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      params,
+    });
+
+    result.value.data = response.data?.items || response.data || [];
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении профессий Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
+ * Получение списка специализаций для профессии Avito
+ * @param professionId - ID профессии
+ * @param search - Поисковый запрос по названию (опционально)
+ * @returns Список специализаций
+ */
+export const getSpecializations = async (professionId: string | number, search?: string) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const params: Record<string, any> = {};
+    if (search) {
+      params.search = search;
+    }
+
+    const response = await $fetch<PlatformHhResponse>(`/avito/professions/${professionId}/specializations`, {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      params,
+    });
+
+    result.value.data = response.data?.items || response.data || [];
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении специализаций Avito';
     }
   } finally {
     return result.value;
