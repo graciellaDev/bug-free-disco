@@ -226,14 +226,17 @@
                                 @update:model-value="handleIndustryChange"
                                 placeholder="Выберите отрасль"
                             />
+                            <div v-else class="text-sm text-slate-custom py-9px px-15px bg-athens-gray border border-athens rounded-ten">
+                                Загрузка данных...
+                            </div>
                         </div>
                         <div class="w-full">
                             <p class="text-sm font-medium mb-4 leading-normal text-space">
                                 Выберите специализацию
                             </p>
                             <DropDownRoles
-                                v-if="publishFormData.industry && publishFormData.industry.roles"
-                                :options="publishFormData.industry.roles"
+                                v-if="professionsOptions.length > 0"
+                                :options="professionsOptions"
                                 :selected="publishFormData.professional_role"
                                 @update:model-value="publishFormData.professional_role = $event"
                                 placeholder="Выберите специализацию"
@@ -544,6 +547,38 @@
             <!--<UiButton variant="action" size="action" class="font-bold" @click="openPopupNewPublication">
                 Добавить публикацию
             </UiButton>-->
+            <!-- Попап редактирования вакансии -->
+            <Popup
+                :isOpen="isEditPopupOpen"
+                @close="closeEditPopup"
+                :width="'900px'"
+                :height="'fit-content'"
+                :showCloseButton="false"
+                :disableOverflowHidden="true"
+                maxHeight
+            >
+                <div class="p-25px max-h-[90vh] overflow-y-auto">
+                    <div class="flex items-center justify-between mb-25px">
+                        <div>
+                            <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии</p>
+                            <p class="text-sm font-normal text-slate-custom">
+                                Редактирование вакансии из таблицы "Активные публикации"
+                            </p>
+                        </div>
+                        <button @click="closeEditPopup" class="text-slate-custom hover:text-space transition-colors">
+                            <svg-icon name="close" width="20" height="20" />
+                        </button>
+                    </div>
+                    <AddPublication 
+                        v-if="editingVacancy"
+                        :selectedPlatform="null"
+                        :editingVacancy="editingVacancy"
+                        @saved="handleVacancyUpdated"
+                        @cancel="closeEditPopup"
+                    />
+                </div>
+            </Popup>
+
             <Popup
                   :isOpen="isOpenPopup"
                   @close="() => (isOpenPopup = false)"
@@ -618,14 +653,21 @@
                         <div class="text-sm font-medium text-space px-2.5">{{ item.city }}</div>
                         <div class="text-sm font-medium text-space px-2.5">{{ item?.billing_type?.name ?? 'Стандарт' }}</div>
                         <div>
-                            <CardIcon icon="hh" :isPng="false" imagePath="" :width="21"
-                              :height="21" class="px-2.5" />
+                            <CardIcon 
+                                v-bind="getPlatformIcon(item)"
+                                :width="21"
+                                :height="21" 
+                                class="px-2.5" 
+                            />
                         </div>
                         <div class="text-sm font-medium text-space px-2.5">{{ item?.views }}</div>
                         <div class="text-sm font-medium text-space px-2.5">{{ item?.responses }}</div>
                         <div class="text-sm font-medium text-space px-2.5">{{ dateStringToDots(item.created_at) }}</div>
                         <div>
-                            <DotsDropdown :items="dropdownOptions" />
+                            <DotsDropdown 
+                                :items="dropdownOptions" 
+                                @select-item="(action) => handleDropdownAction(action, item)"
+                            />
                         </div>
                     </div>
                 </div>
@@ -777,6 +819,30 @@ const publishFormData = ref({
     phrases: [],
 });
 
+// Computed свойство для специализаций (как в AddPublication.vue)
+const professionsOptions = computed(() => {
+    console.log('professionsOptions computed вызван');
+    console.log('publishFormData.value.industry:', publishFormData.value.industry);
+    
+    if (!publishFormData.value.industry) {
+        console.log('Нет отрасли');
+        return [];
+    }
+    
+    console.log('Отрасль есть, проверяем roles:', publishFormData.value.industry.roles);
+    
+    if (publishFormData.value.industry.roles) {
+        const roles = Array.isArray(publishFormData.value.industry.roles) 
+            ? publishFormData.value.industry.roles 
+            : [];
+        console.log('Найдены специализации:', roles.length);
+        return roles;
+    }
+    
+    console.log('Нет roles в отрасли');
+    return [];
+});
+
 // Данные для карточек места работы
 const workSpaceCards = ref([
     { id: '1', title: 'Офис', description: 'Сотрудники работают в офисе' },
@@ -830,6 +896,39 @@ const sortedData = computed(() => {
         return 0;
     });
 });
+
+/**
+ * Получение иконки платформы по platform_id из вакансии
+ * @param item - Объект вакансии
+ * @returns Объект с иконкой { icon, isPng, imagePath } или значения по умолчанию для hh.ru
+ */
+function getPlatformIcon(item) {
+    // Получаем platform_id из platforms_data[0] или из корня объекта
+    const platformData = item.platforms_data && 
+                        Array.isArray(item.platforms_data) && 
+                        item.platforms_data.length > 0 
+                        ? item.platforms_data[0] 
+                        : null;
+    
+    const platformId = platformData?.id || item.id;
+    console.log('platformId', platformId);
+    
+    // Маппинг platform_id на иконку (соответствует getPlatformId в mapPublicationToVacancy.ts)
+    const platformIconMap = {
+        1: { icon: 'hh', isPng: false, imagePath: '' },           // hh.ru
+        2: { icon: 'avito', isPng: false, imagePath: '' },          // avito.ru
+        3: { icon: 'rabota-ru', isPng: false, imagePath: '' },      // rabota.ru
+        4: { icon: 'superjob', isPng: false, imagePath: '' },       // superjob
+    };
+    
+    // Если platform_id найден, возвращаем соответствующую иконку
+    if (platformId && platformIconMap[platformId]) {
+        return platformIconMap[platformId];
+    }
+    
+    // По умолчанию возвращаем иконку hh.ru
+    return { icon: 'hh', isPng: false, imagePath: '' };
+}
 
 //////////////////////////////////////////////
 
@@ -893,12 +992,21 @@ async function openPublishPopup(platformName) {
 
         // Загружаем данные о ролях и индустриях для hh.ru
         if (!hhRolesData.value) {
+            console.log('Загружаем данные ролей...');
             const { roles, errorRoles } = await getRoles();
             if (errorRoles) {
+                console.error('Ошибка загрузки ролей:', errorRoles);
                 publishError.value = 'Ошибка при загрузке данных для публикации';
                 return;
             }
             hhRolesData.value = roles;
+            console.log('Данные ролей загружены:', hhRolesData.value);
+            console.log('Структура данных:', {
+                hasCategories: !!hhRolesData.value?.categories,
+                categoriesCount: hhRolesData.value?.categories?.length || 0,
+                firstCategory: hhRolesData.value?.categories?.[0],
+                firstCategoryRoles: hhRolesData.value?.categories?.[0]?.roles
+            });
         }
 
         // Загружаем тарифы hh.ru
@@ -1005,20 +1113,76 @@ function fillPublishForm(vacancy) {
     }
 
     // Маппинг отрасли и специализации
+    console.log('=== fillPublishForm: маппинг отрасли и специализации ===');
+    console.log('hhRolesData.value:', hhRolesData.value);
+    console.log('vacancy.industry:', vacancy.industry);
+    console.log('vacancy.specializations:', vacancy.specializations);
+    
     if (hhRolesData.value && vacancy.industry) {
         const industry = hhRolesData.value.categories?.find(cat => cat.name === vacancy.industry);
-        if (industry) {
-            publishFormData.value.industry = industry;
-            if (vacancy.specializations && industry.roles) {
-                const role = industry.roles.find(r => r.name === vacancy.specializations);
-                if (role) {
-                    publishFormData.value.professional_role = role;
-                } else if (industry.roles.length > 0) {
-                    publishFormData.value.professional_role = industry.roles[0];
+        console.log('Найденная отрасль:', industry);
+        
+        if (industry && industry.roles && Array.isArray(industry.roles)) {
+            // Создаем копию объекта отрасли для реактивности
+            publishFormData.value.industry = JSON.parse(JSON.stringify(industry));
+            console.log('Установлена отрасль:', publishFormData.value.industry);
+            console.log('Роли в отрасли:', industry.roles);
+            
+            // Используем nextTick, чтобы дождаться обновления computed свойства professionsOptions
+            nextTick(() => {
+                // Получаем актуальный список специализаций из computed свойства
+                const availableRoles = professionsOptions.value;
+                console.log('Доступные специализации из professionsOptions:', availableRoles);
+                
+                // Ищем специализацию
+                if (vacancy.specializations) {
+                    console.log('Ищем специализацию:', vacancy.specializations);
+                    const role = availableRoles.find(r => {
+                        // Проверяем по name (если vacancy.specializations - строка)
+                        if (typeof vacancy.specializations === 'string') {
+                            return r.name === vacancy.specializations;
+                        }
+                        // Если vacancy.specializations - объект, проверяем по name
+                        if (typeof vacancy.specializations === 'object' && vacancy.specializations.name) {
+                            return r.name === vacancy.specializations.name;
+                        }
+                        // Если vacancy.specializations - объект с id, проверяем по id
+                        if (typeof vacancy.specializations === 'object' && vacancy.specializations.id) {
+                            return String(r.id) === String(vacancy.specializations.id);
+                        }
+                        return false;
+                    });
+                    
+                    console.log('Найденная специализация:', role);
+                    
+                    if (role) {
+                        // Используем объект из professionsOptions, чтобы он точно был в списке options
+                        publishFormData.value.professional_role = role;
+                        console.log('Установлена специализация:', publishFormData.value.professional_role);
+                    } else {
+                        console.log('Специализация не найдена по имени, используем первую из списка');
+                        if (availableRoles.length > 0) {
+                            publishFormData.value.professional_role = availableRoles[0];
+                        }
+                    }
+                } else if (availableRoles.length > 0) {
+                    console.log('Специализация не указана в вакансии, используем первую из списка');
+                    publishFormData.value.professional_role = availableRoles[0];
                 }
-            } else if (industry.roles && industry.roles.length > 0) {
-                publishFormData.value.professional_role = industry.roles[0];
+            });
+        } else {
+            console.log('Отрасль не найдена в hhRolesData или нет ролей');
+            if (industry) {
+                console.log('Отрасль найдена, но нет ролей или они не массив');
             }
+        }
+    } else {
+        console.log('hhRolesData или vacancy.industry отсутствуют');
+        if (!hhRolesData.value) {
+            console.log('hhRolesData.value пустой');
+        }
+        if (!vacancy.industry) {
+            console.log('vacancy.industry пустой');
         }
     }
 
@@ -1030,13 +1194,80 @@ function fillPublishForm(vacancy) {
 
 // Обработчик изменения отрасли
 function handleIndustryChange(industry) {
-    publishFormData.value.industry = industry;
-    // Сбрасываем специализацию при изменении отрасли
-    if (industry && industry.roles && industry.roles.length > 0) {
-        publishFormData.value.professional_role = industry.roles[0];
+    console.log('=== handleIndustryChange вызван ===');
+    console.log('Переданная отрасль:', industry);
+    console.log('hhRolesData.value:', hhRolesData.value);
+    
+    if (!industry) {
+        console.log('Отрасль не передана, сбрасываем');
+        publishFormData.value.industry = null;
+        publishFormData.value.professional_role = null;
+        return;
+    }
+
+    // Находим полный объект отрасли в исходных данных, чтобы получить roles
+    // Это важно, потому что компонент DropDownRoles может передать неполный объект
+    let fullIndustry = null;
+    if (hhRolesData.value && hhRolesData.value.categories && Array.isArray(hhRolesData.value.categories)) {
+        console.log('Ищем отрасль в', hhRolesData.value.categories.length, 'категориях');
+        
+        // Ищем отрасль по id (приоритет) или name
+        fullIndustry = hhRolesData.value.categories.find(
+            cat => {
+                if (industry.id && cat.id) {
+                    const match = String(cat.id) === String(industry.id);
+                    if (match) console.log('Найдено по id:', cat.id);
+                    return match;
+                }
+                if (industry.name && cat.name) {
+                    const match = cat.name === industry.name;
+                    if (match) console.log('Найдено по name:', cat.name);
+                    return match;
+                }
+                return false;
+            }
+        );
+        
+        if (fullIndustry) {
+            console.log('Найдена полная отрасль:', fullIndustry);
+            console.log('Роли в отрасли:', fullIndustry.roles);
+            console.log('Тип roles:', typeof fullIndustry.roles, Array.isArray(fullIndustry.roles));
+        } else {
+            console.warn('Полная отрасль не найдена в исходных данных');
+            console.log('Попытка найти по всем полям:', {
+                industryId: industry.id,
+                industryName: industry.name,
+                firstCategory: hhRolesData.value.categories[0]
+            });
+        }
+    } else {
+        console.warn('hhRolesData.value или categories отсутствуют');
+    }
+
+    // Используем полный объект, если найден, иначе используем переданный
+    const selectedIndustry = fullIndustry || industry;
+    console.log('Выбранная отрасль:', selectedIndustry);
+    console.log('Роли в выбранной отрасли:', selectedIndustry.roles);
+    
+    // Обновляем industry - создаем новый объект для реактивности Vue
+    publishFormData.value.industry = selectedIndustry ? JSON.parse(JSON.stringify(selectedIndustry)) : null;
+    
+    console.log('publishFormData.value.industry после обновления:', publishFormData.value.industry);
+    console.log('professionsOptions после обновления:', professionsOptions.value);
+    
+    // Обновляем специализацию
+    if (selectedIndustry && selectedIndustry.roles && Array.isArray(selectedIndustry.roles) && selectedIndustry.roles.length > 0) {
+        // Выбираем первую специализацию, если еще не выбрана
+        if (!publishFormData.value.professional_role) {
+            publishFormData.value.professional_role = selectedIndustry.roles[0];
+            console.log('Установлена первая специализация:', selectedIndustry.roles[0]);
+        }
     } else {
         publishFormData.value.professional_role = null;
+        console.warn('Специализации не найдены или пусты');
     }
+    
+    console.log('=== handleIndustryChange завершен ===');
 }
 
 function closePublishPopup() {
@@ -1136,6 +1367,28 @@ async function confirmPublish() {
 
         if (result.error) {
             publishError.value = result.error;
+        } else if (result.data && result.data.errors) {
+            // Обработка ошибок из ответа API (если они есть в data)
+            const errors = result.data.errors;
+            if (Array.isArray(errors)) {
+                const errorMessages = errors.map((e) => {
+                    if (e.type === 'vacancies' && e.value === 'not_enough_purchased_services') {
+                        return 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+                    }
+                    return e.message || e.value || JSON.stringify(e);
+                }).join(', ');
+                publishError.value = errorMessages;
+            } else if (typeof errors === 'object') {
+                // Если errors - объект
+                const errorObj = errors;
+                if (errorObj.type === 'vacancies' && errorObj.value === 'not_enough_purchased_services') {
+                    publishError.value = 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+                } else {
+                    publishError.value = errorObj.message || errorObj.value || 'Ошибка при публикации вакансии';
+                }
+            } else {
+                publishError.value = 'Ошибка при публикации вакансии';
+            }
         } else {
             // Успешная публикация
             alert(`Вакансия "${publishFormData.value.name}" успешно опубликована на ${selectedPlatformForPublish.value}`);
@@ -1143,7 +1396,18 @@ async function confirmPublish() {
         }
     } catch (err) {
         console.error('Ошибка при публикации вакансии:', err);
-        publishError.value = 'Ошибка при публикации вакансии';
+        
+        // Обработка ошибок из исключения
+        const errorData = err?.response?._data;
+        if (errorData && errorData.type === 'vacancies' && errorData.value === 'not_enough_purchased_services') {
+            publishError.value = 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+        } else if (errorData && errorData.message) {
+            publishError.value = errorData.message;
+        } else if (errorData && errorData.error) {
+            publishError.value = errorData.error;
+        } else {
+            publishError.value = 'Ошибка при публикации вакансии';
+        }
     } finally {
         isPublishing.value = false;
     }
@@ -1205,25 +1469,36 @@ async function openImportPopup(platformName) {
         
         console.log(`Начинаем проверку импорта для ${publications.length} публикаций платформы ${platformName} (platform_id: ${platformId})`);
         
-        // Загружаем список вакансий для проверки (если еще не загружен)
-        if (publicationPlatforms.value.length === 0 && currentVacancyId) {
-            await loadPublicationPlatforms();
-        }
+        // Используем уже загруженный список вакансий из таблицы "Активные публикации"
+        // Не перезагружаем список, чтобы не обновлять таблицу при открытии попапа импорта
+        console.log(`Используем существующий список активных публикаций для проверки: ${publicationPlatforms.value.length} вакансий`);
+        console.log('publicationPlatforms.value:', publicationPlatforms.value);
         
-        // Проверяем каждую публикацию на наличие в БД
+        // Проверяем каждую публикацию на наличие в таблице "Активные публикации"
         // Используем уже загруженный список publicationPlatforms
         importedPublications.value = publications.map((pub) => {
             // Для hh.ru используем pub.id, для rabota.ru ID может быть в разных форматах
             const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
+            if (!publicationId) {
+                console.warn(`Публикация без ID для платформы ${platformName}:`, pub);
+                return {
+                    ...pub,
+                    isImported: false
+                };
+            }
+            
             console.log(`Проверка публикации для платформы ${platformName}:`, {
                 publicationId,
                 pubId: pub.id,
                 pubVacancyId: pub.vacancy_id,
                 pubVacancyIdAlt: pub.vacancyId,
-                name: pub.name || pub.title || 'без названия'
+                name: pub.name || pub.title || 'без названия',
+                platformsCount: publicationPlatforms.value.length
             });
+            
             const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
             console.log(`Результат проверки публикации ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
+            
             return {
                 ...pub,
                 isImported: !!isImported // Убеждаемся, что значение булево
@@ -1270,31 +1545,30 @@ async function recheckImportedPublications() {
     }
     
     try {
-        // Обновляем список вакансий перед перепроверкой
-        if (currentVacancyId) {
-            await loadPublicationPlatforms();
-        }
+        // Используем уже загруженный список вакансий из таблицы "Активные публикации"
+        // Список должен быть обновлен в функции importPublication перед вызовом этой функции
+        console.log(`Перепроверка публикаций использует список из ${publicationPlatforms.value.length} активных публикаций`);
         
         // Перепроверяем каждую публикацию в списке
         // Обновляем напрямую свойство isImported для сохранения реактивности Vue
-        // Пропускаем уже помеченные как импортированные, чтобы не сбрасывать флаг
+        // Перепроверяем ВСЕ публикации, включая уже помеченные, чтобы учесть вакансии,
+        // которые уже есть в активных публикациях (раздел "Активные публикации")
         importedPublications.value.forEach((pub, index) => {
-            // Если публикация уже помечена как импортированная, пропускаем проверку
-            if (pub.isImported === true) {
-                // Для rabota.ru ID может быть в разных форматах
-                const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
-                console.log(`Публикация ${publicationId} уже помечена как импортированная, пропускаем проверку`);
+            // Для rabota.ru ID может быть в разных форматах
+            const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
+            
+            if (!publicationId) {
+                console.warn(`Публикация без ID при перепроверке для платформы ${platformName}:`, pub);
+                importedPublications.value[index].isImported = false;
                 return;
             }
             
-            // Для rabota.ru ID может быть в разных форматах
-            const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
             const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
             // Обновляем свойство напрямую для сохранения реактивности Vue
             importedPublications.value[index].isImported = !!isImported;
             
             if (isImported) {
-                console.log(`Публикация ${publicationId} найдена в БД после перепроверки`);
+                console.log(`Публикация ${publicationId} найдена в активных публикациях после перепроверки`);
             }
         });
         
@@ -1315,6 +1589,13 @@ async function recheckImportedPublications() {
  * @param vacanciesList - Список уже загруженных вакансий для проверки (опционально)
  * @returns true если вакансия уже импортирована, false если нет
  */
+/**
+ * Проверка, была ли вакансия уже импортирована
+ * @param platformId - ID платформы (1 для hh.ru, 2 для avito.ru, 3 для rabota.ru)
+ * @param vacancyId - ID вакансии на платформе (publication.id)
+ * @param vacanciesList - Список уже загруженных вакансий для проверки (опционально)
+ * @returns true если вакансия уже импортирована, false если нет
+ */
 function checkVacancyImported(platformId, vacancyId, vacanciesList = null) {
     if (!platformId || !vacancyId) {
         console.warn('Отсутствуют platformId или vacancyId для проверки:', { platformId, vacancyId });
@@ -1325,7 +1606,6 @@ function checkVacancyImported(platformId, vacancyId, vacanciesList = null) {
     const vacancies = vacanciesList || publicationPlatforms.value;
     
     if (!vacancies || !Array.isArray(vacancies) || vacancies.length === 0) {
-        console.log(`Проверка дубликатов: список вакансий пуст для platformId=${platformId}, vacancyId=${vacancyId}`);
         return false;
     }
     
@@ -1333,55 +1613,36 @@ function checkVacancyImported(platformId, vacancyId, vacanciesList = null) {
     const vacancyIdStr = String(vacancyId);
     const platformIdNum = Number(platformId);
     
-    console.log(`Проверка дубликатов: ищем platformId=${platformIdNum}, vacancyId=${vacancyIdStr} в ${vacancies.length} вакансиях`);
-    
-    const foundVacancy = vacancies.find((vacancy, index) => {
-        // Получаем platform_id из platforms_data[0]
-        const platformData = vacancy.platforms_data && 
-                            Array.isArray(vacancy.platforms_data) && 
-                            vacancy.platforms_data.length > 0 
-                            ? vacancy.platforms_data[0] 
-                            : null;
+    // Ищем вакансию в списке
+    const foundVacancy = vacancies.find((vacancy) => {
+        const platformsData = vacancy.platforms_data && Array.isArray(vacancy.platforms_data) 
+                            ? vacancy.platforms_data 
+                            : [];
         
-        const vacPlatformId = platformData?.platform_id || null;
-        
-        // Проверяем, что platform_id совпадает
-        if (!vacPlatformId || Number(vacPlatformId) !== platformIdNum) {
-            return false;
-        }
-        
-        // Проверяем разные варианты полей для vacancy_platform_id
-        // Сначала проверяем в platforms_data[0], затем в корне объекта
-        const vacancyPlatformId = platformData?.vacancy_platform_id ||
-                                  platformData?.vacancyPlatformId ||
-                                  platformData?.platform_vacancy_id ||
-                                  vacancy.vacancy_platform_id || 
-                                  vacancy.vacancyPlatformId || 
-                                  vacancy.platform_vacancy_id;
-        
-        // Логируем для отладки (только для первых нескольких вакансий)
-        if (index < 3) {
-            console.log(`Проверка вакансии #${index}:`, {
-                vacancyId: vacancy.id,
-                vacPlatformId,
-                vacancyPlatformId,
-                platformData: platformData ? Object.keys(platformData) : null,
-                vacancyKeys: Object.keys(vacancy).filter(k => k.includes('platform') || k.includes('Platform'))
-            });
-        }
-        
-        // Если есть vacancy_platform_id, проверяем совпадение
-        if (vacancyPlatformId !== undefined && vacancyPlatformId !== null) {
-            const isMatch = String(vacancyPlatformId) === vacancyIdStr;
-            if (isMatch) {
-                console.log(`✓ Найдена импортированная вакансия: vacancy.id=${vacancy.id}, platform_id=${vacPlatformId}, vacancy_platform_id=${vacancyPlatformId}, ищем=${vacancyIdStr}`);
+        // Проверяем каждый элемент в platforms_data
+        for (const platformData of platformsData) {
+            // В platforms_data[0]:
+            // - id - это ID платформы (1, 2, 3)
+            // - name - название платформы ("hh.ru", "avito.ru", "rabota.ru")
+            // - platform_id - это ID вакансии на платформе (vacancy_platform_id)!
+            
+            // Проверяем, что ID платформы совпадает
+            const dataPlatformId = platformData?.id;
+            if (!dataPlatformId || Number(dataPlatformId) !== platformIdNum) {
+                continue; // Переходим к следующему элементу
             }
-            return isMatch;
+            
+            // platform_id в platformData - это на самом деле vacancy_platform_id
+            const vacancyPlatformId = platformData?.platform_id;
+            if (vacancyPlatformId !== undefined && vacancyPlatformId !== null) {
+                const isMatch = String(vacancyPlatformId) === vacancyIdStr;
+                if (isMatch) {
+                    console.log(`✓ Найдена импортированная вакансия: vacancy.id=${vacancy.id}, platform.id=${dataPlatformId}, platform.platform_id=${vacancyPlatformId}, ищем=${vacancyIdStr}`);
+                }
+                return isMatch;
+            }
         }
         
-        // Если vacancy_platform_id нет, но platform_id совпадает, 
-        // это может быть вакансия, созданная напрямую (не импортированная)
-        // В этом случае не считаем её дубликатом
         return false;
     });
 
@@ -1578,22 +1839,19 @@ async function importPublication(publication) {
             console.warn('Публикация не найдена в списке для обновления:', publicationId || publication.id);
         }
         
-        // Перепроверяем все публикации после успешного импорта
-        await recheckImportedPublications();
-        
         // Добавляем публикацию в список активных
         if (!publicationsHh.value.find(p => p.id === publicationId || p.id === publication.id)) {
             publicationsHh.value.push(publication);
         }
         
-        // Перепроверяем все публикации в списке после успешного импорта
-        // Функция recheckImportedPublications пропустит уже помеченные публикации
-        await recheckImportedPublications();
-        
         // Перезагружаем список вакансий с платформ
         if (currentVacancyId) {
             await loadPublicationPlatforms();
         }
+        
+        // Перепроверяем все публикации в списке после успешного импорта и обновления списка вакансий
+        // Функция recheckImportedPublications проверит все публикации на наличие в активных публикациях
+        await recheckImportedPublications();
         
         // Показываем успешное сообщение (опционально)
         console.log('Публикация успешно импортирована:', {
@@ -1859,6 +2117,48 @@ watch(allSelected, (newValue) => {
 });
 
 const dropdownOptions = ["Редактировать текст", "Посмотреть публикацию", "Снять с публикации", "Дублировать публикацию", "Показать отчет по публикации"];
+
+// Состояние для редактирования вакансии
+const isEditPopupOpen = ref(false);
+const editingVacancy = ref(null);
+
+// Обработчик действий из dropdown
+const handleDropdownAction = (action, vacancyItem) => {
+    if (action === "Редактировать текст") {
+        openEditPopup(vacancyItem);
+    } else if (action === "Посмотреть публикацию") {
+        // TODO: Реализовать просмотр публикации
+        console.log("Посмотреть публикацию", vacancyItem);
+    } else if (action === "Снять с публикации") {
+        // TODO: Реализовать снятие с публикации
+        console.log("Снять с публикации", vacancyItem);
+    } else if (action === "Дублировать публикацию") {
+        // TODO: Реализовать дублирование публикации
+        console.log("Дублировать публикацию", vacancyItem);
+    } else if (action === "Показать отчет по публикации") {
+        // TODO: Реализовать показ отчета
+        console.log("Показать отчет по публикации", vacancyItem);
+    }
+};
+
+// Открытие попапа редактирования
+const openEditPopup = (vacancyItem) => {
+    editingVacancy.value = vacancyItem;
+    isEditPopupOpen.value = true;
+};
+
+// Закрытие попапа редактирования
+const closeEditPopup = () => {
+    isEditPopupOpen.value = false;
+    editingVacancy.value = null;
+};
+
+// Обработчик успешного обновления вакансии
+const handleVacancyUpdated = () => {
+    closeEditPopup();
+    // Перезагружаем список активных публикаций
+    loadPublicationPlatforms();
+};
 
 const openPopupNewPublication = (platformName) => {
     // Сохраняем выбранную платформу для использования при сабмите

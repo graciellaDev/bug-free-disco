@@ -827,8 +827,51 @@ export const publishVacancy = async (data: DraftDataHh) => {
   } catch (err: any) {
     if (err.response?.status === 401) {
       handle401Error();
+      result.value.error = 'Требуется повторная авторизация';
     } else {
-      result.value.error = err.response?._data?.message || 'Ошибка при публикации вакансии';
+      // Обработка различных типов ошибок от hh.ru API
+      const errorData = err.response?._data;
+      
+      // Проверяем специфические ошибки hh.ru
+      if (errorData?.type === 'vacancies' && errorData?.value === 'not_enough_purchased_services') {
+        result.value.error = 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+      } else if (errorData?.errors) {
+        // Если есть массив ошибок, обрабатываем их
+        if (Array.isArray(errorData.errors)) {
+          const errorMessages = errorData.errors.map((e: any) => {
+            if (typeof e === 'string') return e;
+            if (e.value === 'not_enough_purchased_services') {
+              return 'Недостаточно купленных услуг для публикации вакансии';
+            }
+            return e.message || e.field || JSON.stringify(e);
+          }).join(', ');
+          result.value.error = errorMessages;
+        } else if (typeof errorData.errors === 'object') {
+          // Если errors - объект с полями
+          const fieldErrors = Object.entries(errorData.errors)
+            .map(([field, messages]: [string, any]) => {
+              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
+              // Специальная обработка для not_enough_purchased_services
+              if (String(msg).includes('not_enough_purchased_services')) {
+                return 'Недостаточно купленных услуг для публикации вакансии';
+              }
+              return `${field}: ${msg}`;
+            })
+            .join('; ');
+          result.value.error = fieldErrors || errorData.message || 'Ошибка при публикации вакансии';
+        } else {
+          result.value.error = errorData.message || 'Ошибка при публикации вакансии';
+        }
+      } else if (errorData?.message) {
+        result.value.error = errorData.message;
+      } else if (errorData?.error) {
+        result.value.error = errorData.error;
+      } else {
+        result.value.error = 'Ошибка при публикации вакансии';
+      }
+      
+      // Логируем детали ошибки для отладки
+      console.error('Ошибка публикации вакансии hh.ru:', errorData);
     }
   } finally {
     return result.value;

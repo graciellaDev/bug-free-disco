@@ -41,6 +41,7 @@
             <DropDownRoles 
             :options="currectRole"
             :selected="data.industry ?? ''"
+            @update:model-value="handleIndustryChange"
             ></DropDownRoles>
           </div>
           <div id="professional_roles" class="w-full anchor">
@@ -54,7 +55,6 @@
             <DropDownRoles
             :options="professionsOptions"
             :selected="data.professional_roles[0]"
-            v-model="data.professional_roles[0]"
             @update:model-value="($event) => handleIdUpdate('professional_roles', $event)"
             ></DropDownRoles>
           </div>
@@ -182,7 +182,7 @@
             </p>
             <CityAutocomplete 
               :options="citiesOptions"
-              :model-value="data.area"
+              :model-value="data.area?.id || null"
               @update:model-value="($event) => handleIdUpdate('area', $event)"
               placeholder="Например, Санкт-Петербург"
             />
@@ -518,14 +518,20 @@ import {
   HH_BILLING_TYPES,
 } from '@/src/constants'
 import experience from '~/src/data/experience.json'
-import { inject, watch, computed, defineProps } from 'vue'
+import { inject, watch, computed, defineProps, nextTick } from 'vue'
 
 const props = defineProps({
   selectedPlatform: {
     type: String,
     default: null
+  },
+  editingVacancy: {
+    type: Object,
+    default: null
   }
 })
+
+const emit = defineEmits(['saved', 'cancel'])
 import { 
   getProfile as profileHh, 
   getAvailableTypes as typesHh, 
@@ -536,7 +542,7 @@ import {
   getAddresses as getAddressesHh,
   getAvailablePublications as getAvailablePublicationsHh
 } from '@/utils/hhAccount'
-import { addDraft as addDraftAvito, getProfile as profileAvito } from '@/utils/avitoAccount'
+import { addDraft as addDraftAvito, getProfile as profileAvito, publishVacancy as publishVacancyToAvito, getProfessions as getProfessionsAvito, getSpecializations as getSpecializationsAvito } from '@/utils/avitoAccount'
 import { 
   getProfile as profileRabota, 
   addDraft as addDraftRabota, 
@@ -550,6 +556,8 @@ import {
 } from '@/utils/rabotaAccount'
 import { getVacancy } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
+import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
+import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 
 // Функция для плавного скролла к элементу
 const scrollToElement = (elementId) => {
@@ -583,6 +591,10 @@ const rabotaEmploymentTypes = ref([])
 const rabotaWorkSchedules = ref([])
 const rabotaExperienceLevels = ref([])
 const rabotaEducationLevels = ref([])
+
+// Справочники для avito.ru
+const avitoProfessions = ref([])
+const avitoSpecializations = ref([])
 
 const validFields = ref({
   name: {
@@ -646,11 +658,121 @@ const handleIdUpdate = (property, value) => {
   if (property === 'address' || property === 'area') {
     if (value) {
       data.value[property].id = value
+      // Если пользователь изменил город вручную, сбрасываем флаг
+      if (property === 'area') {
+        isCitySetFromVacancy.value = false
+        console.log('Город изменен пользователем, сброшен флаг isCitySetFromVacancy')
+      }
     } else {
       delete data.value[property].id
+      if (property === 'area') {
+        isCitySetFromVacancy.value = false
+      }
+    }
+  } else if (property === 'professional_roles') {
+    // Для professional_roles сохраняем полный объект
+    // Важно: используем объект из текущего списка options, чтобы сохранить правильную ссылку
+    if (value) {
+      // Ищем объект в professionsOptions по id или name, чтобы сохранить правильную ссылку
+      const options = professionsOptions.value
+      if (options && options.length > 0) {
+        const foundRole = options.find(role => {
+          if (value.id && role.id) {
+            return String(role.id) === String(value.id)
+          }
+          if (value.name && role.name) {
+            return role.name === value.name
+          }
+          return false
+        })
+        // Используем найденный объект из списка (правильная ссылка) или переданный объект
+        data.value.professional_roles = foundRole ? [foundRole] : [value]
+      } else {
+        // Если список пуст, сохраняем переданный объект
+        data.value.professional_roles = [value]
+      }
+    } else {
+      data.value.professional_roles = [null]
     }
   } else {
     data.value[property] = value ? { id: value.id } : null
+  }
+}
+
+// Обработчик изменения отрасли
+const handleIndustryChange = async (industry) => {
+  if (!industry) {
+    data.value.industry = null
+    data.value.professional_roles = [null]
+    avitoSpecializations.value = []
+    return
+  }
+
+  // Для Avito загружаем специализации при выборе профессии
+  if (currentPlatform.value === 'avito' && industry.id) {
+    try {
+      const specializationsResult = await getSpecializationsAvito(industry.id)
+      if (specializationsResult?.data && !specializationsResult.error) {
+        avitoSpecializations.value = Array.isArray(specializationsResult.data) 
+          ? specializationsResult.data 
+          : (specializationsResult.data.items || [])
+        
+        // Обновляем industry с загруженными специализациями
+        data.value.industry = {
+          ...industry,
+          roles: avitoSpecializations.value.map(spec => ({
+            id: spec.id,
+            name: spec.name || spec.title
+          }))
+        }
+        
+        // Выбираем первую специализацию, если есть
+        if (avitoSpecializations.value.length > 0) {
+          const firstSpec = avitoSpecializations.value[0]
+          data.value.professional_roles = [{
+            id: firstSpec.id,
+            name: firstSpec.name || firstSpec.title
+          }]
+        } else {
+          data.value.professional_roles = [null]
+        }
+        return
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке специализаций Avito:', error)
+    }
+  }
+
+  // Для других платформ используем существующую логику
+  // Находим полный объект отрасли в исходных данных, чтобы получить roles
+  let fullIndustry = null
+  if (currectRole.value && Array.isArray(currectRole.value)) {
+    // Ищем отрасль по id или name
+    fullIndustry = currectRole.value.find(
+      cat => {
+        if (industry.id && cat.id) {
+          return String(cat.id) === String(industry.id)
+        }
+        if (industry.name && cat.name) {
+          return cat.name === industry.name
+        }
+        return false
+      }
+    )
+  }
+
+  // Используем полный объект, если найден, иначе используем переданный
+  const selectedIndustry = fullIndustry || industry
+  
+  // Обновляем industry - создаем новый объект для реактивности Vue
+  data.value.industry = selectedIndustry ? { ...selectedIndustry } : null
+  
+  // Сбрасываем специализацию при изменении отрасли и всегда выбираем первую
+  if (selectedIndustry && selectedIndustry.roles && Array.isArray(selectedIndustry.roles) && selectedIndustry.roles.length > 0) {
+    // Всегда выбираем первую специализацию из списка при изменении отрасли
+    data.value.professional_roles = [selectedIndustry.roles[0]]
+  } else {
+    data.value.professional_roles = [null]
   }
 }
 
@@ -731,9 +853,161 @@ const professionsOptions = computed(() => {
       roles: prof.roles || []
     }))
   }
+  if (currentPlatform.value === 'avito') {
+    // Для Avito используем загруженные специализации
+    return data.value.industry?.roles || avitoSpecializations.value.map(spec => ({
+      id: spec.id,
+      name: spec.name || spec.title
+    })) || []
+  }
   // Для hh.ru используем существующую логику
   return data.value.industry?.roles || []
 })
+
+// Ref переменные для хранения вычисленных значений
+const computedIndustry = ref(null)
+const computedProfessionalRole = ref(null)
+const computedCity = ref(null)
+
+// Функция для обновления ref переменных
+const updateComputedValues = () => {
+  const vacancy = globCurrentVacancy.value || vacancyData.value;
+  if (!vacancy) {
+    computedIndustry.value = null;
+    computedProfessionalRole.value = null;
+    computedCity.value = null;
+    return;
+  }
+  
+  // Обновляем отрасль
+  if (vacancy.industry && currectRole.value && Array.isArray(currectRole.value)) {
+    computedIndustry.value = currectRole.value.find(cat => {
+      if (typeof vacancy.industry === 'string') {
+        return cat.name === vacancy.industry;
+      }
+      if (typeof vacancy.industry === 'object') {
+        if (vacancy.industry.name && cat.name) {
+          return cat.name === vacancy.industry.name;
+        }
+        if (vacancy.industry.id && cat.id) {
+          return String(cat.id) === String(vacancy.industry.id);
+        }
+      }
+      return false;
+    }) || null;
+  } else {
+    computedIndustry.value = null;
+  }
+  
+  // Обновляем специализацию
+  if (computedIndustry.value && vacancy.specializations && computedIndustry.value.roles && Array.isArray(computedIndustry.value.roles)) {
+    computedProfessionalRole.value = computedIndustry.value.roles.find(r => {
+      if (typeof vacancy.specializations === 'string') {
+        return r.name === vacancy.specializations;
+      }
+      if (typeof vacancy.specializations === 'object') {
+        if (vacancy.specializations.name && r.name) {
+          return r.name === vacancy.specializations.name;
+        }
+        if (vacancy.specializations.id && r.id) {
+          return String(r.id) === String(vacancy.specializations.id);
+        }
+      }
+      return false;
+    }) || null;
+  } else {
+    computedProfessionalRole.value = null;
+  }
+  
+  // Обновляем город
+  if (vacancy.location && cities.value && Array.isArray(cities.value) && cities.value.length > 0) {
+    const cityName = vacancy.location.split(',')[0].trim();
+    computedCity.value = cities.value.find(city => {
+      if (!city || !city.name) return false;
+      
+      if (city.name.toLowerCase() === cityName.toLowerCase()) {
+        return true;
+      }
+      if (cityName.toLowerCase().includes(city.name.toLowerCase())) {
+        return true;
+      }
+      if (city.name.toLowerCase().includes(cityName.toLowerCase())) {
+        return true;
+      }
+      return false;
+    }) || null;
+  } else {
+    computedCity.value = null;
+  }
+}
+
+// Флаг для отслеживания, был ли город установлен из вакансии
+const isCitySetFromVacancy = ref(false)
+
+// Функция для применения вычисленных значений к форме
+const applyComputedValues = async () => {
+  // Обработка отрасли и специализации
+  const industry = computedIndustry.value;
+  if (industry && industry.roles && Array.isArray(industry.roles)) {
+    const hasIndustry = data.value.industry && typeof data.value.industry === 'object' && data.value.industry.roles;
+    if (!hasIndustry) {
+      console.log('=== AddPublication: установка отрасли из ref ===');
+      console.log('computedIndustry:', industry);
+      handleIndustryChange(industry);
+      
+      // Устанавливаем специализацию
+      const role = computedProfessionalRole.value || (industry.roles.length > 0 ? industry.roles[0] : null);
+      if (role) {
+        data.value.professional_roles = [role];
+        console.log('Установлена специализация:', data.value.professional_roles);
+      }
+    }
+  }
+  
+  // Обработка города публикации из location
+  // Устанавливаем город только если:
+  // 1. Город найден в списке hh.ru
+  // 2. Город еще не был установлен из вакансии (чтобы не блокировать работу выпадающего списка)
+  // 3. data.value.area пуст или не имеет id
+  const city = computedCity.value;
+  if (city && !isCitySetFromVacancy.value) {
+    const hasCity = data.value.area && data.value.area.id;
+    if (!hasCity) {
+      console.log('=== AddPublication: установка города из вакансии ===');
+      console.log('Город из вакансии (location):', globCurrentVacancy.value?.location || vacancyData.value?.location);
+      console.log('Найденный город в списке hh.ru:', city);
+      console.log('Текущий data.value.area:', data.value.area);
+      
+      // Устанавливаем город с правильной структурой
+      data.value.area = {
+        id: city.id,
+        name: city.name
+      };
+      
+      // Устанавливаем флаг, что город был установлен из вакансии
+      isCitySetFromVacancy.value = true;
+      
+      console.log('✅ Установлен город публикации из вакансии:', data.value.area);
+      console.log('Город должен быть в citiesOptions:', citiesOptions.value.find(c => c.id === city.id));
+      console.log('citiesOptions.length:', citiesOptions.value.length);
+      
+      // Используем nextTick для обновления DOM
+      await nextTick();
+      
+      // Дополнительная задержка для обновления CityAutocomplete
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      console.log('После nextTick data.value.area:', data.value.area);
+    } else {
+      console.log('Город уже установлен пользователем:', data.value.area);
+      isCitySetFromVacancy.value = true;
+    }
+  } else if (!city) {
+    console.log('Город из вакансии не найден в списке hh.ru');
+  } else if (isCitySetFromVacancy.value) {
+    console.log('Город уже был установлен из вакансии, пропускаем');
+  }
+}
 
 const employmentTypesOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaEmploymentTypes.value.length > 0) {
@@ -755,12 +1029,24 @@ const workSchedulesOptions = computed(() => {
   return HH_WORK_SCHEDULE_BY_DAYS
 })
 
+// Опции опыта работы для Avito
+const AVITO_EXPERIENCE_OPTIONS = [
+  { id: 'noMatter', name: 'Неважно' },
+  { id: 'moreThan1', name: 'Более 1 года' },
+  { id: 'moreThan3', name: 'Более 3 лет' },
+  { id: 'moreThan5', name: 'Более 5 лет' },
+  { id: 'moreThan10', name: 'Более 10 лет' },
+]
+
 const experienceOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaExperienceLevels.value.length > 0) {
     return rabotaExperienceLevels.value.map(exp => ({
       id: exp.id || exp.experience_id,
       name: exp.name || exp.title
     }))
+  }
+  if (currentPlatform.value === 'avito') {
+    return AVITO_EXPERIENCE_OPTIONS
   }
   return experience
 })
@@ -811,6 +1097,21 @@ const loadDictionaries = async (platform) => {
     if (educationResult?.data) {
       rabotaEducationLevels.value = Array.isArray(educationResult.data) ? educationResult.data : (educationResult.data.items || [])
     }
+  } else if (platform === 'avito') {
+    // Загружаем профессии для Avito
+    const professionsResult = await getProfessionsAvito()
+    if (professionsResult?.data && !professionsResult.error) {
+      avitoProfessions.value = Array.isArray(professionsResult.data) 
+        ? professionsResult.data 
+        : (professionsResult.data.items || [])
+      
+      // Преобразуем в формат для использования в выпадающем списке
+      currectRole.value = avitoProfessions.value.map(prof => ({
+        id: prof.id,
+        name: prof.name || prof.title,
+        roles: [] // Специализации будут загружены при выборе профессии
+      }))
+    }
   } else {
     // Загружаем справочники hh.ru (по умолчанию)
     const { roles, errorRoles } = await getRolesHh()
@@ -822,6 +1123,11 @@ const loadDictionaries = async (platform) => {
     const { data: areasData, error: areasError } = await getAreasHh()
     if (!areasError && areasData) {
       cities.value = areasData
+      console.log('Загружены города из hh.ru в loadDictionaries, количество:', cities.value.length)
+      // Обновляем вычисленные значения после загрузки городов
+      updateComputedValues()
+      // Применяем значения, включая установку города из вакансии
+      await applyComputedValues()
     }
   }
 }
@@ -830,12 +1136,23 @@ const loadDictionaries = async (platform) => {
 const { roles, errorRoles } = await getRolesHh()
 if (!errorRoles) {
   currectRole.value = roles.categories
+  // Обновляем вычисленные значения после загрузки отраслей
+  updateComputedValues()
+  await applyComputedValues()
 }
 
 // Загрузка списка городов из API hh.ru
+// После загрузки городов ищем город из вакансии и устанавливаем его
 const { data: areasData, error: areasError } = await getAreasHh()
 if (!areasError && areasData) {
   cities.value = areasData
+  console.log('Загружены города из hh.ru, количество:', cities.value.length)
+  
+  // Обновляем вычисленные значения после загрузки городов
+  updateComputedValues()
+  
+  // Теперь применяем значения, включая установку города из вакансии
+  await applyComputedValues()
 }
 
 const { data: addressesData, error: addressesError } = await getAddressesHh()
@@ -897,6 +1214,7 @@ const loadTariffsForHh = async (employerId) => {
 //   return tariffsOptions.value.find(tariff => tariff.property_type === propertyType) || null
 // })
 
+// Загружаем вакансию ДО загрузки городов, чтобы получить location
 const vacancyId = route.query.id
 if (vacancyId) {
   if (!globCurrentVacancy.value || vacancyId !== globCurrentVacancy.value.id.toString()) {
@@ -905,6 +1223,9 @@ if (vacancyId) {
     if (vacancy) {
       
       globCurrentVacancy.value = vacancy
+      console.log('Загружена вакансия, location:', vacancy.location)
+      // Обновляем вычисленные значения после загрузки вакансии (но города еще нет)
+      updateComputedValues()
     }
   }
 }
@@ -955,6 +1276,10 @@ if (globCurrentVacancy.value) {
   if (globCurrentVacancy.value.drivers) {
     data.value.driver_license_types = globCurrentVacancy.value.drivers
   }
+  
+  // Обновляем вычисленные значения после обработки globCurrentVacancy
+  updateComputedValues()
+  applyComputedValues()
 }
 
 if (vacancyData.value) {
@@ -975,6 +1300,10 @@ if (vacancyData.value) {
     roleData.value = data.value.industry.roles[0]
     data.value.professional_roles[0] = data.value.industry.roles[0]
   }
+  
+  // Обновляем вычисленные значения после обработки vacancyData
+  // Но не применяем город, так как города еще могут быть не загружены
+  updateComputedValues()
 }
 // data.value.employment_form = HH_EMPLOYMENT_TYPES.filter( (item, i) => {
 //       return item.siteName == globCurrentVacancy.value?.employment
@@ -1056,6 +1385,8 @@ for (let key of platforms.value) {
               key.isAuthenticated = true
               key.data = profile.data.data
               isPlatforms.value = true
+              // Загружаем справочники avito.ru
+              await loadDictionaries('avito')
             }
           } else if (key.platform == 'rabota') {
             const profile = await profileRabota()  
@@ -1242,6 +1573,31 @@ const savePublication = async () => {
     });
   }
   
+  // Проверяем, редактируем ли мы существующую вакансию
+  const isEditing = props.editingVacancy !== null && props.editingVacancy !== undefined;
+  
+  // Если редактируем, используем fetchVacancyUpdate
+  if (isEditing && props.editingVacancy.id) {
+    try {
+      // Маппим данные из формы в формат для обновления
+      const mappedData = mapVacancyToUpdateFormat(data.value);
+      
+      const { data: updateData, error } = await fetchVacancyUpdate(mappedData, props.editingVacancy.id);
+      
+      if (error) {
+        status.value = error || 'Ошибка при обновлении вакансии';
+      } else {
+        status.value = 'Вакансия успешно обновлена';
+        emit('saved');
+      }
+    } catch (err) {
+      console.error('Ошибка при обновлении вакансии:', err);
+      status.value = 'Ошибка при обновлении вакансии';
+    }
+    return;
+  }
+  
+  // Иначе создаем новую вакансию
   let response;
   if (currentPlatform !== 'avito' && currentPlatform !== 'hh' && currentPlatform !== 'rabota') {
    status.value = `Платформа ${currentPlatform} пока не поддерживается`
@@ -1250,8 +1606,11 @@ const savePublication = async () => {
   
   // Выбираем функцию в зависимости от платформы и флага isDraft
   if (currentPlatform === 'avito') {
-    // Для avito.ru пока только создание черновика
-    response = await addDraftAvito(data.value)
+    if (isDraft.value || isDraft.value === 'true') {
+      response = await addDraftAvito(data.value)
+    } else {
+      response = await publishVacancyToAvito(data.value)
+    }
   } 
   if (currentPlatform === 'hh') {
     if (isDraft.value || isDraft.value === 'true'
@@ -1315,6 +1674,7 @@ watch(() => data.value.description, (newValue) => {
     updateDescriptionValidation(newValue)
   }
 }, { immediate: true })
+
 
 onBeforeMount(async () => {
 })

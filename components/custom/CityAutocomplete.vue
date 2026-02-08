@@ -82,9 +82,18 @@ const selectedCity = computed(() => {
   if (!props.modelValue && !props.isOpen) {
     return null
   }
-  return props.options.find(city => 
-    city.id === props.modelValue || city.value === props.modelValue
-  ) || null
+  const found = props.options.find(city => {
+    // Сравниваем по id (может быть число или строка)
+    if (city.id !== undefined && props.modelValue !== undefined) {
+      return String(city.id) === String(props.modelValue) || city.id === props.modelValue
+    }
+    // Сравниваем по value
+    if (city.value !== undefined && props.modelValue !== undefined) {
+      return String(city.value) === String(props.modelValue) || city.value === props.modelValue
+    }
+    return false
+  })
+  return found || null
 })
 
 const displayValue = computed(() => {
@@ -201,18 +210,22 @@ watch(() => props.modelValue, (newValue, oldValue) => {
     return
   }
   
-  if (selectedCity.value) {
-    // Обновляем только если значение действительно изменилось извне
-    if (search.value !== selectedCity.value.name) {
-      search.value = selectedCity.value.name
+  // Используем nextTick, чтобы убедиться, что selectedCity обновлен
+  nextTick(() => {
+    if (selectedCity.value) {
+      // Обновляем только если значение действительно изменилось извне
+      const cityName = selectedCity.value.name || selectedCity.value.city || ''
+      if (search.value !== cityName) {
+        search.value = cityName
+      }
+    } else if (!newValue) {
+      // Очищаем только если значение было очищено извне и поле пустое
+      if (!isFocused.value) {
+        search.value = ''
+      }
     }
-  } else if (!newValue) {
-    // Очищаем только если значение было очищено извне и поле пустое
-    if (!isFocused.value) {
-      search.value = ''
-    }
-  }
-}, { flush: 'post' })
+  })
+}, { flush: 'post', immediate: true })
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)

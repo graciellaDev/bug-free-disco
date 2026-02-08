@@ -21,9 +21,11 @@ import CustomDropdown from '~/components/custom/CustomDropdown.vue'
 import GenerateButton from '~/components/custom/GenerateButton.vue'
 import MyTextarea from '~/components/custom/MyTextarea.vue'
 import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue'
+import DropDownRoles from '~/components/platforms/DropDownRoles.vue'
 import { getDepartments, executorsList } from '~/utils/executorsList'
 import { useRoute } from 'vue-router'
 import { createError } from '#app'
+import { getRoles as getRolesHh } from '@/utils/hhAccount'
 
 import schedule from '~/src/data/work-schedule.json'
 import experience from '~/src/data/experience.json'
@@ -35,7 +37,7 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed, watch, onBeforeMount } from 'vue'
+import { ref, computed, watch, onBeforeMount, nextTick } from 'vue'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
@@ -53,6 +55,10 @@ const ArrayExperience = experience
 const ArraySchedule = schedule
 const ArrayMajors = majors
 const ArrayIndustry = industry
+
+// Данные отраслей и специализаций из hh.ru
+const hhRolesData = ref(null)
+const hhIndustries = ref([])
 
 const props = defineProps({
   id: {
@@ -102,6 +108,13 @@ const handleCheck = id => {
 onBeforeMount(async () => {
   const { executors: executorData } = await executorsList();
   executors.value = executorData
+  
+  // Загружаем данные отраслей из hh.ru
+  const { roles, errorRoles } = await getRolesHh()
+  if (!errorRoles && roles && roles.categories) {
+    hhRolesData.value = roles
+    hhIndustries.value = roles.categories
+  }
 })
 
 const handleHover = id => {
@@ -168,6 +181,53 @@ if (props.id) {
         });
   } 
 }
+
+// Функция для преобразования строки отрасли/специализации в объект из hh.ru данных
+const findIndustryFromString = (industryName) => {
+  if (!industryName || typeof industryName !== 'string') return null
+  if (!hhIndustries.value || hhIndustries.value.length === 0) return null
+  
+  return hhIndustries.value.find(cat => cat.name === industryName) || null
+}
+
+const findSpecializationFromString = (specializationName, industryObj) => {
+  if (!specializationName || typeof specializationName !== 'string') return null
+  if (!industryObj || !industryObj.roles || !Array.isArray(industryObj.roles)) return null
+  
+  return industryObj.roles.find(role => role.name === specializationName) || null
+}
+
+// Watch для преобразования строковых значений industry и specializations в объекты после загрузки данных hh.ru
+watch([hhIndustries, () => newVacancy.value.industry, () => newVacancy.value.specializations], 
+  ([industries, industry, specializations]) => {
+    // Преобразуем industry из строки в объект, если нужно
+    if (industry && typeof industry === 'string' && industries && industries.length > 0) {
+      const foundIndustry = findIndustryFromString(industry)
+      if (foundIndustry && (!newVacancy.value.industry || typeof newVacancy.value.industry === 'string')) {
+        // Используем nextTick, чтобы избежать бесконечного цикла обновлений
+        nextTick(() => {
+          if (typeof newVacancy.value.industry === 'string') {
+            newVacancy.value.industry = foundIndustry
+          }
+        })
+      }
+    }
+    
+    // Преобразуем specializations из строки в объект, если нужно
+    const currentIndustry = newVacancy.value.industry
+    if (specializations && typeof specializations === 'string' && currentIndustry && typeof currentIndustry === 'object') {
+      const foundSpecialization = findSpecializationFromString(specializations, currentIndustry)
+      if (foundSpecialization && (!newVacancy.value.specializations || typeof newVacancy.value.specializations === 'string')) {
+        nextTick(() => {
+          if (typeof newVacancy.value.specializations === 'string') {
+            newVacancy.value.specializations = foundSpecialization
+          }
+        })
+      }
+    }
+  },
+  { immediate: true }
+)
 
 if (props.application) {
   const applicationResponse = await fetchApplicationDetail(props.application)
@@ -352,13 +412,87 @@ function getStatusDisplayValue(statusValue) {
   return statusDisplayMap[statusValue] || statusValue;
 }
 
+// Computed свойство для специализаций, зависящих от выбранной отрасли
+const professionsOptions = computed(() => {
+  if (!newVacancy.value.industry || typeof newVacancy.value.industry !== 'object') {
+    return []
+  }
+  
+  // Если industry - это объект с roles, используем их
+  if (newVacancy.value.industry.roles && Array.isArray(newVacancy.value.industry.roles)) {
+    return newVacancy.value.industry.roles
+  }
+  
+  // Иначе ищем отрасль в загруженных данных
+  if (hhRolesData.value && hhRolesData.value.categories) {
+    const foundIndustry = hhRolesData.value.categories.find(cat => {
+      if (newVacancy.value.industry.id && cat.id) {
+        return String(cat.id) === String(newVacancy.value.industry.id)
+      }
+      if (newVacancy.value.industry.name && cat.name) {
+        return cat.name === newVacancy.value.industry.name
+      }
+      return false
+    })
+    
+    if (foundIndustry && foundIndustry.roles && Array.isArray(foundIndustry.roles)) {
+      return foundIndustry.roles
+    }
+  }
+  
+  return []
+})
+
+// Обработчик изменения отрасли
+const handleIndustryChange = (industry) => {
+  if (!industry) {
+    newVacancy.value.industry = null
+    newVacancy.value.specializations = null
+    return
+  }
+
+  // Находим полный объект отрасли в исходных данных, чтобы получить roles
+  let fullIndustry = null
+  if (hhIndustries.value && Array.isArray(hhIndustries.value)) {
+    fullIndustry = hhIndustries.value.find(
+      cat => {
+        if (industry.id && cat.id) {
+          return String(cat.id) === String(industry.id)
+        }
+        if (industry.name && cat.name) {
+          return cat.name === industry.name
+        }
+        return false
+      }
+    )
+  }
+
+  // Используем полный объект, если найден, иначе используем переданный
+  const selectedIndustry = fullIndustry || industry
+  
+  // Обновляем industry
+  newVacancy.value.industry = selectedIndustry ? { ...selectedIndustry } : null
+  
+  // Сбрасываем специализацию при изменении отрасли
+  newVacancy.value.specializations = null
+}
+
 const vacancyData = computed(() => {
+  // Преобразуем industry и specializations в строки для отправки на сервер
+  const industryValue = newVacancy.value.industry 
+    ? (typeof newVacancy.value.industry === 'object' ? newVacancy.value.industry.name : newVacancy.value.industry)
+    : ''
+  
+  const specializationsValue = newVacancy.value.specializations
+    ? (typeof newVacancy.value.specializations === 'object' ? newVacancy.value.specializations.name : newVacancy.value.specializations)
+    : ''
+  
   return {
     name: newVacancy.value.name,
     code: newVacancy.value.code || '',
     description: newVacancy.value.description || '',
-    industry: newVacancy.value.industry || '',
-    specializations: newVacancy.value.specializations || '',
+    industry: industryValue,
+    specializations: specializationsValue,
     employment: getEmploymentText(newVacancy.value.employment),
     schedule: getScheduleText(newVacancy.value.schedule),
     experience: getExperienceText(newVacancy.value.experience),
@@ -453,7 +587,7 @@ const validateVacancy = () => {
   return errorsValid
 }
 
-// Функция для сравнения значений (включая массивы)
+// Функция для сравнения значений (включая массивы и объекты)
 function isEqual(value1, value2) {
   if (Array.isArray(value1) && Array.isArray(value2)) {
     if (value1.length !== value2.length) return false
@@ -464,6 +598,25 @@ function isEqual(value1, value2) {
       return item === value2[index]
     })
   }
+  
+  // Для объектов (industry, specializations) сравниваем по name, если это объекты
+  if (typeof value1 === 'object' && value1 !== null && typeof value2 === 'object' && value2 !== null) {
+    // Если оба объекта имеют name, сравниваем по name
+    if (value1.name && value2.name) {
+      return value1.name === value2.name
+    }
+    // Иначе сравниваем по JSON
+    return JSON.stringify(value1) === JSON.stringify(value2)
+  }
+  
+  // Если один объект, а другой строка - сравниваем name объекта со строкой
+  if (typeof value1 === 'object' && value1 !== null && typeof value2 === 'string') {
+    return value1.name === value2
+  }
+  if (typeof value2 === 'object' && value2 !== null && typeof value1 === 'string') {
+    return value2.name === value1
+  }
+  
   // Для статуса: пустая строка и null считаются разными (пустая строка = очистка)
   // Для остальных полей: null, undefined и пустая строка считаются эквивалентными
   if (value1 === null || value1 === undefined || value1 === '') {
@@ -733,9 +886,12 @@ const updateExecutor = (value, id) => {
               Отрасль компании
             </p>
             <div class="w-full relative">
-              <CustomDropdown :options="ArrayIndustry" placeholder="Выберите отрасль"
-                :model-value="newVacancy.industry ? newVacancy.industry : ''"
-                @update:model-value="$event => updateEvent($event, 'industry')" />
+              <DropDownRoles 
+                :options="hhIndustries.length > 0 ? hhIndustries : ArrayIndustry" 
+                :selected="newVacancy.industry && typeof newVacancy.industry === 'object' ? newVacancy.industry : (newVacancy.industry ? { name: newVacancy.industry } : null)"
+                placeholder="Выберите отрасль"
+                @update:model-value="handleIndustryChange" 
+              />
             </div>
           </div>
           <div class="w-full">
@@ -743,9 +899,12 @@ const updateExecutor = (value, id) => {
               Выберите специализацию
             </p>
             <div>
-              <CustomDropdown :options="ArraySpecialization" placeholder="Выберите специализацию"
-                :model-value="newVacancy.specializations ? newVacancy.specializations : ''"
-                @update:model-value="$event => updateEvent($event, 'specializations')" />
+              <DropDownRoles
+                :options="professionsOptions"
+                :selected="newVacancy.specializations && typeof newVacancy.specializations === 'object' ? newVacancy.specializations : (newVacancy.specializations ? { name: newVacancy.specializations } : null)"
+                placeholder="Выберите специализацию"
+                @update:model-value="($event) => updateEvent($event, 'specializations')"
+              />
             </div>
           </div>
         </div>
