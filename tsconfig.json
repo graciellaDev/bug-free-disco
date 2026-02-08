@@ -11,5 +11,13 @@
       "#app": [".nuxt/app"],
       "#types/*": ["./types/*"]
     }
-  }
+  },
+  "exclude": [
+    "node_modules",
+    ".nuxt",
+    "dist",
+    ".output",
+    "temp",
+    "sync"
+  ]
 }

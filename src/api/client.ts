@@ -1,3 +1,4 @@
+import { useRouter } from 'vue-router';
 import type { ApiSuccessResponse, ApiErrorResponse } from '~/types/clients';
 
 // Тип для опций запроса
