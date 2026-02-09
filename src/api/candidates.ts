@@ -13,6 +13,7 @@ import type {
   CandidateUpdateResponse,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import type { ApiEventsResponse } from '@/types/events';
 
 export async function getCandidates(page = 1, filters?: Record<string, any>) {
   try {
@@ -186,6 +187,31 @@ export async function getCandidatesByVacancy(vacancyId: number, page = 1) {
     };
   }
 }
+
+export async function getCandidateEvents(candidateId: number, vacancyId?: number) {
+  const url = vacancyId
+    ? `/candidates/${candidateId}/vacancies/${vacancyId}/events`
+    : `/candidates/${candidateId}/events`;
+
+  return apiGet<ApiEventsResponse>(url);
+};
+
+export async function sendCandidateChat(
+  candidateId: number,
+  content: string,
+  provider: 'jobly' | 'hh' | 'avito' | 'rabota',
+  vacancyId?: number
+){
+  const url = vacancyId
+    ? `/candidates/${candidateId}/vacancies/${vacancyId}/chats`
+    : `/candidates/${candidateId}/chats`;
+
+  return apiPost<{ message: string; event_id: number; status: 'sent' | 'pending' }>(
+    url,
+    { provider, content }
+  );
+};
+
 // export async function fetchCandidatesMin(page = 1) {
 //   const { candidates, pagination } = await fetchCandidatesFull(page);
 

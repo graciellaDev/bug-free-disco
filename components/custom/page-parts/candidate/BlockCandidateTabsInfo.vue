@@ -1,280 +1,327 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
-  import BtnTab from '~/components/custom/BtnTab.vue';
-  import MyInputSecond from '~/components/custom/MyInputSecond.vue';
-  import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
-  import FileUpload from '~/components/custom/FileUpload.vue';
-  import MinDropdownSecond from '~/components/custom/MinDropdownSecond.vue';
-  import MoreQuestions from '~/components/custom/MoreQuestions.vue';
-  import Timeline from '~/components/timeline/index.vue';
-  import ChatInput from '~/components/chat/ChatInput.vue';
-  import { useForms } from '~/stores/forms';
+import { onMounted, ref, watch } from 'vue';
+import BtnTab from '~/components/custom/BtnTab.vue';
+import MyInputSecond from '~/components/custom/MyInputSecond.vue';
+import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
+import FileUpload from '~/components/custom/FileUpload.vue';
+import MinDropdownSecond from '~/components/custom/MinDropdownSecond.vue';
+import MoreQuestions from '~/components/custom/MoreQuestions.vue';
+import Timeline from '~/components/timeline/index.vue';
+import ChatInput from '~/components/chat/ChatInput.vue';
+import { useForms } from '~/stores/forms';
+import { getCandidateEvents } from '@/src/api/candidates';
+import { mapEventsToTimelineGroups } from '@/src/mappers/events'
 
-  import type { Candidate } from '@/types/candidates';
-  // import type { TimelineGroup }
+import type { Candidate } from '@/types/candidates';
+import type { UiTimelineGroup } from '@/types/timeline';
 
-  const newName = ref('');
-  const newEmail = ref('');
-  const newPhone = ref('');
-  const newHeader = ref('');
-  const newLocation = ref('');
-  const newEducation = ref('');
-  const newExperience = ref('');
-  const uploadPhoto = ref(null);
-  const uploadResume = ref(null);
-  const uploadLetter = ref(null);
-  const newPosition = ref(null);
-  const newCustomFirst = ref('');
-  const newCustomSecond = ref('');
-  const newCustomThird = ref('');
-  const questions = ref([]);
-  const answers = ref([]);
+const newName = ref('');
+const newEmail = ref('');
+const newPhone = ref('');
+const newHeader = ref('');
+const newLocation = ref('');
+const newEducation = ref('');
+const newExperience = ref('');
+const uploadPhoto = ref(null);
+const uploadResume = ref(null);
+const uploadLetter = ref(null);
+const newPosition = ref(null);
+const newCustomFirst = ref('');
+const newCustomSecond = ref('');
+const newCustomThird = ref('');
+const questions = ref([]);
+const answers = ref([]);
 
-  const formsStore = useForms();
+const formsStore = useForms();
 
-  const activeTab = ref('resume'); // Начальный таб
+const activeTab = ref('resume'); // Начальный таб
+const timelineGroups = ref<UiTimelineGroup[]>([])
+const isLoadingEvents = ref(false)
+const isEmpty = ref(false)
+const errorText = ref('')
+const fullName = ref('')
 
-  const tabs = [
-    { label: 'Резюме', value: 'resume' },
-    // { label: 'Поля', value: 'fields' },
-    { label: 'Общение', value: 'chat', notification: '+1' },
-    // { label: 'Рассмотрения', value: 'review' },
-  ];
+// const timelineGroups = ref<TimelineGroup[]>([]);
 
-  const positions = [
-    {
-      id: 'position_1',
-      name: '1 разряд',
-    },
-    {
-      id: 'position_2',
-      name: '2 разряд',
-    },
-    {
-      id: 'position_3',
-      name: '3 разряд 3 разряд',
-    },
-    {
-      id: 'position_4',
-      name: '4 разряд',
-    },
-    {
-      id: 'position_5',
-      name: '5 разряд',
-    },
-  ];
+const tabs = [
+  { label: 'Резюме', value: 'resume' },
+  // { label: 'Поля', value: 'fields' },
+  { label: 'Общение', value: 'chat', notification: '+1' },
+  // { label: 'Рассмотрения', value: 'review' },
+];
 
-  const dropdownOptions = ['Опция 1', 'Опция 2', 'Опция 3'];
+const positions = [
+  {
+    id: 'position_1',
+    name: '1 разряд',
+  },
+  {
+    id: 'position_2',
+    name: '2 разряд',
+  },
+  {
+    id: 'position_3',
+    name: '3 разряд 3 разряд',
+  },
+  {
+    id: 'position_4',
+    name: '4 разряд',
+  },
+  {
+    id: 'position_5',
+    name: '5 разряд',
+  },
+];
 
-  // const timelineGroups = ref<TimelineGroup[]>([]);
-  // const timelineGroups = ref([]);
+const getFullName = (candidate: Candidate) => {
+  const parts = [candidate.firstname, candidate.surname].filter(Boolean);
+  return parts.join(' ') || 'Без имени';
+};
 
-  const timelineGroups = ref([
-    {
-      date: '13/12/2025',
-      events: [
-        {
-          id: 1,
-          type: 'system',
-          time: '18.01.2024 15:04',
-          content: 'создан кандидат Анатольев Дмитрий Корсаров',
-        },
-        {
-          id: 2,
-          type: 'system',
-          time: '18.01.2024 15:04',
-          content:
-            'кандидат Анатольев Дмитрий Корсаров откликнулся на вакансию Консультант продавцов',
-        },
-        {
-          id: 3,
-          type: 'system',
-          time: '18.01.2024 15:04',
-          content:
-            'Перемещение на этап Подумать пользователем Анатолий Семенов',
-        },
-      ],
-    },
-    {
-      date: 'Сегодня',
-      events: [
-        {
-          id: 4,
-          type: 'call',
-          calls: [
-            {
-              time: '18.01.2024 15:04',
-              candidateName: 'Марго Роби',
-            },
-            {
-              time: '18.01.2024 15:04',
-              candidateName: 'Марго Роби',
-            },
-          ],
-        },
-        {
-          id: 5,
-          type: 'note',
-          time: '18.01.2024 15:04',
-          author: 'Анатолий Семенов',
-          content:
-            'Кандидат утверждает что у него есть знакомые которые работали в компании и отзываются не очень хорошо, но самому ему все нравится. Ему нужно время подумать.',
-        },
-        {
-          id: 6,
-          type: 'task',
-          time: '18.01.2024 15:04',
-          user: 'Анатолий Семенов',
-          title: 'Интервью с кандидатом',
-          scheduled: '13/02/2024 в 13:30',
-        },
-        {
-          id: 7,
-          type: 'email',
-          emails: [
-            {
-              time: '18.01.2024 15:04',
-              direction: 'входящее',
-              from: 'Анатолий Семенов',
-              to: 'Марго Роби',
-              subject: 'Реквизиты компании',
-              content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
-            },
-            {
-              time: '18.01.2024 15:04',
-              direction: 'входящее',
-              from: 'Марго Роби',
-              to: 'Анатолий Семенов',
-              status: 'Доставлено',
-              subject: 'Реквизиты компании',
-              content: `Благодарю за обращение. Вот реквизиты нашей компании: Название организации: [Название] ИНН: [Ваш ИНН] КПП: [Ваш КПП] Расчётный счёт: [Ваш счёт] Банк: [Название банка] БИК: [Ваш БИК] Корреспондентский счёт: [Ваш корр. счёт] Если потребуется дополнительная информация, пожалуйста, дайте знать. С уважением, [Имя клиента] [Должность, если есть] [Контактные данные] [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
-            },
-          ],
-        },
-        {
-          id: 8,
-          type: 'email',
-          emails: [
-            {
-              time: '18.01.2024 15:04',
-              direction: 'входящее',
-              from: 'Марго Роби',
-              to: 'Анатолий Семенов',
-              subject: 'Другая тема письма',
-              content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
-            },
-          ],
-        },
-        {
-          id: 9,
-          type: 'hh_chat',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          company: 'ООО КОМПАНИЯ',
-          content: 'Здравствуйте! Посмотрите пожалуйста мой отклик',
-          initials: 'СК',
-        },
-        {
-          id: 10,
-          type: 'telegram',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          content:
-            'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
-          initials: 'МР',
-        },
-        {
-          id: 11,
-          type: 'whatsapp',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          content:
-            'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
-          initials: 'МР',
-        },
-        {
-          id: 12,
-          type: 'comment',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          content:
-            'Коллеги, кандидат не плохой, давайте рассмотрим его под микроскопом?',
-          initials: 'АС',
-        },
-      ],
-    },
-  ]);
+const dropdownOptions = ['Опция 1', 'Опция 2', 'Опция 3'];
 
-  // function sanitazeCandidate(data) {
-  //   if (!data) return null;
+const loadEvents = async () => {
+  isLoadingEvents.value = true
+  try {
+    fullName.value = getFullName(props.candidate);
+    const candidateId = props.candidate.id
+    const vacancyId = props.candidate.vacancy_id ?? undefined
 
-  //   let address = data?.area.name ? `г. ${data?.area.name}` : '';
-  //   address += data?.metro?.name ? `, м. ${data.metro.name}` : '';
+    const response = await getCandidateEvents(candidateId, vacancyId);
 
-  //   return {
-  //     id: data.id ?? null,
-  //     created: data.created_at ?? null,
-  //     age: data.age ?? null,
-  //     firstName: data.first_name ?? '',
-  //     surname: data.last_name ?? '',
-  //     patronymic: data.patronymic ?? '',
-  //     email: data.contact
-  //       ? data.contact.find(function (value) {
-  //           return value.kind === 'email';
-  //         })?.contact_value
-  //       : '',
-  //     phone: data.contact
-  //       ? data.contact.find(function (value) {
-  //           return value.kind === 'phone';
-  //         })?.contact_value
-  //       : '',
-  //     location: data?.area.name ?? '',
-  //     vacancy: data.title ?? '',
-  //     gender: data.gender.name ?? '',
-  //     status: data.status ?? '',
-  //     skills: data.skill_set ?? [],
-  //     experience: data.experience ?? '',
-  //     skype: data.skype ?? '',
-  //     telegram: data.telegram ?? '',
-  //     tags: data.tags ?? '',
-  //     quickInfo: data.quickInfo ?? '',
-  //     education: data.education ?? '',
-  //     attachedFiles: data.attachments ?? [],
-  //     links: [
-  //       // 'www.testlink-null.com',
-  //       // 'www.testlink-one.com',
-  //       // 'www.testlink-second.com',
-  //     ],
-  //     header: data.title ?? '',
-  //     locationFull: address,
-  //     educationLevel: data.education.level.name ?? '',
-  //     resumeDownloadLink: data.resumeDownloadLink ?? '',
-  //     coverLetter: data.coverPath ?? '',
-  //     comments: data.comments ?? [],
-  //     timeline: data.timeline ?? [],
-  //     customFields: data.customFields ?? null,
-  //     customer: data.customer ?? null,
-  //     icon: data.icon ?? null,
-  //     photo: data.photo?.medium !== null ? data.photo?.medium : null,
-  //   };
-  // }
+    const items = response.data ?? [];
 
-  const props = defineProps<{
-    candidate: Candidate;
-  }>();
+    // console.log('response ', response);
 
-  interface ChatMessage {
-    format: string;
-    message: string;
-    attachments: File[];
-    recipient: string;
+    // console.log('items', items);
+    isEmpty.value = items.data.length === 0;
+
+    timelineGroups.value = mapEventsToTimelineGroups(items);
+  } catch (err) {
+    console.error('[loadEvents] Ошибка загрузки событий:', err)
+    timelineGroups.value = [];
+    isEmpty.value = true;
+  } finally {
+    isLoadingEvents.value = false
   }
+}
 
-  const handleChatSend = (messageData: ChatMessage) => {
-    console.log('Получены данные в родительском компоненте:', messageData);
-    return messageData;
-    // TODO: Implement message sending logic
-  };
+// const timelineGroups = ref([
+//   {
+//     date: '13/12/2025',
+//     events: [
+//       {
+//         id: 1,
+//         type: 'system',
+//         time: '18.01.2024 15:04',
+//         content: 'создан кандидат Анатольев Дмитрий Корсаров',
+//       },
+//       {
+//         id: 2,
+//         type: 'system',
+//         time: '18.01.2024 15:04',
+//         content:
+//           'кандидат Анатольев Дмитрий Корсаров откликнулся на вакансию Консультант продавцов',
+//       },
+//       {
+//         id: 3,
+//         type: 'system',
+//         time: '18.01.2024 15:04',
+//         content:
+//           'Перемещение на этап Подумать пользователем Анатолий Семенов',
+//       },
+//     ],
+//   },
+//   {
+//     date: 'Сегодня',
+//     events: [
+//       {
+//         id: 4,
+//         type: 'call',
+//         calls: [
+//           {
+//             time: '18.01.2024 15:04',
+//             candidateName: 'Марго Роби',
+//           },
+//           {
+//             time: '18.01.2024 15:04',
+//             candidateName: 'Марго Роби',
+//           },
+//         ],
+//       },
+//       {
+//         id: 5,
+//         type: 'note',
+//         time: '18.01.2024 15:04',
+//         author: 'Анатолий Семенов',
+//         content:
+//           'Кандидат утверждает что у него есть знакомые которые работали в компании и отзываются не очень хорошо, но самому ему все нравится. Ему нужно время подумать.',
+//       },
+//       {
+//         id: 6,
+//         type: 'task',
+//         time: '18.01.2024 15:04',
+//         user: 'Анатолий Семенов',
+//         title: 'Интервью с кандидатом',
+//         scheduled: '13/02/2024 в 13:30',
+//       },
+//       {
+//         id: 7,
+//         type: 'email',
+//         emails: [
+//           {
+//             time: '18.01.2024 15:04',
+//             direction: 'входящее',
+//             from: 'Анатолий Семенов',
+//             to: 'Марго Роби',
+//             subject: 'Реквизиты компании',
+//             content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
+//           },
+//           {
+//             time: '18.01.2024 15:04',
+//             direction: 'входящее',
+//             from: 'Марго Роби',
+//             to: 'Анатолий Семенов',
+//             status: 'Доставлено',
+//             subject: 'Реквизиты компании',
+//             content: `Благодарю за обращение. Вот реквизиты нашей компании: Название организации: [Название] ИНН: [Ваш ИНН] КПП: [Ваш КПП] Расчётный счёт: [Ваш счёт] Банк: [Название банка] БИК: [Ваш БИК] Корреспондентский счёт: [Ваш корр. счёт] Если потребуется дополнительная информация, пожалуйста, дайте знать. С уважением, [Имя клиента] [Должность, если есть] [Контактные данные] [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
+//           },
+//         ],
+//       },
+//       {
+//         id: 8,
+//         type: 'email',
+//         emails: [
+//           {
+//             time: '18.01.2024 15:04',
+//             direction: 'входящее',
+//             from: 'Марго Роби',
+//             to: 'Анатолий Семенов',
+//             subject: 'Другая тема письма',
+//             content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
+//           },
+//         ],
+//       },
+//       {
+//         id: 9,
+//         type: 'hh_chat',
+//         time: '18.01.2024 15:04',
+//         author: 'Марго Роби',
+//         company: 'ООО КОМПАНИЯ',
+//         content: 'Здравствуйте! Посмотрите пожалуйста мой отклик',
+//         initials: 'СК',
+//       },
+//       {
+//         id: 10,
+//         type: 'telegram',
+//         time: '18.01.2024 15:04',
+//         author: 'Марго Роби',
+//         content:
+//           'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
+//         initials: 'МР',
+//       },
+//       {
+//         id: 11,
+//         type: 'whatsapp',
+//         time: '18.01.2024 15:04',
+//         author: 'Марго Роби',
+//         content:
+//           'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
+//         initials: 'МР',
+//       },
+//       {
+//         id: 12,
+//         type: 'comment',
+//         time: '18.01.2024 15:04',
+//         author: 'Марго Роби',
+//         content:
+//           'Коллеги, кандидат не плохой, давайте рассмотрим его под микроскопом?',
+//         initials: 'АС',
+//       },
+//     ],
+//   },
+// ]);
+
+// function sanitazeCandidate(data) {
+//   if (!data) return null;
+
+//   let address = data?.area.name ? `г. ${data?.area.name}` : '';
+//   address += data?.metro?.name ? `, м. ${data.metro.name}` : '';
+
+//   return {
+//     id: data.id ?? null,
+//     created: data.created_at ?? null,
+//     age: data.age ?? null,
+//     firstName: data.first_name ?? '',
+//     surname: data.last_name ?? '',
+//     patronymic: data.patronymic ?? '',
+//     email: data.contact
+//       ? data.contact.find(function (value) {
+//           return value.kind === 'email';
+//         })?.contact_value
+//       : '',
+//     phone: data.contact
+//       ? data.contact.find(function (value) {
+//           return value.kind === 'phone';
+//         })?.contact_value
+//       : '',
+//     location: data?.area.name ?? '',
+//     vacancy: data.title ?? '',
+//     gender: data.gender.name ?? '',
+//     status: data.status ?? '',
+//     skills: data.skill_set ?? [],
+//     experience: data.experience ?? '',
+//     skype: data.skype ?? '',
+//     telegram: data.telegram ?? '',
+//     tags: data.tags ?? '',
+//     quickInfo: data.quickInfo ?? '',
+//     education: data.education ?? '',
+//     attachedFiles: data.attachments ?? [],
+//     links: [
+//       // 'www.testlink-null.com',
+//       // 'www.testlink-one.com',
+//       // 'www.testlink-second.com',
+//     ],
+//     header: data.title ?? '',
+//     locationFull: address,
+//     educationLevel: data.education.level.name ?? '',
+//     resumeDownloadLink: data.resumeDownloadLink ?? '',
+//     coverLetter: data.coverPath ?? '',
+//     comments: data.comments ?? [],
+//     timeline: data.timeline ?? [],
+//     customFields: data.customFields ?? null,
+//     customer: data.customer ?? null,
+//     icon: data.icon ?? null,
+//     photo: data.photo?.medium !== null ? data.photo?.medium : null,
+//   };
+// }
+
+const props = defineProps<{
+  candidate: Candidate;
+}>();
+
+interface ChatMessage {
+  format: string;
+  message: string;
+  attachments: File[];
+  recipient: string;
+}
+
+const handleChatSend = (messageData: ChatMessage) => {
+  console.log('Получены данные в родительском компоненте:', messageData);
+  return messageData;
+  // TODO: Implement message sending logic
+};
+
+onMounted(() => {
+  loadEvents()
+})
+
+watch(
+  () => props.candidate.id,
+  () => loadEvents(),
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -350,11 +397,8 @@
               </p>
             </div>
             <div v-else class="flex flex-wrap gap-5px">
-              <span
-                v-for="(skill, index) in candidate?.skills"
-                :key="index"
-                class="max-h-[27px] whitespace-nowrap rounded-plus bg-athens-gray px-[10.56px] py-5px text-13px font-normal text-space"
-              >
+              <span v-for="(skill, index) in candidate?.skills" :key="index"
+                class="max-h-[27px] whitespace-nowrap rounded-plus bg-athens-gray px-[10.56px] py-5px text-13px font-normal text-space">
                 {{ skill }}
               </span>
             </div>
@@ -364,25 +408,18 @@
           <p class="mb-15px text-15px font-medium text-space">
             Прикрепленные файлы
           </p>
-          <div
-            v-if="
-              candidate?.attachments && candidate?.attachments?.length === 0
-            "
-          >
+          <div v-if="
+            candidate?.attachments && candidate?.attachments?.length === 0
+          ">
             <p class="text-sm font-normal text-slate-custom">
               Кандидат не прикрепил файлы
             </p>
           </div>
           <div v-else class="flex gap-25px">
-            <div
-              v-for="file in candidate?.attachments"
-              :key="file.id"
-              class="max-w-[100px]"
-            >
+            <div v-for="file in candidate?.attachments" :key="file.id" class="max-w-[100px]">
               <a :href="file.link" target="_blank">
                 <span
-                  class="mb-9px flex h-[100px] w-[100px] items-center justify-center rounded-b-fifteen rounded-tl-fifteen rounded-tr-[35px] bg-zumthor text-sm font-medium uppercase text-dodger"
-                >
+                  class="mb-9px flex h-[100px] w-[100px] items-center justify-center rounded-b-fifteen rounded-tl-fifteen rounded-tr-[35px] bg-zumthor text-sm font-medium uppercase text-dodger">
                   {{ 'file.type' }}
                 </span>
                 <div class="flex">
@@ -416,9 +453,7 @@
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
               Форма отклика
             </p>
-            <span
-              class="h-fit rounded-fifteen bg-feta px-2.5 py-[3.5px] text-xs font-normal"
-            >
+            <span class="h-fit rounded-fifteen bg-feta px-2.5 py-[3.5px] text-xs font-normal">
               Заполнено
             </span>
           </div>
@@ -539,8 +574,8 @@
                         {{ description }}
                       </p>
                     </template>
-                  </li>
-                </ul> -->
+</li>
+</ul> -->
           </div>
           <div class="mb-5 flex gap-2.5">
             <p class="min-w-[250px] text-sm font-normal text-space">
@@ -578,9 +613,7 @@
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
               Анкета
             </p>
-            <span
-              class="h-fit rounded-fifteen bg-serenade px-2.5 py-[3.5px] text-xs font-normal"
-            >
+            <span class="h-fit rounded-fifteen bg-serenade px-2.5 py-[3.5px] text-xs font-normal">
               Отправлено, ожидает заполнения
             </span>
           </div>
@@ -625,25 +658,13 @@
             <MyInputSecond v-model="newExperience" />
           </div>
           <div class="mb-0.5">
-            <FileUpload
-              label="Фото"
-              inputId="photo"
-              @update:file="uploadPhoto = $event"
-            />
+            <FileUpload label="Фото" inputId="photo" @update:file="uploadPhoto = $event" />
           </div>
           <div>
-            <FileUpload
-              label="Загрузка резюме"
-              inputId="resume"
-              @update:file="uploadResume = $event"
-            />
+            <FileUpload label="Загрузка резюме" inputId="resume" @update:file="uploadResume = $event" />
           </div>
           <div>
-            <FileUpload
-              label="Сопроводительное письмо"
-              inputId="letter"
-              @update:file="uploadLetter = $event"
-            />
+            <FileUpload label="Сопроводительное письмо" inputId="letter" @update:file="uploadLetter = $event" />
           </div>
         </div>
         <div class="bg-white p-25px pl-30px">
@@ -651,9 +672,7 @@
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
               Пользовательские поля
             </p>
-            <span
-              class="h-fit rounded-fifteen bg-athens-gray px-2.5 py-[3.5px] text-xs font-normal"
-            >
+            <span class="h-fit rounded-fifteen bg-athens-gray px-2.5 py-[3.5px] text-xs font-normal">
               Используется в системе
             </span>
           </div>
@@ -783,10 +802,7 @@
                 </div>
               </div> -->
           <button class="mt-25px flex items-center gap-x-5px">
-            <MoreQuestions
-              v-model:modelValue="questions"
-              texButton="Добавить"
-            />
+            <MoreQuestions v-model:modelValue="questions" texButton="Добавить" />
           </button>
         </div>
         <div class="rounded-b-fifteen bg-white px-15px pb-25px">
@@ -800,11 +816,11 @@
       </div>
       <div v-if="activeTab === 'chat'">
         <div>
-          <Timeline :timeline-groups="timelineGroups" />
-          <ChatInput
-            :initial-recipient="`${candidate.firstname} ${candidate.surname}`"
-            @send="handleChatSend"
-          />
+          <div v-if="isEmpty">
+            События для кандидата {{ fullName }} не найдены.
+          </div>
+          <Timeline v-else :timeline-groups="timelineGroups" />
+          <ChatInput :initial-recipient="`${candidate.firstname} ${candidate.surname}`" @send="handleChatSend" />
         </div>
       </div>
       <div v-if="activeTab === 'review'">Рассмотрения</div>

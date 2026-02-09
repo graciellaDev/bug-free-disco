@@ -6,13 +6,13 @@
   >
     <template #content>
       <div class="leading-125">
-        <p class="text-13px font-normal text-slate-custom mb-1">
+        <p class="mb-1 text-13px font-normal text-slate-custom">
           <span>{{ task.time }}</span>
           для пользователя {{ task.user }}
         </p>
         <ul class="mb-3">
-          <li class="flex mb-1.5">
-            <p class="text-sm font-normal text-space min-w-[155px]">
+          <li class="mb-1.5 flex">
+            <p class="min-w-[155px] text-sm font-normal text-space">
               Название задачи
             </p>
             <p class="text-sm font-normal text-dodger">
@@ -20,7 +20,7 @@
             </p>
           </li>
           <li class="flex">
-            <p class="text-sm font-normal text-space min-w-[155px]">
+            <p class="min-w-[155px] text-sm font-normal text-space">
               Запланировано:
             </p>
             <p class="text-sm font-normal text-dodger">
@@ -28,7 +28,7 @@
             </p>
           </li>
         </ul>
-        <button class="text-sm text-dodger font-medium" @click="handleComplete">
+        <button class="text-sm font-medium text-dodger" @click="handleComplete">
           Выполнить
         </button>
       </div>
@@ -37,7 +37,7 @@
 </template>
 
 <script setup>
-  import TimelineItem from '../TimelineItem.vue'
+  import TimelineItem from '../TimelineItem.vue';
 
   const props = defineProps({
     task: {
@@ -50,11 +50,11 @@
         scheduled: '',
       }),
     },
-  })
+  });
 
-  const emit = defineEmits(['complete'])
+  const emit = defineEmits(['complete']);
 
   const handleComplete = () => {
-    emit('complete', props.task)
-  }
+    emit('complete', props.task);
+  };
 </script>

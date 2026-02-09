@@ -14,11 +14,11 @@
       <div>
         <ul class="mb-15px">
           <li>
-            <p class="text-13px font-normal text-slate-custom mb-1">
+            <p class="mb-1 text-13px font-normal text-slate-custom">
               <span>{{ comment.time }}</span>
               {{ comment.author }} комментирует
             </p>
-            <p class="text-sm font-normal text-space truncate">
+            <p class="truncate text-sm font-normal text-space">
               {{ comment.content }}
             </p>
           </li>
@@ -34,22 +34,22 @@
 </template>
 
 <script setup lang="ts">
-  import { getAvatarProps } from '@/lib/avatar'
-  import type { TimelineMessage } from '@/types/timeline'
-  import BtnIconText from '@/components/custom/BtnIconText.vue'
-  import TimelineItem from '@/components/timeline/TimelineItem.vue'
+  import { getAvatarProps } from '@/lib/avatar';
+  import type { TimelineMessage } from '@/types/timeline';
+  import BtnIconText from '@/components/custom/BtnIconText.vue';
+  import TimelineItem from '@/components/timeline/TimelineItem.vue';
 
   const props = defineProps<{
-    comment: TimelineMessage
-  }>()
+    comment: TimelineMessage;
+  }>();
 
   const emit = defineEmits<{
-    reply: [comment: TimelineMessage]
-  }>()
+    reply: [comment: TimelineMessage];
+  }>();
 
-  const avatarProps = computed(() => getAvatarProps(props.comment))
+  const avatarProps = computed(() => getAvatarProps(props.comment));
 
   const handleReply = () => {
-    emit('reply', props.comment)
-  }
+    emit('reply', props.comment);
+  };
 </script>
