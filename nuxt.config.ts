@@ -62,5 +62,10 @@ export default defineNuxtConfig({
   },
   pinia: {
     storesDirs: ['~/stores'],
-  }
+  },
+  nitro: {
+    devProxy: {
+      '/api': 'http://127.0.0.1:8000',
+    },
+  },
 })

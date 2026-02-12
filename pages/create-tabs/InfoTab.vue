@@ -106,14 +106,21 @@ const handleCheck = id => {
 
 
 onBeforeMount(async () => {
-  const { executors: executorData } = await executorsList();
-  executors.value = executorData
-  
-  // Загружаем данные отраслей из hh.ru
-  const { roles, errorRoles } = await getRolesHh()
-  if (!errorRoles && roles && roles.categories) {
-    hhRolesData.value = roles
-    hhIndustries.value = roles.categories
+  try {
+    const result = await executorsList();
+    executors.value = result?.executors || []
+  } catch (e) {
+    console.warn('executorsList:', e?.message || e)
+    executors.value = []
+  }
+  try {
+    const { roles, errorRoles } = await getRolesHh()
+    if (!errorRoles && roles && roles.categories) {
+      hhRolesData.value = roles
+      hhIndustries.value = roles.categories
+    }
+  } catch (e) {
+    console.warn('getRolesHh:', e?.message || e)
   }
 })
 
@@ -247,10 +254,21 @@ const salary = ref({
 const errors = ref({})
 const isOpenDateTo = ref(false)
 const departments = ref([])
-const { data } = await getPhrases()
-tags.value = data || [];
 
-departments.value = await getDepartments();
+let phrasesResult = { data: null }
+try {
+  phrasesResult = await getPhrases() || { data: null }
+} catch (e) {
+  console.warn('getPhrases:', e?.message || e)
+}
+tags.value = phrasesResult?.data || []
+
+try {
+  departments.value = await getDepartments() || []
+} catch (e) {
+  console.warn('getDepartments:', e?.message || e)
+  departments.value = []
+}
 
 const route = useRoute();
 
@@ -476,6 +494,21 @@ const handleIndustryChange = (industry) => {
   // Сбрасываем специализацию при изменении отрасли
   newVacancy.value.specializations = null
 }
+
+// Лимит символов для названия должности
+const JOB_TITLE_MAX_LENGTH = 80
+
+const jobTitleRemainingChars = computed(() => {
+  const name = newVacancy.value.name || ''
+  return Math.max(0, JOB_TITLE_MAX_LENGTH - name.length)
+})
+
+const jobTitleHasSpecialChars = computed(() => {
+  const name = newVacancy.value.name || ''
+  if (!name) return false
+  // Специальные: всё, кроме букв, цифр, пробелов и базовой пунктуации .,-()
+  return /[^\p{L}\p{N}\s.,\-()]/u.test(name)
+})
 
 const vacancyData = computed(() => {
   // Преобразуем industry и specializations в строки для отправки на сервер
@@ -780,14 +813,21 @@ const updateExecutor = (value, id) => {
               <span class="text-red-custom">*</span>
               Название должности
             </p>
-            <Autocomplete :source="ArrayMajors" :model-value="newVacancy.name ? newVacancy.name : ''"
-              @update:model-value="$event => updateEvent($event, 'name')" placeholder="Например, Менеджер по продажам"
-              class="mb-11px" />
+            <Autocomplete
+              :source="ArrayMajors"
+              :model-value="newVacancy.name ? newVacancy.name : ''"
+              @update:model-value="$event => updateEvent($event, 'name')"
+              placeholder="Например, Менеджер по продажам"
+              :show-search-icon="false"
+              :maxlength="80"
+              class="mb-11px"
+            />
             <div v-if="errors.name" class="text-red-500 text-xs mt-1">
               {{ errors.name }}
             </div>
             <p class="text-xs text-bali">
-              Осталось 80 символов. Специальных символов нет.
+              Осталось {{ jobTitleRemainingChars }} символов.
+              {{ jobTitleHasSpecialChars ? 'Есть специальные символы.' : 'Специальных символов нет.' }}
             </p>
           </div>
           <div class="w-full">
@@ -807,7 +847,7 @@ const updateExecutor = (value, id) => {
             </div>
           </div>
         </div>
-        <div class="flex justify-between gap-25px mb-3.5">
+        <div class="flex justify-between gap-25px mb-6">
           <div class="w-full">
             <p class="text-sm font-medium text-space mb-3.5">
                   Статус

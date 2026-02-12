@@ -1,6 +1,6 @@
 <template>
   <div class="cursor-pointer w-full relative" ref="dataPicker">
-    <div class="dropdown-selected-option relative border border-athens rounded-ten py-7px px-15px bg-athens-gray"
+    <div class="dropdown-selected-option relative flex items-center border border-athens rounded-ten min-h-10 px-15px bg-athens-gray text-sm font-normal text-[#2F353D]"
       @click="toggleDropdown" @focus="isFocused = true" @blur="handleBlur" :class="[
         { 'bg-athens-gray': !isError },
         { 'border-red-custom': isError },
@@ -14,7 +14,7 @@
               'Выберите дату'
         }}
       </span>
-      <div class="absolute right-[15px] top-[11.5px]">
+      <div class="absolute right-[15px] top-1/2 -translate-y-1/2">
         <transition name="fade-icon" mode="out-in">
           <span :key="props.isOpen">
             <svg-icon :name="isDropDownVisible ? 'calendar-end' : 'calendar-start'"

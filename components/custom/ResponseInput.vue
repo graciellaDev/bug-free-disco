@@ -74,7 +74,7 @@
           @focus="isFocused = true"
           @blur="isFocused = false"
           :placeholder="isFocused ? '' : placeholder"
-          class="response-input w-full py-[9px] pl-[42px] pr-[42px] text-ellipsis border rounded-ten text-sm text-bali font-normal focus:outline-none focus:border focus:border-dodger"
+          class="response-input w-full py-[9px] pl-[42px] pr-[42px] text-ellipsis border rounded-ten text-sm font-normal text-[#2F353D] focus:outline-none focus:border focus:border-dodger"
           :class="
             minStyles
               ? 'bg-transparent border-none'

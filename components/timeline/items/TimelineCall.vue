@@ -8,12 +8,12 @@
           :class="{ 'mb-4': index !== calls.length - 1 }"
         >
           <p
-            class="mb-2 text-13px font-normal leading-normal text-slate-custom"
+            class="text-13px font-normal text-slate-custom leading-normal mb-2"
           >
             <span>{{ call.time }}</span>
             от кандидата {{ call.candidateName }}
           </p>
-          <p class="text-sm font-normal leading-normal text-space">
+          <p class="text-space text-sm font-normal leading-normal">
             Пропущенный вызов
           </p>
         </li>
@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-  import TimelineItem from '../TimelineItem.vue';
+  import TimelineItem from '../TimelineItem.vue'
 
   defineProps({
     calls: {
@@ -31,5 +31,5 @@
       required: true,
       default: () => [],
     },
-  });
+  })
 </script>

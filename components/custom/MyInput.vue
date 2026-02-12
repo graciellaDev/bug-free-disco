@@ -62,7 +62,7 @@
     <input
       :type="type"
       ref="inputRef"
-      class="min-h-10 w-full rounded-ten border border-athens bg-athens-gray pl-15px text-sm font-normal"
+      class="min-h-10 w-full rounded-ten border border-athens bg-athens-gray pl-15px text-sm font-normal text-[#2F353D]"
       :placeholder="isFocused ? '' : placeholder"
       :value="props.modelValue"
       @input="updateValue"

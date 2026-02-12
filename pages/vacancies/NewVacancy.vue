@@ -23,6 +23,7 @@
   import UiLoader from '~/components/UiLoader.vue';
   import { useRoute } from 'vue-router';
   import { loadScript } from '@/plugins/loader';
+  import { getVacancy } from '@/utils/getVacancies';
   import { API_YANDEX_KEY, API_YANDEX_SUGGEST } from '@/src/constants';
 
   const { $loader } = useNuxtApp();
@@ -38,9 +39,8 @@
   if (vacancyId.value) {
     const currectVacancy = await getVacancy(String(vacancyId.value));
     vacancyName.value = 'Редактирование вакансии';
-    if (currectVacancy.value !== null && currectVacancy.name !== '')
-      vacancyName.value +=  `: ${currectVacancy.name}`;
-
+    if (currectVacancy && currectVacancy.name)
+      vacancyName.value += `: ${currectVacancy.name}`;
   }
 
   useSeoMeta({
@@ -50,7 +50,6 @@
       'Создайте новую вакансию в вашей CRM-системе Jobly.  Удобный интерфейс для быстрого и эффективного размещения вакансий.',
     ogDescription:
       'Создайте и управляйте вакансиями с помощью удобной CRM-системы Jobly.',
-    // ogImage: '/images/jobly-logo.png',
     twitterCard: 'summary',
   });
 
@@ -78,11 +77,10 @@
 
   // Обработчики событий Suspense
   const onPending = () => {
-    // Добавляем минимальную задержку, чтобы избежать мигания
     loaderTimeout = setTimeout(() => {
       showLoader.value = true;
       $loader.show();
-    }, 300); // Показываем лоадер только если загрузка длится дольше 300 мс
+    }, 300);
   };
 
   const onResolve = () => {
@@ -97,11 +95,6 @@
   const onFallback = () => {
     console.log('Suspense: Showing fallback');
   };
-
-  // onMounted(async () => {
-  //   await loadScript(`https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}&results=10`);
-  //   // await loadScript(`https://suggest-maps.yandex.ru/v1/suggest?text=%D0%B1%D1%83%D1%80%D0%B4%D0%B6&highlight=0&apikey=${API_YANDEX_SUGGEST}`)
-  // })
 
   onMounted(async () => {
     try {
