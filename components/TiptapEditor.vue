@@ -61,22 +61,21 @@
   import Link from '@tiptap/extension-link';
   import { ref, watch } from 'vue';
 
-  const defaultContent = `<div>
-        <h4>О компании</h4>
-        <ul><li></li></ul>
-      </div>
-      <div>
-        <h4>Требования</h4>
-        <ul><li></li></ul>
-      </div>
-      <div>
-        <h4>Обязанности</h4>
-        <ul><li></li></ul>
-      </div>
-      <div>
-        <h4>Условия</h4>
-        <ul><li></li></ul>
-      </div>`;
+  const defaultContent = `<p>Обязанности:</p>
+      <ul>
+        <li></li>
+        <li></li>
+      </ul>
+      <p>Требования:</p>
+      <ul>
+        <li></li>
+        <li></li>
+      </ul>
+      <p>Условия:</p>
+      <ul>
+        <li></li>
+        <li></li>
+      </ul>`;
 
   const props = defineProps({
     modelValue: {
@@ -93,7 +92,7 @@
     },
   });
 
-  const emit = defineEmits(['update:modelValue']);
+  const emit = defineEmits(['update:modelValue', 'blur']);
 
   const editor = ref(null);
 
@@ -126,6 +125,11 @@
         attributes: {
           class:
             'border border-athens py-15px px-3.5 min-h-[460px] max-h-[460px] overflow-y-auto outline-none prose max-w-none rounded-b-fifteen bg-athens-gray',
+        },
+        handleDOMEvents: {
+          blur: () => {
+            emit('blur');
+          },
         },
       },
       content: props.modelValue || defaultContent.value,
@@ -181,4 +185,5 @@
     top: 17px;
     left: 14px;
   }
+
 </style>

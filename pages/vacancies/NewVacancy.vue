@@ -1,6 +1,10 @@
 <template>
   <div>
-    <status-vacancy @update:currentTab="switchTab" :name="vacancyName" />
+    <status-vacancy
+      @update:currentTab="switchTab"
+      :name="vacancyName"
+      v-model="headerStatus"
+    />
     <Suspense @pending="onPending" @resolve="onResolve" @fallback="onFallback">
       <template #default>
         <component
@@ -18,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, defineAsyncComponent, computed } from 'vue';
+  import { ref, defineAsyncComponent, computed, provide } from 'vue';
   import { useNuxtApp } from '#app';
   import UiLoader from '~/components/UiLoader.vue';
   import { useRoute } from 'vue-router';
@@ -36,6 +40,9 @@
   );
 
   const typeSave = ref(route.query.type ? route.query.type : 'create');
+  const headerStatus = ref('В работе');
+  provide('headerVacancyStatus', headerStatus);
+
   if (vacancyId.value) {
     const currectVacancy = await getVacancy(String(vacancyId.value));
     vacancyName.value = 'Редактирование вакансии';

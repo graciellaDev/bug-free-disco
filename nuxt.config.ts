@@ -55,7 +55,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE,
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
       apiEmail: process.env.NUXT_PUBLIC_API_EMAIL,
       apiPassword: process.env.NUXT_PUBLIC_API_PASSWORD,
     }
@@ -64,8 +64,7 @@ export default defineNuxtConfig({
     storesDirs: ['~/stores'],
   },
   nitro: {
-    devProxy: {
-      '/api': 'http://127.0.0.1:8000',
-    },
+    // Проксирование /api/* на Laravel — через server/api/[[...path]].ts (catch-all)
+    // devProxy заменён на серверный обработчик для стабильной работы с $fetch
   },
 })

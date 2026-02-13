@@ -11,7 +11,11 @@ const props = defineProps({
         type: [Array, String],
         default: () => []
     },
-    hoveredCard: String
+    hoveredCard: String,
+    /** Скрыть чекбокс/радио */
+    hideIndicator: { type: Boolean, default: false },
+    /** Синяя обводка при выборе (как у кнопок Опыт работы) */
+    showSelectedBorder: { type: Boolean, default: false },
 })
 
 
@@ -33,15 +37,20 @@ const clearHover = () => emit('leave')
 <template>
     <div class="w-full my-checkbox h-auto">
         <Label :for="id"
-          class="h-full cursor-pointer flex flex-col p-15px border border-athens rounded-ten bg-athens-gray gap-y-[11px] transition-all"
+          class="h-full cursor-pointer flex flex-col p-15px border rounded-ten bg-athens-gray gap-y-[11px] transition-all"
           @mouseover="handleHover" @mouseleave="clearHover" @click="handleClick"
-          :class="{ 'bg-dodger border-transparent': isHovered, 'border-transparent bg-zumthor': isSelected }">
+          :class="{
+            'bg-dodger border-transparent': isHovered,
+            'bg-zumthor border-dodger': isSelected && showSelectedBorder,
+            'border-transparent bg-zumthor': isSelected && !showSelectedBorder,
+            'border-athens': !isHovered && !isSelected
+          }">
             <div class="flex justify-between w-full card-checkbox">
                 <p :class="[
                     isSelected ? 'text-dodger' : 'text-space',
                     isHovered && !isSelected ? 'text-white' : ''
                 ]" class="text-15px font-semibold transition-colors">{{ title }}</p>
-                <RadioGroupItem v-if="!isMultiple" :id="id" :value="id" />
+                <RadioGroupItem v-if="!isMultiple" :id="id" :value="id" :class="{ 'sr-only': hideIndicator }" />
                 <div v-else class="w-5 h-5 flex items-center justify-center border rounded-md check-item" :class="{
                     'bg-dodger border-dodger': isSelected,
                     'border-athens bg-athens-gray': !isSelected

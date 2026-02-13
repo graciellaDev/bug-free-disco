@@ -8,7 +8,7 @@ import Popup from '~/components/custom/Popup.vue'
 import MyInput from '~/components/custom/MyInput.vue'
 import CheckboxGroup from '~/components/custom/CheckboxGroup.vue'
 import draggable from 'vuedraggable'
-import { getDepartments } from '@/utils/executorsList'
+import { getDepartments, createDepartment, createDivision } from '@/utils/executorsList'
 
 
 const settingsTabs = ref('departments')
@@ -41,31 +41,49 @@ useHead({
   title: 'Настройки — Отделы и роли',
 })
 
-dataApi.value = await getDepartments(true)
-dataApi.value.forEach((element, index, array) => {
-    const subs = element.divisions.map((sub) => ({
+async function loadDepartments() {
+  try {
+    const apiData = await getDepartments(true)
+    dataApi.value = Array.isArray(apiData) ? apiData : []
+    data.value = []
+    dataApi.value.forEach((element, index) => {
+      const divisions = element?.divisions ?? []
+      const subs = divisions.map((sub) => ({
         id: sub.id,
-        name: sub.division,
+        name: sub.division ?? sub.name ?? '',
         checked: false,
         hover: false
-    }))
-    data.value.push({
-      id: index,
-      name: element.name,
-      customId: element.id,
-      checked: false,
-      subDepartments: subs
+      }))
+      data.value.push({
+        id: index,
+        name: element.name ?? '',
+        customId: element.id,
+        checked: false,
+        subDepartments: subs,
+        newSubDep: ''
+      })
     })
-});
+  } catch (e) {
+    console.warn('getDepartments:', e?.message ?? e)
+    dataApi.value = []
+    data.value = []
+  }
+}
 
-function addSubDepartment(dep) {
+loadDepartments()
+
+async function addSubDepartment(dep) {
   if (!dep.newSubDep || !dep.newSubDep.trim()) return
-  dep.subDepartments.push({
-    id: dep.subDepartments.length + 1,
-    name: dep.newSubDep.trim(),
-  })
-  dep.newSubDep = ''
-  console.log(`Добавлен новый отдел: ${dep.newSubDep.trim()} в департамент ${dep.name}`)
+  const departmentId = dep.customId
+  if (typeof departmentId !== 'number' && typeof departmentId !== 'string') return
+  try {
+    await createDivision(Number(departmentId), dep.newSubDep.trim())
+    dep.newSubDep = ''
+    await loadDepartments()
+  } catch (e) {
+    console.error('Ошибка создания подразделения:', e?.message ?? e)
+    alert('Не удалось создать подразделение. Возможно, отдел с таким названием уже существует.')
+  }
 }
 
 function removeSubDepartment(dep, subIndex) {
@@ -195,17 +213,19 @@ function handleCloseSettingsPopup(popupKey) {
   settingsDepPopups.value[popupKey] = false;
 }
 
-function addNewDep() {
+async function addNewDep() {
   if (!newDepName.value || !newDepName.value.trim()) return
-  data.value.push({
-    id: data.value.length + 1,
-    name: newDepName.value,
-    customId: (Date.now() + Math.random()).toString().slice(0, 11),
-    subDepartments: [],
-    newSubDep: '',
-  })
-  newDepName.value = ''
-  settingsDepPopups.value.newDep = false
+  try {
+    await createDepartment(newDepName.value.trim())
+    newDepName.value = ''
+    settingsDepPopups.value.newDep = false
+    await loadDepartments()
+  } catch (err) {
+    console.error('Ошибка создания департамента:', err)
+    const msg = (err && err.data && err.data.message) || (err && err.message) || String(err)
+    const hint = 'Убедитесь, что бэкенд (jobly-back) запущен и NUXT_PUBLIC_API_BASE в .env указывает на него.'
+    alert('Не удалось создать департамент.\n\n' + msg + '\n\n' + hint)
+  }
 }
 
 const newRoleChecks = [

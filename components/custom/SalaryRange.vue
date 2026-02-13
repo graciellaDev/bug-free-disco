@@ -3,13 +3,13 @@
     <!-- Поле "От" -->
     <input type="text" v-model="localFrom" @input="handleInput('from', $event.target.value)"
       @blur="handleBlurAndValidate('from')"
-      class="bg-athens-gray border border-athens rounded-ten min-h-10 max-w-400px w-full pl-15px" placeholder="От"
+      class="bg-athens-gray border border-athens rounded-ten min-h-10 max-w-400px w-full pl-15px text-sm font-normal text-[#2F353D]" placeholder="От"
       @focus="handleFocus('from')" :class="{ focused: isFocused.from }" />
 
     <!-- Поле "До" -->
     <input type="text" v-model="localTo" @input="handleInput('to', $event.target.value)"
       @blur="handleBlurAndValidate('to')"
-      class="bg-athens-gray border border-athens rounded-ten min-h-10 max-w-400px w-full pl-15px" placeholder="До"
+      class="bg-athens-gray border border-athens rounded-ten min-h-10 max-w-400px w-full pl-15px text-sm font-normal text-[#2F353D]" placeholder="До"
       @focus="handleFocus('to')" :class="{ focused: isFocused.to }" />
   </div>
 </template>

@@ -4,8 +4,14 @@
       <div class="container pt-25px pb-[16px]">
         <div class="flex mb-25px">
           <h1 class="text-xl text-space font-semibold leading-[38px]">{{ props.name }}</h1>
-          <div class="flex ml-auto">
-            <UiButton class="mr-15px" variant="semiaction" size="semiaction">В черновик</UiButton>
+          <div class="flex ml-auto items-center gap-15px">
+            <MyDropdown
+              trigger-variant="semiaction"
+              placeholder="Выберите статус"
+              :options="['В работе', 'Черновик', 'Архив']"
+              :model-value="props.modelValue ?? 'В работе'"
+              @update:model-value="emit('update:modelValue', $event ?? 'В работе')"
+            />
             <UiButton class="font-bold" variant="action" size="action">Сохранить и продолжить</UiButton>
           </div>
         </div>
@@ -89,6 +95,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import MyDropdown from '~/components/custom/MyDropdown.vue'
 // import { useVacancyStore } from '@/stores/vacancy';
 
 // const vacancyStore = useVacancyStore();
@@ -98,8 +105,17 @@ const props = defineProps({
   name: {
     type: String,
     default: 'Новая вакансия',
-  }
+  },
+  modelValue: {
+    type: String,
+    default: 'В работе',
+  },
 });
+
+const emit = defineEmits<{
+  (event: 'update:currentTab', tabName: string): void
+  (event: 'update:modelValue', value: string): void
+}>()
 
 // Объявляем переменную для состояния табов
 const isHovered = ref(false)
@@ -107,10 +123,6 @@ const isHovered = ref(false)
 // Объявляем активный так с первым табом по умолчанию
 const currentTab = ref('info')
 
-// Объявляем emit для передачи события наверх
-const emit = defineEmits<{
-  (event: 'update:currentTab', tabName: string): void
-}>()
 
 // Функция смены табов
 function changeTab(tabName: string) {

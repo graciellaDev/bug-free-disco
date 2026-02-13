@@ -108,22 +108,75 @@ export async function  getDepartments(divisions: boolean = false) {
         return response.data;
     }
     const departments: Array<any> = [];
-     if (response.data.length > 0) {
-        response.data.map((item: any) => {
-            if (item.divisions.length > 0) {
-                item.divisions.map((department: any) => {
-                    departments.push({
-                        id: department.id,
-                        name: department.division,
-                        role: item.name
-                    })
-                })
-            }       
-        })
-     }
+    if (response.data.length > 0) {
+      response.data.forEach((item: any) => {
+        const divisions = item?.divisions ?? []
+        if (divisions.length > 0) {
+          divisions.forEach((division: any) => {
+            departments.push({
+              id: division.id,
+              name: division.division ?? division.name ?? '',
+              role: item.name
+            })
+          })
+        } else {
+          departments.push({
+            id: item.id,
+            name: item.name ?? '',
+            role: item.name ?? ''
+          })
+        }
+      })
+    }
 
     return departments;
 };
+
+export async function createDepartment(name: string) {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+
+    const bodyData = new FormData();
+    bodyData.append('name', name);
+
+    const response = await $fetch<{ success?: boolean; department?: { id: number; name: string } }>(
+        `${config.public.apiBase}/departments`,
+        {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${authToken}`,
+                'X-Auth-User': `${authUser}`,
+            },
+            body: bodyData,
+        }
+    );
+    return response;
+}
+
+export async function createDivision(departmentId: number, name: string) {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+
+    const bodyData = new FormData();
+    bodyData.append('name', name);
+
+    const response = await $fetch<{ division?: { id: number; division: string } }>(
+        `${config.public.apiBase}/departments/${departmentId}/divisions`,
+        {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${authToken}`,
+                'X-Auth-User': `${authUser}`,
+            },
+            body: bodyData,
+        }
+    );
+    return response;
+}
 
 export async function  responsiblesList() {
     const config = useRuntimeConfig();

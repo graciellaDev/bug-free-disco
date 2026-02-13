@@ -1,11 +1,16 @@
 <template>
   <div class="cursor-pointer w-full relative" ref="dataPicker">
-    <div class="dropdown-selected-option relative flex items-center border border-athens rounded-ten min-h-10 px-15px bg-athens-gray text-sm font-normal text-[#2F353D]"
-      @click="toggleDropdown" @focus="isFocused = true" @blur="handleBlur" :class="[
+    <div
+      class="dropdown-selected-option relative flex items-center rounded-ten min-h-10 px-15px bg-athens-gray text-sm font-normal text-[#2F353D] transition-colors"
+      :class="[
         { 'bg-athens-gray': !isError },
         { 'border-red-custom': isError },
-        { focused: isFocused },
-      ]">
+        isDropDownVisible && !isError ? 'border border-[#5898ff]' : 'border border-athens',
+      ]"
+      @click="toggleDropdown"
+      @focus="isFocused = true"
+      @blur="handleBlur"
+    >
       {{ currectDate }}
       <span v-if="!currectDate" class="color-gray text-sm font-normal">
         {{

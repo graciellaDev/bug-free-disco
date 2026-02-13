@@ -4,11 +4,14 @@
       type="text"
       ref="inputRef"
       :value="displayValue"
-      class="bg-athens-gray border text-sm border-athens rounded-ten min-h-10 pl-15px w-full py-[9px] pr-15px"
+      class="bg-athens-gray border text-sm rounded-ten min-h-10 pl-15px w-full py-[9px] pr-15px text-[#2F353D]"
+      :class="[
+        error ? 'border-red-500' : 'border-athens',
+        { focused: isFocused, 'has-value': search || selectedCity }
+      ]"
       :placeholder="isFocused ? '' : placeholder"
-      :class="{ focused: isFocused, 'has-value': search || selectedCity }"
-      @focus="(event) => handleFocus(event)"
-      @blur="handleBlur"
+      @focus="(event) => { handleFocus(event); emit('focus') }"
+      @blur="() => { handleBlur(); emit('blur') }"
       @keydown.esc="closeList"
       @keydown.enter.prevent="selectFirstResult"
       @input="handleInput"
@@ -23,13 +26,14 @@
     <transition name="slide-fade">
       <ul
         v-if="(filteredCities.length && isOpen) || (props.isOpen && isOpen && !search)"
-        class="absolute left-0 right-0 max-h-52 overflow-y-auto bg-white z-10 shadow-shadow-droplist rounded-plus border border-athens mt-1"
+        class="absolute left-0 right-0 top-full max-h-52 overflow-y-auto bg-white z-50 shadow-shadow-droplist rounded-plus border border-athens mt-1"
+        @mousedown.prevent.capture
       >
         <li
           v-for="city in filteredCities"
           :key="city.id"
-          @mousedown.prevent="selectCity(city)"
-          class="text-slate-custom hover:text-space cursor-pointer hover:bg-zumthor py-10px px-15px border-b border-athens last:border-b-0"
+          @mousedown="selectCity(city)"
+          class="text-sm text-slate-custom hover:text-space cursor-pointer hover:bg-zumthor py-10px px-15px border-b border-athens last:border-b-0"
         >
           {{ city.name || city.city }}
         </li>
@@ -67,16 +71,21 @@ const props = defineProps({
   isOpen: {
     type: Boolean,
     default: false,
+  },
+  error: {
+    type: Boolean,
+    default: false,
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'focus', 'blur'])
 
 const search = ref('')
 const isFocused = ref(false)
 const isOpen = ref(false)
 const wrapperRef = ref(null)
 const isEditing = ref(false) // Флаг для отслеживания редактирования
+const isSelecting = ref(false) // Флаг выбора города по клику (чтобы blur не мешал)
 
 const selectedCity = computed(() => {
   if (!props.modelValue && !props.isOpen) {
@@ -118,24 +127,29 @@ const filteredCities = computed(() => {
 const handleFocus = (event) => {
   isFocused.value = true
   if (event.target.value) {
+    search.value = event.target.value
+    isOpen.value = true
     return
   }
-  // При фокусе показываем название выбранного города для возможности редактирования
-  search.value = selectedCity.value ? selectedCity.value.name : ''
+  search.value = selectedCity.value ? (selectedCity.value.name || selectedCity.value.city || '') : ''
   if (search.value || props.isOpen) {
     isOpen.value = true
   }
 }
 
 const handleBlur = () => {
-  // Задержка для обработки клика по элементу списка
+  // Задержка для обработки клика по элементу списка (mousedown/click срабатывают до blur callback)
   setTimeout(() => {
+    if (isSelecting.value) {
+      isSelecting.value = false
+      return // Выбор уже обработан в selectCity
+    }
     isFocused.value = false
     isOpen.value = false
     // Если город выбран, показываем его название
     // Если пользователь редактировал текст, сохраняем его
     if (selectedCity.value && !isEditing.value) {
-      search.value = selectedCity.value.name
+      search.value = selectedCity.value.name || selectedCity.value.city || ''
     } else if (!selectedCity.value && !search.value) {
       search.value = ''
     }
@@ -175,15 +189,16 @@ const handleInput = async (event) => {
 }
 
 const selectCity = async (city) => {
-  const cityId = city.id || city.value
-  const cityName = city.name || city.city || ''
+  isSelecting.value = true
+  const cityId = city.id ?? city.value
+  const cityName = (city.name || city.city || '').toString()
   emit('update:modelValue', cityId)
-  // Ждем обновления DOM и computed свойств
   await nextTick()
-  // Сохраняем название города в поле ввода
   search.value = cityName
   isFocused.value = false
   isOpen.value = false
+  inputRef.value?.blur()
+  setTimeout(() => { isSelecting.value = false }, 250)
 }
 
 const selectFirstResult = () => {

@@ -1003,6 +1003,40 @@ export const getVacancyCountViews = async (id: string) => {
   }
 
 /**
+ * Получение списка языков (через серверный прокси для избежания CORS)
+ * @returns Массив языков с id, name, uid
+ */
+export const getLanguages = async () => {
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<any[]>('/api/hh/languages');
+    result.value.data = response || [];
+  } catch (err: any) {
+    result.value.error = err.response?._data?.message || 'Ошибка при получении списка языков';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Получение уровней владения языком (через серверный прокси)
+ * @returns Массив уровней с id и name (A1, A2, B1, B2, C1, C2, L1)
+ */
+export const getLanguageLevels = async () => {
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<Array<{ id: string; name: string }>>('/api/hh/language-levels');
+    result.value.data = response || [];
+  } catch (err: any) {
+    result.value.error = err.response?._data?.message || 'Ошибка при получении уровней владения языком';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение количества просмотров вакансии из API hh.ru
  * @returns Массив городов с id и name
  */

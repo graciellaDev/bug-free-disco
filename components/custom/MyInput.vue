@@ -31,7 +31,7 @@
     },
   });
 
-  const emit = defineEmits(['update:modelValue', 'blur']);
+  const emit = defineEmits(['update:modelValue', 'blur', 'focus']);
   const localValue = ref(props.modelValue); // local state for control value
 
   // watch for value change
@@ -48,10 +48,14 @@
     emit('update:modelValue', localValue.value);
   };
 
+  const handleFocus = () => {
+    isFocused.value = true;
+    emit('focus');
+  };
+
   const handleBlur = () => {
     isFocused.value = false;
     emit('blur');
-    // console.log('Blur triggered')
   };
 
   defineExpose({ focus: () => inputRef.value && inputRef.value.focus() });
@@ -66,7 +70,7 @@
       :placeholder="isFocused ? '' : placeholder"
       :value="props.modelValue"
       @input="updateValue"
-      @focus="isFocused = true"
+      @focus="handleFocus"
       :class="[{ focused: isFocused }, { search: search }, props.class]"
       @blur="handleBlur"
       :readonly="props.readonly"
@@ -76,7 +80,7 @@
 
 <style scoped>
   input::placeholder {
-    color: #79869a;
+    color: #9098b4;
     font-size: 14px;
     font-weight: 400;
     font-family: 'Inter', sans-serif;

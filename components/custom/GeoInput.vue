@@ -13,6 +13,10 @@
       type: String,
       default: '',
     },
+    error: {
+      type: Boolean,
+      default: false,
+    },
   })
 
   const isFocused = ref(false)
@@ -55,8 +59,14 @@
     emit('update:modelValue', city)
   }
 
-  const emit = defineEmits(['update:modelValue'])
-  console.log('Отрисовка гео-компоненты');
+  const emit = defineEmits(['update:modelValue', 'blur'])
+
+  const handleBlur = () => {
+    isFocused.value = false
+    emit('update:modelValue', currentCity.value)
+    // Откладываем emit blur, чтобы при клике по списку mousedown успел обработать выбор
+    setTimeout(() => emit('blur'), 0)
+  }
 
 </script>
 
@@ -70,9 +80,9 @@
           v-model="currentCity"
           @input="filterCities"
           @focus="isFocused = true"
-          @blur="isFocused = false"
+          @blur="handleBlur"
           :placeholder="isFocused ? '' : placeholder"
-          class="geo-input w-full py-[9px] pl-15px border border-athens rounded-ten bg-athens-gray text-sm font-normal focus:outline-none focus:border focus:border-dodger"
+          :class="['geo-input w-full py-[9px] pl-15px border rounded-ten bg-athens-gray text-sm font-normal text-[#2F353D] focus:outline-none focus:border focus:border-dodger', error ? 'border-red-500' : 'border-athens']"
         />
         <button
           class="clear-city absolute top-2/4 right-4 text-slate-custom"
