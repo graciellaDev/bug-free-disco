@@ -1,33 +1,33 @@
 <template>
   <div class="dropdown-wrapper cursor-pointer relative" ref="dropDown">
-    <div class="dropdown-selected-option relative border border-athens rounded-ten py-9px px-15px bg-athens-gray"
-      @click="toggleDropDown">
-      <div>
-        <div :class="{
-          'text-bali': !selectedOption,
-          'text-space': selectedOption,
-        }" class="text-sm">
-          {{ mappedSelectedOption }}
-        </div>
-        <div v-show="!selectedOption"
-          class="right-3.5 top-2 transition-transform duration-300 text-bali text-sm">
-          {{ props.placeholder }}
-        </div>
-        <!-- Стрелка -->
-        <div v-show="!selectedOption"
-          class="dropdown-arrow absolute right-3.5 top-[calc(50%-10px)] transition-transform duration-300 text-bali"
-          :class="{ 'rotate-180 text-dodger': isDropDownVisible }">
-          <svg-icon name="dropdown-arrow" width="20" height="20" />
-        </div>
-        <!-- Крестик -->
-        <div v-show="selectedOption" class="dropdown-cross absolute right-3.5 top-2" @click.stop="resetSelection">
-          <svg-icon name="dropdown-cross" width="20" height="20" />
-        </div>
+    <div
+      class="dropdown-selected-option relative flex items-center gap-3.5 rounded-ten py-9px pl-3.5 pr-3.5 text-sm font-normal transition-colors"
+      :class="triggerVariantClasses"
+      @click="toggleDropDown"
+    >
+      <span
+        :class="{
+          'text-bali': !selectedOption && triggerVariant !== 'semiaction',
+          'text-space': selectedOption && triggerVariant !== 'semiaction',
+          'text-dodger': triggerVariant === 'semiaction',
+        }"
+        class="text-sm min-w-0 truncate"
+      >
+        {{ displayText }}
+      </span>
+      <div
+        class="dropdown-arrow shrink-0 transition-transform duration-300"
+        :class="[
+          triggerVariant === 'semiaction' ? 'text-dodger' : (isDropDownVisible ? 'text-dodger' : 'text-bali'),
+          { 'rotate-180': isDropDownVisible },
+        ]"
+      >
+        <svg-icon name="dropdown-arrow" width="20" height="20" />
       </div>
     </div>
     <transition name="slide-fade">
       <div
-        class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-10"
+        class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
         v-if="isDropDownVisible">
         <div
           class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer first:rounded-t-ten last:rounded-b-ten"
@@ -68,12 +68,33 @@ const props = defineProps({
     type: String,
     default: 'Выберите значение',
   },
+  triggerVariant: {
+    type: String,
+    default: 'default', // 'default' | 'semiaction' — стиль как у кнопки «В черновик»
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
 const dropDown = ref(null)
+
+const triggerVariantClasses = computed(() => {
+  const base = 'leading-normal'
+  if (props.triggerVariant === 'semiaction') {
+    return [
+      'bg-zumthor text-dodger border border-transparent',
+      isDropDownVisible.value ? 'border-dodger' : '',
+      base,
+    ].filter(Boolean).join(' ')
+  }
+  return [
+    'border bg-athens-gray',
+    isDropDownVisible.value ? 'border-[#5898ff]' : 'border-athens',
+    base,
+  ].join(' ')
+})
 const isDropDownVisible = ref(false)
+const openDelayTimer = ref(null)
 const selectedOption = ref(props.defaultValue ? props.defaultValue : null)
 
 // Утилиты для обработки options
@@ -82,21 +103,31 @@ const getOptionLabel = (option) => option?.name ?? option
 const getOptionKey = (option) => getOptionValue(option)
 const valueData = ref(props.defaultValue)
 
-// Вычисляемое свойство для отображаемого значения
-const mappedSelectedOption = computed(() => {
-  if (selectedOption.value === null || selectedOption.value === undefined) {
-    return props.defaultValue
+// Отображаемый текст: при выборе — значение, иначе — только placeholder
+const displayText = computed(() => {
+  const val = selectedOption.value
+  if (val === null || val === undefined || val === '') {
+    return props.placeholder
   }
-  // Если selectedOption не в options, показываем его как есть (для данных с сервера)
-  return getOptionLabel(selectedOption.value)
+  return getOptionLabel(val)
 })
+
+// Поиск опции по значению, названию или id (для совместимости с API)
+const findOption = (value) => {
+  if (value === null || value === undefined || value === '') return null
+  return props.options.find(opt =>
+    getOptionValue(opt) === value ||
+    getOptionLabel(opt) === value ||
+    (opt?.id !== undefined && opt.id === value)
+  ) ?? null
+}
 
 // Инициализация selectedOption
 const initializeSelectedOption = () => {
   let initial = props.initialValue ?? props.modelValue ?? props.selected
-  if (initial !== null && initial !== undefined) {
-    const option = props.options.find(opt => getOptionValue(opt) === getOptionValue(initial))
-    selectedOption.value = option ?? initial // Сохраняем initial, даже если его нет в options
+  if (initial !== null && initial !== undefined && initial !== '') {
+    const option = findOption(initial)
+    selectedOption.value = option ?? initial
   } else {
     selectedOption.value = null
   }
@@ -104,7 +135,19 @@ const initializeSelectedOption = () => {
 
 // Открытие/закрытие выпадающего списка
 const toggleDropDown = () => {
-  isDropDownVisible.value = !isDropDownVisible.value
+  if (isDropDownVisible.value) {
+    isDropDownVisible.value = false
+    if (openDelayTimer.value) {
+      clearTimeout(openDelayTimer.value)
+      openDelayTimer.value = null
+    }
+  } else {
+    if (openDelayTimer.value) return
+    openDelayTimer.value = setTimeout(() => {
+      isDropDownVisible.value = true
+      openDelayTimer.value = null
+    }, 120)
+  }
 }
 
 // Выбор значения
@@ -125,17 +168,23 @@ const resetSelection = () => {
 // Закрытие выпадающего списка при клике вне
 const closeDropDown = (event) => {
   if (!dropDown.value?.contains(event.target)) {
+    if (openDelayTimer.value) {
+      clearTimeout(openDelayTimer.value)
+      openDelayTimer.value = null
+    }
     isDropDownVisible.value = false
   }
 }
 
-// Проверка валидности selectedOption при изменении options
+// Проверка валидности selectedOption при изменении options + обновление на полный объект опции
 watch(() => props.options, (newOptions) => {
-  if (selectedOption.value !== null) {
-    const currentValue = getOptionValue(selectedOption.value)
-    const isValid = newOptions.some(opt => getOptionValue(opt) === currentValue)
-    // Сбрасываем только если компонент используется в контексте динамических опций (например, SettingsForms)
-    // Для данных с сервера (InfoTab) сохраняем значение
+  if (selectedOption.value === null && !props.modelValue) return
+  const currentValue = props.modelValue ?? getOptionValue(selectedOption.value)
+  const foundOption = findOption(currentValue)
+  if (foundOption) {
+    selectedOption.value = foundOption
+  } else if (currentValue !== null && currentValue !== undefined && currentValue !== '') {
+    const isValid = newOptions.some(opt => getOptionValue(opt) === currentValue || getOptionLabel(opt) === currentValue)
     if (!isValid && !props.initialValue) {
       selectedOption.value = null
       emit('update:modelValue', null)
@@ -145,12 +194,10 @@ watch(() => props.options, (newOptions) => {
 
 // Синхронизация modelValue → selectedOption
 watch(() => props.modelValue, (newValue) => {
-  if (newValue !== getOptionValue(selectedOption.value)) {
-    const option = props.options.find(opt => getOptionValue(opt) === newValue)
-    selectedOption.value = option ?? newValue // Сохраняем newValue, если оно с сервера
-    if (!option && newValue !== null && !props.initialValue) {
-      emit('update:modelValue', null) // Сбрасываем, если значение невалидно и не с сервера
-    }
+  const option = findOption(newValue)
+  selectedOption.value = option ?? (newValue && newValue !== '' ? newValue : null)
+  if (!option && newValue !== null && newValue !== '' && !props.initialValue) {
+    emit('update:modelValue', null)
   }
 }, { immediate: true })
 
@@ -169,6 +216,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (openDelayTimer.value) {
+    clearTimeout(openDelayTimer.value)
+  }
   window.removeEventListener('click', closeDropDown)
 })
 </script>

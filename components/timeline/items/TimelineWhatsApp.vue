@@ -16,11 +16,11 @@
       </div>
       <ul>
         <li>
-          <p class="mb-2 text-13px font-normal text-slate-custom">
+          <p class="text-13px font-normal text-slate-custom mb-2">
             <span>{{ message.time }}</span>
             {{ message.author }}
           </p>
-          <p class="truncate text-sm font-normal text-space">
+          <p class="text-sm font-normal text-space truncate">
             {{ message.content }}
           </p>
         </li>
@@ -30,17 +30,17 @@
 </template>
 
 <script setup lang="ts">
-  import { getAvatarProps } from '@/lib/avatar';
-  import type { TimelineMessage } from '@/types/timeline';
-  import TimelineItem from '../TimelineItem.vue';
+  import { getAvatarProps } from '@/lib/avatar'
+  import type { TimelineMessage } from '@/types/timeline'
+  import TimelineItem from '../TimelineItem.vue'
 
   const props = defineProps<{
-    message: TimelineMessage;
-  }>();
+    message: TimelineMessage
+  }>()
 
   const emit = defineEmits<{
-    reply: [message: TimelineMessage];
-  }>();
+    reply: [message: TimelineMessage]
+  }>()
 
-  const avatarProps = computed(() => getAvatarProps(props.message));
+  const avatarProps = computed(() => getAvatarProps(props.message))
 </script>

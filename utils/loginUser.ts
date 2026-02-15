@@ -53,14 +53,17 @@ export const loginUser = async (email: string, password: string) => {
   } catch (err: any) {
     console.error('Ошибка при входе:', err.message || err);
     let errorMessage = 'Произошла ошибка при входе';
+    const errData = err.response?._data || err.response?.data;
     if (err.response?.status === 401) {
-      errorMessage = 'Неверный email или пароль';
+      errorMessage = errData?.message || 'Неверный email или пароль';
     } else if (err.response?.status === 404) {
-      errorMessage = 'Пользователь не найден';
-    } else if (err.response?.data?.message) {
-      errorMessage = err.response.data.message;
+      errorMessage = errData?.message || 'Пользователь не найден';
+    } else if (err.response?.status === 422) {
+      errorMessage = errData?.message || 'Ошибка валидации';
+    } else if (errData?.message) {
+      errorMessage = errData.message;
     }
-    console.error('Детали ошибки:', err.response?.data || err.response);
+    console.error('Детали ошибки:', errData || err.response);
     return { data: null, error: errorMessage };
   }
 };

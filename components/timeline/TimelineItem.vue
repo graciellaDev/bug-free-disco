@@ -1,8 +1,8 @@
 <template>
-  <div class="mb-15px flex w-full rounded-fifteen bg-white p-15px">
+  <div class="w-full p-15px bg-white rounded-fifteen flex mb-15px">
     <div
       v-if="showIcon"
-      class="mr-15px flex h-50px w-50px shrink-0 items-center justify-center rounded-full"
+      class="shrink-0 w-50px h-50px rounded-full flex items-center justify-center mr-15px"
       :class="iconBackground"
     >
       <svg-icon
@@ -13,7 +13,7 @@
         :class="iconColor"
       />
     </div>
-    <div class="flex min-w-0 flex-1">
+    <div class="flex-1 min-w-0 flex">
       <slot name="content"></slot>
     </div>
   </div>
@@ -37,5 +37,5 @@
       type: Boolean,
       default: true,
     },
-  });
+  })
 </script>

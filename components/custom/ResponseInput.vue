@@ -1,11 +1,14 @@
 <script setup>
-  import { ref } from 'vue'
-  import debounce from 'lodash/debounce'
+  import { ref, watch } from 'vue'
 
   const props = defineProps({
     placeholder: {
       type: String,
       default: 'Введите значение',
+    },
+    showSearchIcon: {
+      type: Boolean,
+      default: true,
     },
     showRoles: {
       type: Boolean,
@@ -27,27 +30,29 @@
     notFound: {
       type: String,
       default: 'Ответственный не найден',
-    }
+    },
+    error: {
+      type: Boolean,
+      default: false,
+    },
   })
 
   const currentResponse = ref('')
   currentResponse.value = props.modelValue
   const filteredResponses = ref(props.responses)
   const isFocused = ref(false)
-  const emit = defineEmits({'update:modelValue': [String | null, Number | null], 'input:modelValue': [String | null]})
+  const emit = defineEmits({'update:modelValue': [String | null, Number | null], 'input:modelValue': [String | null], 'blur': [], 'focus': []})
 
-  // Дебаунс-функция для фильтрации списка
-  // const filterResponses = debounce(() => {
-  //   const input = currentResponse.value?.toLowerCase()
-  //   filteredResponses.value = props.responses.filter(response => {
-  //     const name = response.name.toLowerCase()
-  //     const role = response.role ? response.role.toLowerCase() : ''
-  //     return name.includes(input) || (props.showRoles && role.includes(input))
-  //   })
-  //   if (!filteredResponses.value.length) {
-  //     emit('input:modelValue', currentResponse.value, null)
-  //   } 
-  // }, 300)
+  const filterResponses = () => {
+    const input = currentResponse.value?.toLowerCase() || ''
+    filteredResponses.value = props.responses.filter(response => {
+      const name = (response.name || '').toLowerCase()
+      const role = response.role ? String(response.role).toLowerCase() : ''
+      return name.includes(input) || (props.showRoles && role.includes(input))
+    })
+    emit('update:modelValue', currentResponse.value, null)
+    emit('input:modelValue', currentResponse.value, null)
+  }
 
   const clearResponse = () => {
     currentResponse.value = ''
@@ -61,6 +66,10 @@
     isFocused.value = false
     emit('update:modelValue', response.name, response.id, response.email)
   }
+
+  watch(() => props.modelValue, (val) => {
+    currentResponse.value = val ?? ''
+  })
 </script>
 
 <template>
@@ -71,15 +80,15 @@
           type="text"
           v-model="currentResponse"
           @input="filterResponses"
-          @focus="isFocused = true"
-          @blur="isFocused = false"
+          @focus="isFocused = true; emit('focus')"
+          @blur="isFocused = false; emit('blur')"
           :placeholder="isFocused ? '' : placeholder"
-          class="response-input w-full py-[9px] pl-[42px] pr-[42px] text-ellipsis border rounded-ten text-sm text-bali font-normal focus:outline-none focus:border focus:border-dodger"
-          :class="
-            minStyles
-              ? 'bg-transparent border-none'
-              : 'bg-athens-gray border-athens'
-          "
+          :class="[
+            'response-input w-full py-[9px] pr-[42px] text-ellipsis border rounded-ten text-sm font-normal text-[#2F353D] focus:outline-none focus:border focus:border-dodger',
+            showSearchIcon ? 'pl-[42px]' : 'pl-15px response-input-no-icon',
+            minStyles ? 'bg-transparent border-none' : 'bg-athens-gray border-athens',
+            error && '!border-red-500'
+          ]"
         />
         <button
           class="clear-response absolute top-2/4 right-4 text-slate-custom"
@@ -128,7 +137,7 @@
 </template>
 
 <style scoped>
-  .response-input {
+  .response-input:not(.response-input-no-icon) {
     background-image: url('../../assets/sprite/svg/search.svg');
     background-repeat: no-repeat;
     background-position: 15px center;

@@ -4,11 +4,12 @@
       type="text"
       ref="inputRef"
       v-model="search"
-      class="bg-athens-gray border text-sm border-athens rounded-ten min-h-10 pl-15px w-full"
+      class="bg-athens-gray border text-sm border-athens rounded-ten min-h-10 pl-15px w-full text-[#2F353D]"
       :placeholder="isFocused ? '' : placeholder"
-      :class="{ focused: isFocused, 'has-value': search }"
+      :class="{ focused: isFocused, 'has-value': search, 'no-search-icon': !showSearchIcon, 'input-error': props.error }"
+      :maxlength="maxlength ?? undefined"
       @focus="handleFocus"
-      @blur="isFocused = false"
+      @blur="handleBlur"
       @keydown.esc="closeList"
       @keydown.enter="submitCustomValue"
       @input="$emit('update:modelValue', $event.target.value)"
@@ -54,9 +55,22 @@
       type: String,
       default: '',
     },
+    /** Скрыть иконку поиска при фокусе */
+    showSearchIcon: {
+      type: Boolean,
+      default: true,
+    },
+    maxlength: {
+      type: [Number, String],
+      default: null,
+    },
+    error: {
+      type: Boolean,
+      default: false,
+    },
   })
 
-  const emit = defineEmits(['update:modelValue'])
+  const emit = defineEmits(['update:modelValue', 'focus', 'blur'])
 
   const search = ref(props.initialValue || props.modelValue || '')
   const isFocused = ref(false)
@@ -79,6 +93,12 @@
   const handleFocus = () => {
     isFocused.value = true
     isOpen.value = true
+    emit('focus')
+  }
+
+  const handleBlur = () => {
+    isFocused.value = false
+    emit('blur')
   }
 
   const setSelected = item => {
@@ -130,6 +150,7 @@
 
 <style scoped>
   input::placeholder {
+    color: #9098b4;
     font-size: 14px;
     font-weight: 400;
     font-family: 'Inter', sans-serif;
@@ -151,6 +172,15 @@
     background-position: 15px center;
     background-size: 20px 20px;
     border: 1px solid #5898ff;
+  }
+
+  input.focused.no-search-icon {
+    padding-left: 15px;
+    background-image: none;
+  }
+
+  input.input-error {
+    border-color: #ef4444;
   }
 
   /* input.has-value {
