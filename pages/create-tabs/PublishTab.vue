@@ -945,21 +945,18 @@ async function authPlatform(platformName) {
     const returnUrl = currentRoute.fullPath; // Сохраняем полный путь с query параметрами
     setCookie('auth_return_url', returnUrl, 1);
 
+    const config = useRuntimeConfig();
+    const tokenCookie = useCookie('auth_user');
+    const base = (config.public.apiBase || '').replace(/\/$/, ''); // без завершающего слэша
+    setCookie('process_auth', 'true', 1);
+
     if (platformName === 'hh.ru') {
-        const config = useRuntimeConfig();
-        const tokenCookie = useCookie('auth_user');
-        setCookie('process_auth', 'true', 1);
-        window.location.href = config.public.apiBase + `/code-hh?customerToken=${tokenCookie.value}`;
+        window.location.href = `${base}/code-hh?customerToken=${tokenCookie.value}`;
     } else if (platformName === 'avito.ru') {
-        const config = useRuntimeConfig();
-        const tokenCookie = useCookie('auth_user');
-        setCookie('process_auth', 'true', 1);
-        window.location.href = config.public.apiBase + `/code-avito?customerToken=${tokenCookie.value}`;
+        // Редирект на бэкенд; бэкенд должен отправить на https://www.avito.ru/oauth с response_type=code
+        window.location.href = `${base}/code-avito?customerToken=${tokenCookie.value}`;
     } else if (platformName === 'rabota.ru') {
-        const config = useRuntimeConfig();
-        const tokenCookie = useCookie('auth_user');
-        setCookie('process_auth', 'true', 1);
-        window.location.href = config.public.apiBase + `/code-rabota?customerToken=${tokenCookie.value}`;
+        window.location.href = `${base}/code-rabota?customerToken=${tokenCookie.value}`;
     } else {
         authError.value[platformName] = `Платформа ${platformName} пока не поддерживается`;
     }
