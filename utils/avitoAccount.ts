@@ -1,6 +1,6 @@
 import { createAuthHeaders, getAuthTokens, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
-import { mapVacancyToAvitoFormat } from "@/utils/mapVacancyToAvito";
+import { mapVacancyToAvitoFormat, ensureAvitoPayloadTypes } from "@/utils/mapVacancyToAvito";
 
 /**
  * Добавление черновика вакансии на Avito
@@ -15,55 +15,8 @@ export const addDraft = async (data: DraftDataHh | any) => {
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null, errorDraft: null });
   
-  // Преобразуем данные в формат Avito API
-  const avitoData = mapVacancyToAvitoFormat(data);
-  
-  const bodyData = new FormData();
-  
-  // Обработка данных для отправки в формате FormData
-  Object.entries(avitoData).forEach(([key, value]) => {
-    if (value === null || value === undefined) {
-      return; // Пропускаем null и undefined
-    }
-    
-    if (Array.isArray(value)) {
-      // Массивы (например, key_skills)
-      value.forEach((item, index) => {
-        if (item !== null && item !== undefined) {
-          if (typeof item === 'object') {
-            // Для объектов в массиве (например, { id: 123 })
-            Object.entries(item).forEach(([subKey, subValue]) => {
-              if (subValue !== null && subValue !== undefined) {
-                bodyData.append(`${key}[${index}][${subKey}]`, String(subValue));
-              }
-            });
-          } else {
-            // Для примитивных значений в массиве
-            bodyData.append(`${key}[${index}]`, String(item));
-          }
-        }
-      });
-    } else if (typeof value === 'object') {
-      // Объекты (например, category: { id: 123 }, salary: { from: 1000, to: 2000, currency: 'RUR' })
-      Object.entries(value).forEach(([subKey, subValue]) => {
-        if (subValue !== null && subValue !== undefined) {
-          if (typeof subValue === 'object' && !Array.isArray(subValue)) {
-            // Вложенные объекты
-            Object.entries(subValue).forEach(([nestedKey, nestedValue]) => {
-              if (nestedValue !== null && nestedValue !== undefined) {
-                bodyData.append(`${key}[${subKey}][${nestedKey}]`, String(nestedValue));
-              }
-            });
-          } else {
-            bodyData.append(`${key}[${subKey}]`, String(subValue));
-          }
-        }
-      });
-    } else {
-      // Примитивные значения (строки, числа, булевы)
-      bodyData.append(key, String(value));
-    }
-  });
+  // Преобразуем данные в формат Avito API; нормализуем типы (profession и др. — number, не string)
+  const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(data));
 
   try {
     const response = await $fetch<PlatformHhResponse>('/avito/drafts', {
@@ -71,18 +24,26 @@ export const addDraft = async (data: DraftDataHh | any) => {
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${serverToken}`,
         'X-Auth-User': userToken,
       },
-      body: bodyData,
+      body: avitoData,
     });
 
     result.value.draft = response.data;
   } catch (err: any) {
-    if (err.response?.status !== 401) {
-      result.value.errorDraft = err.response?._data?.message || 'Ошибка при создании черновика на Avito';
-    } else {
+    if (err.response?.status === 401) {
       handle401Error();
+    } else {
+      const data = err.response?._data;
+      const slug = data?.slug;
+      const message = data?.message;
+      if (slug === 'server_error' || (typeof message === 'string' && message.includes('contact support'))) {
+        result.value.errorDraft = 'Временная ошибка на стороне Avito. Повторите попытку позже или обратитесь в поддержку: supportautoload@avito.ru, 8 800 600-00-01.';
+      } else {
+        result.value.errorDraft = message || 'Ошибка при создании черновика на Avito';
+      }
     }
   } finally {
     return result.value;
@@ -368,66 +329,19 @@ export const publishVacancy = async (draftData: DraftDataHh) => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    // Преобразуем данные в формат Avito API
-    const avitoData = mapVacancyToAvitoFormat(draftData as any);
-    
-    const bodyData = new FormData();
-    
-    // Обработка данных для отправки в формате FormData
-    Object.entries(avitoData).forEach(([key, value]) => {
-      if (value === null || value === undefined) {
-        return; // Пропускаем null и undefined
-      }
-      
-      if (Array.isArray(value)) {
-        // Массивы (например, key_skills)
-        value.forEach((item, index) => {
-          if (item !== null && item !== undefined) {
-            if (typeof item === 'object') {
-              // Для объектов в массиве (например, { id: 123 })
-              Object.entries(item).forEach(([subKey, subValue]) => {
-                if (subValue !== null && subValue !== undefined) {
-                  bodyData.append(`${key}[${index}][${subKey}]`, String(subValue));
-                }
-              });
-            } else {
-              // Для примитивных значений в массиве
-              bodyData.append(`${key}[${index}]`, String(item));
-            }
-          }
-        });
-      } else if (typeof value === 'object') {
-        // Объекты (например, category: { id: 123 }, salary: { from: 1000, to: 2000, currency: 'RUR' })
-        Object.entries(value).forEach(([subKey, subValue]) => {
-          if (subValue !== null && subValue !== undefined) {
-            if (typeof subValue === 'object' && !Array.isArray(subValue)) {
-              // Вложенные объекты
-              Object.entries(subValue).forEach(([nestedKey, nestedValue]) => {
-                if (nestedValue !== null && nestedValue !== undefined) {
-                  bodyData.append(`${key}[${subKey}][${nestedKey}]`, String(nestedValue));
-                }
-              });
-            } else {
-              bodyData.append(`${key}[${subKey}]`, String(subValue));
-            }
-          }
-        });
-      } else {
-        // Примитивные значения (строки, числа, булевы)
-        bodyData.append(key, String(value));
-      }
-    });
+    // Преобразуем данные в формат Avito API; нормализуем типы (profession и др. — number, не string)
+    const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(draftData as any));
 
-    // Используем эндпоинт для публикации (не черновика)
     const response = await $fetch<PlatformHhResponse>('/avito/publications', {
       method: 'POST',
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${serverToken}`,
         'X-Auth-User': userToken,
       },
-      body: bodyData,
+      body: avitoData,
     });
 
     result.value.data = response.data;
@@ -435,7 +349,14 @@ export const publishVacancy = async (draftData: DraftDataHh) => {
     if (err.response?.status === 401) {
       handle401Error();
     } else {
-      result.value.error = err.response?._data?.message || 'Ошибка при публикации вакансии на Avito';
+      const data = err.response?._data;
+      const slug = data?.slug;
+      const message = data?.message;
+      if (slug === 'server_error' || (typeof message === 'string' && message.includes('contact support'))) {
+        result.value.error = 'Временная ошибка на стороне Avito. Повторите попытку позже или обратитесь в поддержку Avito: supportautoload@avito.ru, 8 800 600-00-01.';
+      } else {
+        result.value.error = message || 'Ошибка при публикации вакансии на Avito';
+      }
     }
   } finally {
     return result.value;
