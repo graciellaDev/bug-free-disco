@@ -1,12 +1,14 @@
-export default defineEventHandler(async () => {
-  const data = await $fetch<{ language_level?: Array<{ id: string; name: string }> }>(
-    'https://api.hh.ru/dictionaries',
-    {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'JobLy/1.0',
-      },
-    }
-  )
-  return data?.language_level || []
+/**
+ * Справочник уровней владения языком для формы вакансии (без запроса к Laravel).
+ */
+export default defineEventHandler(() => {
+  return [
+    { id: 'a1', name: 'A1 — Начальный' },
+    { id: 'a2', name: 'A2 — Элементарный' },
+    { id: 'b1', name: 'B1 — Средний' },
+    { id: 'b2', name: 'B2 — Средне-продвинутый' },
+    { id: 'c1', name: 'C1 — Продвинутый' },
+    { id: 'c2', name: 'C2 — В совершенстве' },
+    { id: 'l1', name: 'Родной' },
+  ]
 })

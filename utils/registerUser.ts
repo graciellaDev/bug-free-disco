@@ -1,11 +1,12 @@
 import { getServerToken } from './getServerToken';
 
 export const registerUser = async (userData: any) => {
-    const token = await getServerToken();
-    if (!token) {
-        console.error('Token not found');
+    const result = await getServerToken();
+    if (!result.token) {
+        console.error('Token not found', result.error);
         return null;
     }
+    const token = result.token;
 
     const config = useRuntimeConfig();
 

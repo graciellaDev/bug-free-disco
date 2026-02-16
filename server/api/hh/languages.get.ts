@@ -1,9 +1,14 @@
-export default defineEventHandler(async () => {
-  const data = await $fetch<any[]>('https://api.hh.ru/languages', {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'JobLy/1.0',
-    },
-  })
-  return data || []
+/**
+ * Справочник языков для формы вакансии (без запроса к Laravel).
+ */
+export default defineEventHandler(() => {
+  return [
+    { id: 'rus', name: 'Русский' },
+    { id: 'eng', name: 'Английский' },
+    { id: 'deu', name: 'Немецкий' },
+    { id: 'fra', name: 'Французский' },
+    { id: 'ita', name: 'Итальянский' },
+    { id: 'spa', name: 'Испанский' },
+    { id: 'chi', name: 'Китайский' },
+  ]
 })

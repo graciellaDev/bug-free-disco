@@ -29,11 +29,21 @@
       <div
         class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
         v-if="isDropDownVisible">
-        <div
-          class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer first:rounded-t-ten last:rounded-b-ten"
-          v-for="option in props.options" :key="getOptionKey(option)" @click="toggleOptionSelect(option)">
-          {{ getOptionLabel(option) }}
-        </div>
+        <template v-for="(option, idx) in props.options" :key="option?.type === 'header' ? 'header-' + option.name + idx : getOptionKey(option)">
+          <div
+            v-if="option?.type === 'header'"
+            class="option text-xs font-medium text-slate-custom py-8px px-15px bg-athens-gray cursor-default"
+          >
+            {{ option.name }}
+          </div>
+          <div
+            v-else
+            class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer"
+            @click="toggleOptionSelect(option)"
+          >
+            {{ getOptionLabel(option) }}
+          </div>
+        </template>
       </div>
     </transition>
   </div>
@@ -46,7 +56,7 @@ const props = defineProps({
   options: {
     type: Array,
     required: true,
-    validator: (options) => options.every(opt => typeof opt === 'string' || ('name' in opt && 'value' in opt))
+    validator: (options) => options.every(opt => typeof opt === 'string' || opt?.type === 'header' || ('name' in opt && ('value' in opt || 'id' in opt)))
   },
   modelValue: {
     type: [String, Number, Object, null],
@@ -74,7 +84,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue', 'select'])
+const emit = defineEmits(['update:modelValue', 'select', 'open'])
 
 const dropDown = ref(null)
 
@@ -146,12 +156,14 @@ const toggleDropDown = () => {
     openDelayTimer.value = setTimeout(() => {
       isDropDownVisible.value = true
       openDelayTimer.value = null
+      emit('open')
     }, 120)
   }
 }
 
-// Выбор значения
+// Выбор значения (заголовки не выбираются)
 const toggleOptionSelect = (option) => {
+  if (option?.type === 'header') return
   selectedOption.value = option
   emit('update:modelValue', getOptionValue(option))
   emit('select', option)

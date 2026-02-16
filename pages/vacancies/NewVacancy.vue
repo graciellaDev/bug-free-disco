@@ -2,6 +2,8 @@
   <div>
     <status-vacancy
       @update:currentTab="switchTab"
+      @save-and-continue="onSaveAndContinue"
+      :active-tab="currentTab"
       :name="vacancyName"
       v-model="headerStatus"
     />
@@ -12,6 +14,7 @@
           :id="vacancyId"
           :application="application"
           :type="typeSave"
+          @go-to-publish="switchTab('publish')"
         />
       </template>
       <template #fallback>
@@ -71,6 +74,8 @@
 
   const currentTab = ref<keyof typeof tabs>('info');
   const showLoader = ref(false);
+  const saveAndContinueHandler = ref<((opt?: { goToPublish?: boolean }) => Promise<void>) | null>(null);
+  provide('saveAndContinueHandler', saveAndContinueHandler);
   let loaderTimeout: NodeJS.Timeout | null = null;
 
   // Динамическая загрузка компонента
@@ -80,6 +85,12 @@
 
   function switchTab(tabName: keyof typeof tabs) {
     currentTab.value = tabName;
+  }
+
+  function onSaveAndContinue() {
+    if (currentTab.value === 'info' && saveAndContinueHandler.value) {
+      saveAndContinueHandler.value({ goToPublish: true });
+    }
   }
 
   // Обработчики событий Suspense

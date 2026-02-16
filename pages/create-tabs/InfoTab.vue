@@ -36,7 +36,7 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed, watch, onBeforeMount, nextTick, inject } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount, nextTick, inject } from 'vue'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
@@ -80,6 +80,8 @@ const props = defineProps({
     default: 'create',
   }
 })
+
+const emit = defineEmits(['goToPublish'])
 
 
 // Тип сотрудника: постоянный или временный — определяет опции «Тип занятости»
@@ -137,31 +139,50 @@ onBeforeMount(async () => {
     console.warn('executorsList:', e?.message || e)
     executors.value = []
   }
+  // Специализации из локальной БД (бэкенд GET /api/specializations)
   try {
-    const { roles, errorRoles } = await getRolesHh()
-    if (!errorRoles && roles && roles.categories) {
-      hhRolesData.value = roles
-      hhIndustries.value = roles.categories
+    const config = useRuntimeConfig()
+    const baseURL = String(config.public.apiBase || '/api')
+    const res = await $fetch('/specializations', { baseURL })
+    const categories = res?.data?.categories
+    if (categories && Array.isArray(categories) && categories.length > 0) {
+      hhRolesData.value = { categories }
+      hhIndustries.value = categories
     }
   } catch (e) {
-    console.warn('getRolesHh:', e?.message || e)
+    console.warn('getSpecializations (DB):', e?.message || e)
+  }
+  // Запасной вариант: публичный справочник hh.ru (если в БД ещё пусто)
+  if (!hhIndustries.value || hhIndustries.value.length === 0) {
+    try {
+      const config = useRuntimeConfig()
+      const baseURL = String(config.public.apiBase || '/api')
+      const fallback = await $fetch('/hh/professional-roles', { baseURL })
+      const categories = fallback?.data?.categories
+      if (categories && Array.isArray(categories) && categories.length > 0) {
+        hhRolesData.value = { categories }
+        hhIndustries.value = categories
+      }
+    } catch (e) {
+      console.warn('getRoles fallback (professional-roles):', e?.message || e)
+    }
   }
   try {
     const res = await getLanguages()
     const langs = res?.data
     languagesOptions.value = Array.isArray(langs) && langs.length > 0
-      ? langs.map((l) => ({ id: l.id, value: l.id, name: l.name }))
+      ? langs.map((l) => ({ id: l.id, value: l.id, name: l.name, is_popular: !!l.is_popular }))
       : [
-          { id: 'rus', value: 'rus', name: 'Русский' },
-          { id: 'eng', value: 'eng', name: 'Английский' },
-          { id: 'deu', value: 'deu', name: 'Немецкий' },
-          { id: 'fra', value: 'fra', name: 'Французский' },
+          { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
+          { id: 'deu', value: 'deu', name: 'Немецкий', is_popular: true },
+          { id: 'fra', value: 'fra', name: 'Французский', is_popular: true },
+          { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
         ]
   } catch (e) {
     console.warn('getLanguages:', e?.message || e)
     languagesOptions.value = [
-      { id: 'rus', value: 'rus', name: 'Русский' },
-      { id: 'eng', value: 'eng', name: 'Английский' },
+      { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
+      { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
     ]
   }
   try {
@@ -230,7 +251,21 @@ const salaryPaymentFrequencyOptions = ['Ежедневно', 'Раз в неде
 // Языки и уровни владения — загружаются из HH API
 const languagesOptions = ref([])
 const languageLevelOptions = ref([])
-const languageDropdownOptions = computed(() => Array.isArray(languagesOptions.value) ? languagesOptions.value : [])
+const languageDropdownOptions = computed(() => {
+  const list = Array.isArray(languagesOptions.value) ? languagesOptions.value : []
+  const popular = list.filter((o) => o.is_popular === true)
+  const other = list.filter((o) => !o.is_popular)
+  const result = []
+  if (popular.length) {
+    result.push({ type: 'header', name: 'Популярные' })
+    result.push(...popular.map((o) => ({ id: o.id, value: o.value ?? o.id, name: o.name })))
+  }
+  if (other.length) {
+    result.push({ type: 'header', name: 'Другие' })
+    result.push(...other.map((o) => ({ id: o.id, value: o.value ?? o.id, name: o.name })))
+  }
+  return result.length ? result : list
+})
 const languageLevelDropdownOptions = computed(() => Array.isArray(languageLevelOptions.value) ? languageLevelOptions.value : [])
 
 const headerVacancyStatus = inject('headerVacancyStatus', null)
@@ -268,12 +303,26 @@ if (props.id) {
   if (currectVacancy) {
     const placeVal = currectVacancy.place
     const placeId = placeVal && typeof placeVal === 'object' ? placeVal.id : placeVal
-    const placeStr = placeId ? String(placeId) : '1'
-    selectedCard.value = placeStr
-    newVacancy.value.place = Array.isArray(placeVal) ? placeVal.map((p) => String(p?.id ?? p)) : [placeStr]
+    // Формат работы: массив id (как oformlenie)
+    const placeArr = Array.isArray(placeVal)
+      ? placeVal.map((p) => String(p?.id ?? p))
+      : (placeId ? [String(placeId)] : ['1'])
+    newVacancy.value.place = placeArr.length ? placeArr : ['1']
+    selectedCard.value = placeArr[0] ?? '1'
     for (let key in currectVacancy) {
-      if (key === 'place' || key === 'schedule' || key === 'work_hours_per_day' || key === 'workHoursPerDay' || key === 'has_evening_night_shifts' || key === 'hasEveningNightShifts' || key === 'publication_city' || key === 'publicationCity' || key === 'work_address' || key === 'workAddress' || key === 'location' || key === 'languages') continue
+      if (key === 'place' || key === 'schedule' || key === 'work_hours_per_day' || key === 'workHoursPerDay' || key === 'has_evening_night_shifts' || key === 'hasEveningNightShifts' || key === 'publication_city' || key === 'publicationCity' || key === 'work_address' || key === 'workAddress' || key === 'location' || key === 'languages' || key === 'drivers') continue
       newVacancy.value[key] = currectVacancy[key]
+    }
+    if (currectVacancy.executor_name != null) newVacancy.value.executor_name = currectVacancy.executor_name
+    if (currectVacancy.executor_phone != null) newVacancy.value.executor_phone = currectVacancy.executor_phone
+    if (currectVacancy.executor_email != null) newVacancy.value.executor_email = currectVacancy.executor_email
+    if (currectVacancy.comment != null) newVacancy.value.comment = currectVacancy.comment
+    newVacancy.value.department = currectVacancy.department ?? ''
+    if (currectVacancy.drivers && Array.isArray(currectVacancy.drivers)) {
+      newVacancy.value.drivers = currectVacancy.drivers.map((d) => ({
+        id: d.id,
+        value: d.value ?? d.name ?? String(d.id)
+      }))
     }
     if (currectVacancy.languages && Array.isArray(currectVacancy.languages) && currectVacancy.languages.length > 0) {
       newVacancy.value.languages = currectVacancy.languages.map((item) => {
@@ -314,10 +363,10 @@ if (props.id) {
     if (currectVacancy.publication_city != null || currectVacancy.publicationCity != null || currectVacancy.location != null) {
       newVacancy.value.location = currectVacancy.publication_city ?? currectVacancy.publicationCity ?? currectVacancy.location ?? ''
     }
-    // Адрес работы
-    if (currectVacancy.work_address != null || currectVacancy.workAddress != null) {
-      newVacancy.value.workAddress = currectVacancy.work_address ?? currectVacancy.workAddress ?? ''
-    }
+    // Адрес работы и галочка «не показывать адрес»
+    const workAddr = currectVacancy.work_address ?? currectVacancy.workAddress ?? ''
+    newVacancy.value.workAddress = workAddr
+    newVacancy.value.hideWorkAddress = workAddr === '' || workAddr === null
     // Чекбокс вечерних/ночных смен
     if (currectVacancy.has_evening_night_shifts != null || currectVacancy.hasEveningNightShifts != null) {
       newVacancy.value.hasEveningNightShifts = !!currectVacancy.has_evening_night_shifts || !!currectVacancy.hasEveningNightShifts
@@ -397,8 +446,8 @@ if (props.application) {
 }
 const tags = ref([])
 const salary = ref({
-  from: newVacancy.value.salary_from ? newVacancy.value.salary_from : null,
-  to: newVacancy.value.salary_to ? newVacancy.value.salary_to : null
+  from: newVacancy.value.salary_from != null && newVacancy.value.salary_from !== '' ? Number(newVacancy.value.salary_from) : null,
+  to: newVacancy.value.salary_to != null && newVacancy.value.salary_to !== '' ? Number(newVacancy.value.salary_to) : null
 })
 const errors = ref({})
 const isOpenDateTo = ref(false)
@@ -702,6 +751,74 @@ const onWorkAddressFocus = () => {
   workAddressFieldEmptyError.value = false
 }
 
+const clearWorkAddressError = () => {
+  workAddressFieldEmptyError.value = false
+}
+
+function setOformlenie(val) {
+  if (newVacancy.value) newVacancy.value.oformlenie = val || []
+}
+
+function setPlace(val) {
+  if (newVacancy.value) newVacancy.value.place = (val && val.length) ? val : ['1']
+  selectedCard.value = newVacancy.value?.place?.[0] ?? '1'
+}
+
+/** Заполнить форму тестовыми данными (только для режима создания, чтобы не вводить всё вручную при проверке). */
+function fillTestData() {
+  const d = newVacancy.value
+  d.name = 'Менеджер по продажам (тест)'
+  d.code = 'TEST-001'
+  d.description = defaultDescriptionTemplate.replace(/<li><\/li>/g, '<li>Опыт работы от 1 года.</li><li>Навыки ведения переговоров.</li><li>Грамотная речь.</li>')
+  d.location = 'Москва'
+  d.workAddress = 'ул. Тверская, д. 1'
+  d.hideWorkAddress = false
+  d.executor_name = 'Иван Иванов'
+  d.executor_phone = '+7 (999) 123-45-67'
+  d.executor_email = 'test@example.com'
+  d.place = ['1']
+  selectedCard.value = '1'
+  d.oformlenie = ['labor']
+  d.schedule = ['5/2']
+  d.workHoursPerDay = ['8']
+  d.hasEveningNightShifts = false
+  d.employment = employmentOptions.value?.[0] || { id: 'FULL', name: 'Полная', siteName: 'Полная' }
+  d.experience = 'between1And3'
+  d.education = ArrayEducation?.length ? (ArrayEducation[1]?.value ?? 1) : 1
+  d.currency = 'RUB (рубль)'
+  d.salary_frequency = 'За месяц'
+  d.salary_payment_frequency = 'Раз в месяц'
+  d.salary_from = 50000
+  d.salary_to = 90000
+  d.status = 'В работе'
+  d.dateEnd = '31.12.2025'
+  d.comment = 'Тестовый комментарий к вакансии. Ссылка на вакансию: https://example.com/vacancy'
+  d.department = 'Отдел продаж'
+  d.peoples = 1
+  d.phrases = (tags.value?.length >= 2 ? tags.value.slice(0, 2) : [{ id: '1', name: 'Коммуникабельность' }, { id: '2', name: 'Работа в команде' }])
+  d.conditions = []
+  d.drivers = (ArrayCarId?.length >= 2 ? [{ id: ArrayCarId[1].id, value: ArrayCarId[1].value }] : [{ id: 2, value: 'B' }])
+  d.additions = []
+  d.languages = [{ language: 'Русский', languageLevel: 'Родной' }]
+  if (hhIndustries.value?.length) {
+    const cat = hhIndustries.value[0]
+    d.industry = { id: cat.id, name: cat.name, roles: cat.roles }
+    const role = cat.roles?.[0]
+    d.specializations = role ? { id: role.id, name: role.name } : { id: '1', name: 'Менеджер по продажам' }
+  } else {
+    d.industry = { id: '1', name: 'Продажи', roles: [] }
+    d.specializations = { id: '1', name: 'Менеджер по продажам' }
+  }
+  salary.value.from = 50000
+  salary.value.to = 90000
+  nameFieldEmptyError.value = false
+  workAddressFieldEmptyError.value = false
+  executorNameFieldEmptyError.value = false
+  specializationsFieldEmptyError.value = false
+  publicationCityFieldEmptyError.value = false
+  if (errors.value) Object.keys(errors.value).forEach((k) => delete errors.value[k])
+}
+
 const onWorkAddressBlur = () => {
   nextTick(() => {
     const v = newVacancy.value.workAddress
@@ -761,12 +878,16 @@ function handleScheduleSelect(opt) {
   const arr = Array.isArray(newVacancy.value.schedule) ? [...newVacancy.value.schedule] : [String(newVacancy.value.schedule || '5/2')]
   const idx = arr.findIndex((v) => (typeof v === 'object' ? (v?.value ?? v?.name) : v) === value)
   if (idx >= 0) {
-    if (arr.length <= 1) return
     arr.splice(idx, 1)
   } else {
     arr.push(value)
   }
   newVacancy.value.schedule = arr
+  if (arr.length === 0) {
+    errors.value.schedule = 'Выберите хотя бы одно значение'
+  } else {
+    if (errors.value.schedule) delete errors.value.schedule
+  }
 }
 
 function isWorkHoursSelected(opt) {
@@ -780,12 +901,16 @@ function handleWorkHoursSelect(opt) {
   const arr = Array.isArray(newVacancy.value.workHoursPerDay) ? [...newVacancy.value.workHoursPerDay] : [String(newVacancy.value.workHoursPerDay || '8')]
   const idx = arr.findIndex((v) => (typeof v === 'object' ? (v?.value ?? v?.name) : v) === value)
   if (idx >= 0) {
-    if (arr.length <= 1) return
     arr.splice(idx, 1)
   } else {
     arr.push(value)
   }
   newVacancy.value.workHoursPerDay = arr
+  if (arr.length === 0) {
+    errors.value.workHoursPerDay = 'Выберите хотя бы одно значение'
+  } else {
+    if (errors.value.workHoursPerDay) delete errors.value.workHoursPerDay
+  }
 }
 
 function getWorkHoursText(val) {
@@ -873,7 +998,7 @@ function isPlaceSelected(card) {
 
 function handlePlaceSelect(id) {
   const value = String(id)
-  const places = Array.isArray(newVacancy.value.place) ? [...newVacancy.value.place] : [String(newVacancy.value.place || '1')]
+  const places = Array.isArray(newVacancy.value.place) ? [...newVacancy.value.place] : []
   const idx = places.indexOf(value)
   if (idx >= 0) {
     places.splice(idx, 1)
@@ -881,8 +1006,8 @@ function handlePlaceSelect(id) {
     places.push(value)
   }
   newVacancy.value.place = places.length ? places : ['1']
-  selectedCard.value = places[0]
-  workSpace.value = places[0]
+  selectedCard.value = newVacancy.value.place[0]
+  workSpace.value = newVacancy.value.place[0]
 }
 
 const vacancyData = computed(() => {
@@ -928,20 +1053,17 @@ const vacancyData = computed(() => {
     currency: newVacancy.value.currency || 'RUB (рубль)',
     salary_frequency: newVacancy.value.salary_frequency || 'За месяц',
     salary_payment_frequency: newVacancy.value.salary_payment_frequency || 'Раз в месяц',
-    place: (() => {
-      const p = newVacancy.value.place
-      if (Array.isArray(p)) return p[0] || '1'
-      return p || '1'
-    })(),
+    place: Array.isArray(newVacancy.value.place) ? [...newVacancy.value.place] : (newVacancy.value.place ? [newVacancy.value.place] : ['1']),
     oformlenie: newVacancy.value.oformlenie || [],
     publication_city: newVacancy.value.location?.trim() || null,
     work_address: newVacancy.value.hideWorkAddress ? '' : (newVacancy.value.workAddress || ''),
     location: newVacancy.value.location || '',
     customer_id: 10,
-    customer_phone: hideContactFields.value ? null : (newVacancy.value.executor_phone || null),
-    customer_email: hideContactFields.value ? '' : (newVacancy.value.executor_email || ''),
+    executor_name: newVacancy.value.executor_name || null,
+    executor_phone: hideContactFields.value ? null : (newVacancy.value.executor_phone || null),
+    executor_email: hideContactFields.value ? '' : (newVacancy.value.executor_email || ''),
     status: getStatusValue(headerVacancyStatus?.value ?? newVacancy.value.status),
-    // department: newVacancy.value.department || '',
+    department: newVacancy.value.department || '',
     dateEnd: newVacancy.value.dateEnd || null,
     comment: newVacancy.value.comment || '',
     peoples: newVacancy.value.peoples || null,
@@ -982,15 +1104,16 @@ function formatOriginalData(original) {
     currency: original.currency || 'RUB (рубль)',
     salary_frequency: original.salary_frequency || 'За месяц',
     salary_payment_frequency: original.salary_payment_frequency || 'Раз в месяц',
-    place: original.place || '1',
+    place: Array.isArray(original.place) ? original.place.map((p) => String(p)) : (original.place != null ? [String(original.place)] : ['1']),
     oformlenie: original.oformlenie || [],
     publication_city: original.publication_city ?? original.publicationCity ?? original.location ?? null,
     work_address: original.work_address ?? original.workAddress ?? '',
     location: original.location || '',
-    customer_phone: original.executor_phone || null,
-    customer_email: original.executor_email || '',
+    executor_name: original.executor_name || null,
+    executor_phone: original.executor_phone || null,
+    executor_email: original.executor_email || '',
     status: getStatusValue(original.status),
-    // department: original.department || '',
+    department: original.department || '',
     dateEnd: convertDateFromApi(original.dateEnd) || null,
     comment: original.comment || '',
     peoples: original.peoples || null,
@@ -1026,6 +1149,22 @@ const validateVacancy = () => {
     errorsValid = false
   } else {
     publicationCityFieldEmptyError.value = false
+  }
+
+  const scheduleArr = Array.isArray(newVacancy.value.schedule) ? newVacancy.value.schedule : []
+  if (scheduleArr.length === 0) {
+    errors.value.schedule = 'Выберите хотя бы одно значение'
+    errorsValid = false
+  } else {
+    if (errors.value.schedule) delete errors.value.schedule
+  }
+
+  const workHoursArr = Array.isArray(newVacancy.value.workHoursPerDay) ? newVacancy.value.workHoursPerDay : []
+  if (workHoursArr.length === 0) {
+    errors.value.workHoursPerDay = 'Выберите хотя бы одно значение'
+    errorsValid = false
+  } else {
+    if (errors.value.workHoursPerDay) delete errors.value.workHoursPerDay
   }
 
   if (!newVacancy.value.hideWorkAddress) {
@@ -1120,7 +1259,7 @@ function getChangedFields(currentData, originalData) {
     'employment', 'schedule', 'work_hours_per_day', 'has_evening_night_shifts', 'experience', 'education',
     'phrases', 'languages', 'conditions', 'drivers', 'additions',
     'salary_from', 'salary_to', 'currency', 'salary_frequency', 'salary_payment_frequency', 'place', 'oformlenie', 'publication_city', 'work_address', 'location',
-    'customer_phone', 'customer_email', 'status', /* 'department', */ 'dateEnd', 'comment', 'peoples'
+    'executor_name', 'executor_phone', 'executor_email', 'status', 'department', 'dateEnd', 'comment', 'peoples'
   ]
   
   fieldsToCompare.forEach(field => {
@@ -1152,7 +1291,7 @@ function cleanDataForSending(data) {
   return cleaned
 }
 
-async function saveVacancy() {
+async function saveVacancy(opt) {
   if (validateVacancy()) {
     let response, error;
     
@@ -1163,6 +1302,15 @@ async function saveVacancy() {
     if (props.type === 'edit') {
       // При редактировании отправляем только измененные поля
       const changedFields = getChangedFields(fullData, originalVacancyData.value);
+      // Формат работы (place): массив, как oformlenie — все выбранные значения
+      const placeArr = Array.isArray(newVacancy.value.place) ? newVacancy.value.place : [newVacancy.value.place || '1'];
+      if (placeArr.length) {
+        changedFields.place = placeArr.map((p) => String(p));
+      }
+      // Языки всегда отправляем при редактировании, чтобы не терять
+      if (fullData.languages && Array.isArray(fullData.languages)) {
+        changedFields.languages = fullData.languages;
+      }
       // Очищаем от null значений
       const cleanedData = cleanDataForSending(changedFields);
       const result = await updateVacancy(props.id, cleanedData);
@@ -1189,10 +1337,24 @@ async function saveVacancy() {
           break
       }
     } else {
-      await navigateTo('/vacancies')
+      emit('goToPublish')
     }
   }
 }
+
+const saveAndContinueHandler = inject('saveAndContinueHandler', null)
+onMounted(() => {
+  if (saveAndContinueHandler) {
+    saveAndContinueHandler.value = saveVacancy
+  }
+})
+onBeforeUnmount(() => {
+  if (saveAndContinueHandler) {
+    saveAndContinueHandler.value = null
+  }
+})
+
+defineExpose({ saveVacancy })
 
 const updateEvent = (data, property) => {
   newVacancy.value[property] = data
@@ -1217,10 +1379,6 @@ const addLanguageRow = () => {
 const languagesAccordionRef = ref(null)
 const removeLanguageRow = (index) => {
   const arr = [...(newVacancy.value.languages || [])]
-  if (arr.length === 1 && index === 0) {
-    languagesAccordionRef.value?.toggle?.()
-    return
-  }
   arr.splice(index, 1)
   newVacancy.value.languages = arr
 }
@@ -1235,6 +1393,19 @@ const updateLanguageLevelAt = (index, value) => {
   if (!arr[index]) return
   arr[index] = { ...arr[index], languageLevel: value ?? null }
   newVacancy.value.languages = arr
+}
+
+function onFirstLanguageDropdownOpen() {
+  const arr = newVacancy.value.languages || []
+  const first = arr[0]
+  if (!first || (!first.language && !first.languageLevel)) {
+    const eng = languageDropdownOptions.value.find((o) => o.name === 'Английский' || o.id === 'eng')
+    const a1 = languageLevelDropdownOptions.value.find((o) => o.id === 'a1' || (o.name && String(o.name).startsWith('A1')))
+    const nameEng = eng?.name ?? 'Английский'
+    const nameA1 = a1?.name ?? 'A1 — Начальный'
+    updateLanguageAt(0, nameEng)
+    updateLanguageLevelAt(0, nameA1)
+  }
 }
 
 const updateSalary = (type, value) => {
@@ -1276,7 +1447,17 @@ const updateExecutor = (value, id) => {
   <div class="container pb-10">
     <div class="flex gap-x-[24px] block">
       <div class="max-w-[875px] flex-grow p-25px bg-white rounded-fifteen">
-        <p class="text-space text-xl font-semibold mb-8">Основная информация</p>
+        <div class="flex items-center justify-between gap-4 mb-8">
+          <p class="text-space text-xl font-semibold">Основная информация</p>
+          <button
+            v-if="!id"
+            type="button"
+            class="text-sm text-dodger hover:underline shrink-0"
+            @click="fillTestData"
+          >
+            Заполнить тестовыми данными
+          </button>
+        </div>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="flex-[3] min-w-0">
             <div class="flex items-center gap-1 mb-4">
@@ -1492,7 +1673,7 @@ const updateExecutor = (value, id) => {
               :model-value="newVacancy.place"
               :options="placeOptions"
               default-value="Выберите формат работы"
-              @update:model-value="(val) => { newVacancy.value.place = (val?.length ? val : ['1']); selectedCard.value = val?.[0] }"
+              @update:model-value="setPlace"
             />
           </div>
           <div class="flex-1 min-w-0">
@@ -1503,7 +1684,7 @@ const updateExecutor = (value, id) => {
               :model-value="newVacancy.oformlenie"
               :options="oformlenieOptions"
               default-value="Выберите оформление"
-              @update:model-value="(val) => { newVacancy.value.oformlenie = val || [] }"
+              @update:model-value="setOformlenie"
             />
           </div>
         </div>
@@ -1536,8 +1717,8 @@ const updateExecutor = (value, id) => {
         <p class="text-space text-xl font-semibold mb-[31px]">
           График и часы работы
         </p>
-        <div class="flex gap-25px mb-6">
-          <div class="flex-1 min-w-0 flex flex-wrap gap-2">
+        <div class="flex gap-25px mb-6 items-start">
+          <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start">
             <div class="w-full flex items-center gap-1 mb-3.5">
               <p class="text-sm font-medium text-space">
                 График работы
@@ -1559,8 +1740,9 @@ const updateExecutor = (value, id) => {
             >
               {{ opt.name }}
             </button>
+            <p v-if="errors.schedule" class="w-full text-xs text-red-500 mt-1">{{ errors.schedule }}</p>
           </div>
-          <div class="flex-1 min-w-0 flex flex-wrap gap-2">
+          <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start">
             <p class="w-full text-sm font-medium text-space mb-3.5">
               Рабочие часы в день
             </p>
@@ -1576,6 +1758,7 @@ const updateExecutor = (value, id) => {
             >
               {{ opt.name }}
             </button>
+            <p v-if="errors.workHoursPerDay" class="w-full text-xs text-red-500 mt-1">{{ errors.workHoursPerDay }}</p>
           </div>
         </div>
         <MyCheckbox
@@ -1627,8 +1810,8 @@ const updateExecutor = (value, id) => {
               :hide-address="newVacancy.hideWorkAddress"
               :error="workAddressFieldEmptyError"
               placeholder="Введите адрес, метро или название компании"
-              @update:model-value="($event) => { newVacancy.workAddress = $event || ''; workAddressFieldEmptyError.value = false }"
-              @update:hide-address="(val) => { newVacancy.hideWorkAddress = val; workAddressFieldEmptyError.value = false }"
+              @update:model-value="($event) => { newVacancy.workAddress = $event || ''; clearWorkAddressError() }"
+              @update:hide-address="(val) => { newVacancy.hideWorkAddress = val; clearWorkAddressError() }"
               @focus="onWorkAddressFocus"
               @blur="onWorkAddressBlur"
             />
@@ -1792,6 +1975,7 @@ const updateExecutor = (value, id) => {
                   :model-value="item.language"
                   placeholder="Выберите язык"
                   @update:model-value="(v) => updateLanguageAt(index, v)"
+                  @open="() => { if (index === 0) onFirstLanguageDropdownOpen() }"
                 />
                 <MyDropdown
                   class="min-w-[200px] flex-1 w-full"
@@ -1803,7 +1987,7 @@ const updateExecutor = (value, id) => {
                 <button
                   type="button"
                   class="p-1 text-bali hover:text-space transition-colors shrink-0"
-                  :aria-label="(newVacancy.languages || []).length === 1 ? 'Скрыть языки' : 'Удалить'"
+                  aria-label="Удалить"
                   @click="removeLanguageRow(index)"
                 >
                   <svg-icon name="dropdown-cross" width="20" height="20" />
@@ -1924,7 +2108,7 @@ const updateExecutor = (value, id) => {
         </p>
       </div> -->
     </div>
-    <UiButton @click="saveVacancy" variant="action" size="semiaction" class="font-semibold">
+    <UiButton @click="saveVacancy({ goToPublish: true })" variant="action" size="semiaction" class="font-semibold">
       Сохранить и продолжить
     </UiButton>
     <div v-if="errors.response" class="text-red-500 text-xs mt-1">

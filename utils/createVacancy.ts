@@ -4,14 +4,6 @@ export const createVacancy = async (vacancyData: any) => {
     const authUser = useCookie('auth_user').value;
     const bodyData = new FormData();
     
-    // Логируем platform_id и base_id для отладки
-    if (vacancyData.platform_id !== undefined) {
-        console.log('createVacancy: platform_id =', vacancyData.platform_id, typeof vacancyData.platform_id);
-    }
-    if (vacancyData.base_id !== undefined) {
-        console.log('createVacancy: base_id =', vacancyData.base_id, typeof vacancyData.base_id);
-    }
-    
     Object.entries(vacancyData).forEach(([key, value]) => {
         if (key == 'application') {
             if (value) bodyData.append(key, value as any);
@@ -29,13 +21,6 @@ export const createVacancy = async (vacancyData: any) => {
             }
         }
     });
-    
-    // Проверяем, что platform_id добавлен в FormData
-    if (bodyData.has('platform_id')) {
-        console.log('createVacancy: platform_id успешно добавлен в FormData');
-    } else {
-        console.warn('createVacancy: platform_id НЕ найден в FormData!');
-    }
 
     try {
         const response: {data: any, message: string } = await $fetch(`${config.public.apiBase}/vacancies`, {

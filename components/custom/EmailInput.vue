@@ -1,6 +1,6 @@
 <template>
   <div class="w-full">
-    <input v-model="email" class="bg-athens-gray border border-athens rounded-ten min-h-10 w-full pl-15px"
+    <input v-model="email" class="bg-athens-gray border border-athens rounded-ten min-h-10 w-full pl-15px text-sm font-normal text-[#2F353D]"
       :class="{ focused: isFocused, 'border-red-500': error }" placeholder="Email" @focus="isFocused = true"
       @blur="validateEmail" />
     <span v-if="error" class="text-red-custom text-xs">{{ error }}</span>
