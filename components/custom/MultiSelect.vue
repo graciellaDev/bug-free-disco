@@ -1,6 +1,7 @@
 <template>
   <div class="dropdown-wrapper cursor-pointer relative" ref="dropDown">
-    <div class="dropdown-selected-option relative border border-athens rounded-ten py-9px pr-30px pl-15px bg-athens-gray"
+    <div
+      class="dropdown-selected-option relative border border-athens rounded-ten py-9px pr-30px pl-15px bg-athens-gray"
       @click="toggleDropDown">
       <div>
         <div :class="{
@@ -108,7 +109,9 @@ const getEmitValue = (options) => {
 
 // Инициализация selectedOptions
 const initializeSelectedOptions = () => {
-  let initial = props.initialValue.length > 0 ? props.initialValue : props.modelValue
+  const initialValue = Array.isArray(props.initialValue) ? props.initialValue : []
+  const modelVal = Array.isArray(props.modelValue) ? props.modelValue : []
+  const initial = initialValue.length > 0 ? initialValue : modelVal
   if (initial.length > 0) {
     const extractValue = (item) => {
       if (props.withId && typeof item === 'object' && item !== null && 'id' in item) {
@@ -116,7 +119,7 @@ const initializeSelectedOptions = () => {
       }
       return getOptionValue(item)
     }
-    
+
     selectedOptions.value = initial
       .map(val => {
         const valToFind = extractValue(val)
@@ -157,7 +160,7 @@ const toggleOptionSelect = (option) => {
   } else {
     selectedOptions.value.splice(index, 1)
   }
-  
+
   emit('update:modelValue', getEmitValue(selectedOptions.value))
 }
 
@@ -195,7 +198,7 @@ watch(() => props.modelValue, (newValue) => {
     selectedOptions.value = []
     return
   }
-  
+
   // Извлекаем значения из modelValue (может быть массив значений или массив объектов {id: value})
   const extractValue = (item) => {
     if (props.withId && typeof item === 'object' && item !== null && 'id' in item) {
@@ -203,10 +206,10 @@ watch(() => props.modelValue, (newValue) => {
     }
     return item
   }
-  
+
   const newValues = newValue.map(extractValue)
   const currentValues = selectedOptions.value.map(getOptionValue)
-  
+
   if (JSON.stringify(newValues) !== JSON.stringify(currentValues)) {
     selectedOptions.value = newValues
       .map(val => {
@@ -223,18 +226,19 @@ watch(() => props.modelValue, (newValue) => {
 
 // Обработка initialValue
 watch(() => props.initialValue, (newInitial) => {
+  const safeInitial = Array.isArray(newInitial) ? newInitial : []
   const extractValue = (item) => {
     if (props.withId && typeof item === 'object' && item !== null && 'id' in item) {
       return item.id
     }
     return getOptionValue(item)
   }
-  
-  const newValues = newInitial.map(extractValue)
+
+  const newValues = safeInitial.map(extractValue)
   const currentValues = selectedOptions.value.map(getOptionValue)
-  
-  if (newInitial.length > 0 && JSON.stringify(newValues) !== JSON.stringify(currentValues)) {
-    selectedOptions.value = newInitial
+
+  if (safeInitial.length > 0 && JSON.stringify(newValues) !== JSON.stringify(currentValues)) {
+    selectedOptions.value = safeInitial
       .map(val => {
         const valToFind = extractValue(val)
         const option = props.options.find(opt => getOptionValue(opt) === valToFind)

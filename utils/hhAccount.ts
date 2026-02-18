@@ -1003,14 +1003,17 @@ export const getVacancyCountViews = async (id: string) => {
   }
 
 /**
- * Получение списка языков (через серверный прокси для избежания CORS)
+ * Получение списка языков с внешнего API (API_BASE из .env)
  * @returns Массив языков с id, name, uid
  */
 export const getLanguages = async () => {
+  const config = useRuntimeConfig();
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<any[]>('/api/hh/languages');
+    const response = await $fetch<any[]>('/hh/languages', {
+      baseURL: config.public.apiBase as string,
+    });
     result.value.data = response || [];
   } catch (err: any) {
     result.value.error = err.response?._data?.message || 'Ошибка при получении списка языков';
@@ -1024,10 +1027,13 @@ export const getLanguages = async () => {
  * @returns Массив уровней с id и name (A1, A2, B1, B2, C1, C2, L1)
  */
 export const getLanguageLevels = async () => {
+  const config = useRuntimeConfig();
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<Array<{ id: string; name: string }>>('/api/hh/language-levels');
+    const response = await $fetch<Array<{ id: string; name: string }>>('/hh/language-levels', {
+      baseURL: config.public.apiBase as string,
+    });
     result.value.data = response || [];
   } catch (err: any) {
     result.value.error = err.response?._data?.message || 'Ошибка при получении уровней владения языком';

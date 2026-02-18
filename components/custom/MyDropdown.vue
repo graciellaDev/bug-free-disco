@@ -27,7 +27,7 @@
     </div>
     <transition name="slide-fade">
       <div
-        class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
+        class="options-wrapper my-dropdown-list absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
         v-if="isDropDownVisible">
         <template v-for="(option, idx) in props.options" :key="option?.type === 'header' ? 'header-' + option.name + idx : getOptionKey(option)">
           <div
@@ -234,6 +234,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', closeDropDown)
 })
 </script>
+
+<style>
+/* Выпадающий список: ограничение высоты и прокрутка (без scoped — элемент внутри transition) */
+.my-dropdown-list {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+</style>
 
 <style scoped>
 .option:not(:last-child) {
