@@ -11,10 +11,11 @@ interface LoginResponse {
 }
 
 export const loginUser = async (email: string, password: string) => {
-  const serverToken = await getServerToken();
-  if (!serverToken) {
-    return { data: null, error: 'Не удалось получить серверный токен' };
+  const result = await getServerToken();
+  if (!result.token) {
+    return { data: null, error: result.error || 'Не удалось получить серверный токен' };
   }
+  const serverToken = result.token;
 
   const config = useRuntimeConfig();
 

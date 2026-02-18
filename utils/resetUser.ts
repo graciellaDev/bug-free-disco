@@ -2,12 +2,12 @@
 import { getServerToken } from "./getServerToken";
 
 export const resetUser = async (email: string) => {
-    const serverToken = await getServerToken();
-
-    if (!serverToken) {
-        console.error('Token server not found');
-        return { data: null, error: { message: 'Token server not found' } };
+    const result = await getServerToken();
+    if (!result.token) {
+        console.error('Token server not found', result.error);
+        return { data: null, error: { message: result.error || 'Token server not found' } };
     }
+    const serverToken = result.token;
 
     const config = useRuntimeConfig();
 

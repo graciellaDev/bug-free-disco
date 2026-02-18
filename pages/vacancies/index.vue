@@ -14,8 +14,6 @@
   import { clientsList } from '@/utils/clientsList';
   import { getDepartments, responsiblesList } from '@/utils/executorsList';
 
-  import vacanciesDraftData from '@/src/data/vacancies-draft.json';
-  import vacanciesArchiveData from '@/src/data/vacancies-archive.json';
   import VacancyCardDropdown from '@/src/data/vacancy-card-dropdown.json';
   import VacancyCardDraftDropdown from '@/src/data/vacancy-card-draft-dropdown.json';
   import VacancyCardArchiveDropdown from '@/src/data/vacancy-card-archive-dropdown.json';
@@ -35,8 +33,8 @@
   const isHoveredSort = ref(false);
   const isActiveSort = ref(false);
   const vacancies = ref([]);
-  const vacanciesDraft = ref(vacanciesDraftData);
-  const vacanciesArchive = ref(vacanciesArchiveData);
+  const vacanciesDraft = ref([]);
+  const vacanciesArchive = ref([]);
   const currentPage = ref(1);
   const currentDraftPage = ref(1);
   const currentArchivePage = ref(1);
@@ -211,13 +209,19 @@
     responsibles.value = await responsiblesList();
     updateContainerHeight();
     loading.value = true;
-    const result = await getVacancies();
-    if (result) {
-      vacancies.value = result;
+    try {
+      const [activeRes, draftRes, archiveRes] = await Promise.all([
+        getVacancies('filters[status]=active'),
+        getVacancies('filters[status]=draft'),
+        getVacancies('filters[status]=archive'),
+      ]);
+      vacancies.value = Array.isArray(activeRes) ? activeRes : [];
+      vacanciesDraft.value = Array.isArray(draftRes) ? draftRes : [];
+      vacanciesArchive.value = Array.isArray(archiveRes) ? archiveRes : [];
+    } catch (e) {
+      console.warn('Ошибка загрузки вакансий:', e);
+    } finally {
       loading.value = false;
-      console.log('Вакансии успешно загружены:', vacancies.value);
-    } else {
-      console.log('Cannot fetch vacancies');
     }
   });
 

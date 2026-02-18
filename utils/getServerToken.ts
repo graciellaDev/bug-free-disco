@@ -4,16 +4,17 @@ interface ServerResponse {
   };
 }
 
-export const getServerToken = async () => {
+export type GetServerTokenResult = { token: string; error?: never } | { token: null; error: string };
+
+export const getServerToken = async (): Promise<GetServerTokenResult> => {
   const config = useRuntimeConfig();
 
-  // Проверяем наличие необходимых переменных окружения
   if (!config.public.apiBase || !config.public.apiEmail || !config.public.apiPassword) {
-    console.warn('Отсутствуют необходимые переменные окружения для получения server token');
-    return null;
+    const msg = 'Не заданы NUXT_PUBLIC_API_EMAIL или NUXT_PUBLIC_API_PASSWORD. Перезапустите контейнер bug-free-disco.';
+    console.warn(msg);
+    return { token: null, error: msg };
   }
 
-  // console.log(config.public.apiBase);
   try {
     const response = await $fetch<ServerResponse>('/login-jwt', {
       method: 'POST',
@@ -25,32 +26,31 @@ export const getServerToken = async () => {
         email: config.public.apiEmail,
         password: config.public.apiPassword,
       },
-      // Таймаут для предотвращения зависания запроса
-      timeout: 10000, // 10 секунд
+      timeout: 10000,
     });
 
-    // console.log('Данные server token:', response.authorization?.token);
-
-    if (response.authorization?.token) {
+    if (response?.authorization?.token) {
       const tokenCookie = useCookie('auth_token');
       tokenCookie.value = response.authorization.token;
-      // console.log('Token server is saved in cookie:', tokenCookie.value);
-      return tokenCookie.value;
-    } else {
-      console.warn('Токен не получен в ответе сервера');
-      return null;
+      return { token: tokenCookie.value };
     }
+    return { token: null, error: 'Токен не получен в ответе сервера' };
   } catch (err: any) {
-    // Обработка различных типов ошибок
+    let message = 'Не удалось получить серверный токен';
     if (err.code === 'ETIMEDOUT' || err.name === 'TimeoutError') {
-      console.error('Таймаут при получении server token: API не отвечает в течение 10 секунд');
+      message = 'Таймаут: API не отвечает. Проверьте, что бэкенд (jobly-back) запущен.';
     } else if (err.code === 'ECONNREFUSED') {
-      console.error('Ошибка подключения: API недоступен');
+      message = 'Ошибка подключения к API. Запустите бэкенд: docker compose up -d';
     } else if (err.response?.status === 401) {
-      console.warn('401: Неверные учетные данные или доступ запрещён');
-    } else {
-      console.error('Ошибка при получении server token:', err.message || err);
+      message = 'Неверные учётные данные для API (NUXT_PUBLIC_API_EMAIL/PASSWORD). Либо создайте пользователя в таблице users: php artisan tinker → User::create(...)';
+    } else if (err.response?.status === 500) {
+      message = 'Ошибка 500 на бэкенде. Проверьте JWT_SECRET в jobly-back/.env.local и логи: docker compose logs jobly-back';
+    } else if (err.response?.status) {
+      message = `Ошибка ${err.response.status}: ${err.response._data?.message || err.message || 'см. консоль браузера'}`;
+    } else if (err.message) {
+      message = err.message;
     }
-    return null;
+    console.error('getServerToken:', message, err.response?._data ?? err);
+    return { token: null, error: message };
   }
 };

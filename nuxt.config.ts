@@ -63,8 +63,10 @@ export default defineNuxtConfig({
   pinia: {
     storesDirs: ['~/stores'],
   },
-  nitro: {
-    // Проксирование /api/* на Laravel — через server/api/[[...path]].ts (catch-all)
-    // devProxy заменён на серверный обработчик для стабильной работы с $fetch
+  routeRules: {
+    // Проксирование /api/* на Laravel
+    '/api/**': {
+      proxy: (process.env.NUXT_PUBLIC_API_BACKEND || 'http://127.0.0.1:8000') + '/api/**',
+    },
   },
 })

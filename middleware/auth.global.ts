@@ -46,10 +46,10 @@ export default defineNuxtRouteMiddleware(
         
         // Если токен просрочен (401), пытаемся обновить его
         if (status === 401) {
-          const newServerToken = await getServerToken();
+          const tokenResult = await getServerToken();
           
           // Если не удалось обновить токен, редиректим на авторизацию
-          if (!newServerToken) {
+          if (!tokenResult.token) {
             if (import.meta.client) {
               return navigateTo('/auth');
             }

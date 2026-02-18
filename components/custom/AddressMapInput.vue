@@ -311,10 +311,32 @@ const onMapClick = async (e) => {
   await updateAddressFromCoords(coords)
 }
 
+/** Ждём появления window.ymaps после загрузки скрипта (API инициализируется асинхронно) */
+const waitForYmaps = (maxMs = 8000) =>
+  new Promise((resolve) => {
+    if (typeof window !== 'undefined' && window.ymaps) {
+      resolve(window.ymaps)
+      return
+    }
+    const start = Date.now()
+    const t = setInterval(() => {
+      if (typeof window !== 'undefined' && window.ymaps) {
+        clearInterval(t)
+        resolve(window.ymaps)
+        return
+      }
+      if (Date.now() - start >= maxMs) {
+        clearInterval(t)
+        resolve(null)
+      }
+    }, 80)
+  })
+
 const initMap = () => {
   const ym = typeof window !== 'undefined' ? window.ymaps : null
-  if (!mapContainer.value || !ym) return
+  if (!mapContainer.value || !ym) return false
   ym.ready(() => {
+    if (!mapContainer.value) return
     map = new ym.Map(mapContainer.value, {
       center: DEFAULT_CENTER,
       zoom: 10,
@@ -330,22 +352,26 @@ const initMap = () => {
       selectAddress({ value: currentAddress.value })
     }
   })
+  return true
 }
 
 onMounted(async () => {
-  const hasYmaps = typeof window !== 'undefined' && window.ymaps
-  if (!hasYmaps) {
+  if (typeof window === 'undefined') return
+  const scriptUrl = `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}&results=10`
+  if (!document.querySelector(`script[src="${scriptUrl}"]`)) {
     try {
-      await loadScript(
-        `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}&results=10`
-      )
+      await loadScript(scriptUrl)
     } catch (e) {
       console.warn('Yandex Maps load error:', e)
       return
     }
   }
+  await waitForYmaps()
   await nextTick()
-  initMap()
+  if (!initMap() && mapContainer.value) {
+    await nextTick()
+    setTimeout(() => initMap(), 150)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -365,7 +391,7 @@ watch(() => props.modelValue, (val) => {
   }
 })
 
-watch(hideAddress, (hidden) => {
+watch(hideAddress, async (hidden) => {
   if (hidden) {
     if (map) {
       map.events.remove('click', onMapClick)
@@ -374,11 +400,15 @@ watch(hideAddress, (hidden) => {
       placemark = null
     }
   } else {
-    nextTick(() => {
-      if (mapContainer.value && !map) {
-        initMap()
-      }
-    })
+    await nextTick()
+    if (!mapContainer.value || map) return
+    if (typeof window !== 'undefined' && !window.ymaps) {
+      await waitForYmaps()
+    }
+    await nextTick()
+    if (!initMap()) {
+      setTimeout(() => initMap(), 200)
+    }
   }
 })
 </script>

@@ -12,7 +12,7 @@
               :model-value="props.modelValue ?? 'В работе'"
               @update:model-value="emit('update:modelValue', $event ?? 'В работе')"
             />
-            <UiButton class="font-bold" variant="action" size="action">Сохранить и продолжить</UiButton>
+            <UiButton class="font-bold" variant="action" size="action" @click="emit('save-and-continue')">Сохранить и продолжить</UiButton>
           </div>
         </div>
         <div class="flex" @mouseover="handleHover" @mouseleave="handleLeave">
@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import MyDropdown from '~/components/custom/MyDropdown.vue'
 // import { useVacancyStore } from '@/stores/vacancy';
 
@@ -110,24 +110,28 @@ const props = defineProps({
     type: String,
     default: 'В работе',
   },
+  activeTab: {
+    type: String,
+    default: 'info',
+  },
 });
 
 const emit = defineEmits<{
   (event: 'update:currentTab', tabName: string): void
   (event: 'update:modelValue', value: string): void
+  (event: 'save-and-continue'): void
 }>()
 
 // Объявляем переменную для состояния табов
 const isHovered = ref(false)
 
-// Объявляем активный так с первым табом по умолчанию
-const currentTab = ref('info')
+// Активная вкладка приходит снаружи, чтобы оставаться в синхронизации при программном переключении
+const currentTab = computed(() => props.activeTab)
 
 
 // Функция смены табов
 function changeTab(tabName: string) {
   emit('update:currentTab', tabName)
-  currentTab.value = tabName
 }
 
 function handleHover() {

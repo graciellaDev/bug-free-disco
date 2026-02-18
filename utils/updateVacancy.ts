@@ -15,8 +15,10 @@ export const updateVacancy = async (id: number, vacancyData: any) => {
 
         console.log('Server response: ', data);
         return { data, error: null };
-    } catch (error) {
-        console.error('Vacancy update error: ', error);
+    } catch (error: any) {
+        const msg = error?.data?.error ?? error?.data?.message ?? error?.message;
+        console.error('Vacancy update error: ', msg || error);
+        if (error?.data) console.error('Response body: ', error.data);
         return { data: null, error };
     }
 };
