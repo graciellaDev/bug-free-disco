@@ -116,6 +116,71 @@ export const unlinkProfile = async () => {
 };
 
 /**
+ * Получение одной публикации Rabota.ru по id
+ */
+export const getPublication = async (id: string | number) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<any>(`/rabota/publications/${id}`, {
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    const publication = response?.data ?? response;
+    result.value.data = publication;
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      result.value.error = err.response?._data?.message ?? 'Публикация не найдена';
+    } else if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message ?? 'Ошибка при загрузке публикации';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Перевод публикации в архив на Rabota.ru (снятие с публикации).
+ * @param publicationId - ID публикации на платформе (platform_id из platforms_data)
+ */
+export const archivePublication = async (publicationId: string | number) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+  try {
+    const response = await $fetch<any>(`/rabota/publications/${publicationId}/archive`, {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    result.value.data = response?.data ?? response;
+  } catch (err: any) {
+    if (err.response?.status === 401) handle401Error();
+    result.value.error = err.response?._data?.message ?? 'Ошибка при переводе публикации в архив';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение публикаций Rabota.ru
  * @param includeArchived - Включать ли архивные публикации
  * @returns Список публикаций

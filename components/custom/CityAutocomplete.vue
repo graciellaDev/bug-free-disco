@@ -84,6 +84,7 @@ const search = ref('')
 const isFocused = ref(false)
 const isOpen = ref(false)
 const wrapperRef = ref(null)
+const inputRef = ref(null)
 const isEditing = ref(false) // Флаг для отслеживания редактирования
 const isSelecting = ref(false) // Флаг выбора города по клику (чтобы blur не мешал)
 

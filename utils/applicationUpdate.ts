@@ -59,15 +59,22 @@ export async function fetchVacancyUpdate(data: any, id: number) {
     const authToken = useCookie('auth_token').value;
     const authUser = useCookie('auth_user').value;
 
+    if (!id) {
+        console.error('fetchVacancyUpdate: id вакансии не передан');
+        return { data: null, error: 'ID вакансии не указан' };
+    }
+
     try {
+        const body = JSON.parse(JSON.stringify(data));
         const response = await $fetch(`${config.public.apiBase}/vacancies/${id}`, {
             method: 'PUT',
             headers: {
                 Accept: 'application/json',
+                'Content-Type': 'application/json',
                 Authorization: `Bearer ${authToken}`,
                 'X-Auth-User': `${authUser}`,
             },
-            body: data
+            body,
         });
 
         console.log('fetch vacancy update', response);
