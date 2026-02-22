@@ -619,6 +619,101 @@ export function mapRabotaPublicationToVacancy(
 }
 
 /**
+ * Маппинг данных публикации из SuperJob в формат вакансии для БД
+ * SuperJob API: id, profession { title }, town { title }, payment_from, payment_to, currency { code },
+ * type_of_work { title }, place { title }, education { title }, experience { title }, candidat, work, vacancyRichText
+ */
+export function mapSuperjobPublicationToVacancy(
+  publication: any,
+  currentVacancyId?: number
+): Partial<Vacancy> {
+  const name = (publication.profession?.title ?? publication.name ?? publication.title ?? '').substring(0, 255);
+
+  let description = publication.vacancyRichText ?? publication.description ?? '';
+  if (publication.candidat || publication.work) {
+    const parts: string[] = [];
+    if (publication.work) parts.push(`Обязанности:\n${publication.work}`);
+    if (publication.candidat) parts.push(`Требования:\n${publication.candidat}`);
+    if (parts.length > 0) {
+      description = parts.join('\n\n');
+    }
+  }
+
+  const salary = publication.salary ?? (publication.payment_from != null || publication.payment_to != null
+    ? {
+        from: publication.payment_from,
+        to: publication.payment_to,
+        currency: publication.currency?.code ?? publication.currency,
+      }
+    : null);
+
+  const salaryFrom = salary?.from !== undefined && salary?.from !== null ? String(salary.from) : undefined;
+  const salaryTo = salary?.to !== undefined && salary?.to !== null ? String(salary.to) : undefined;
+
+  let finalDescription = description;
+  if (!finalDescription || finalDescription.trim().length < 3) {
+    finalDescription = `${finalDescription || ''} Импортировано с платформы superjob.ru`.trim();
+  }
+
+  const location = publication.town?.title ?? publication.town?.name ?? publication.area?.name ?? (typeof publication.town === 'string' ? publication.town : undefined);
+  const place = mapWorkSpaceFromSuperjob(publication.place, publication.work_place);
+  const employment = (publication.type_of_work?.title ?? publication.type_of_work?.name ?? publication.employment?.title)?.substring(0, 255);
+  const schedule = (publication.schedule?.title ?? publication.schedule?.name)?.substring(0, 255);
+  const experience = (publication.experience?.title ?? publication.experience?.name)?.substring(0, 255);
+  const education = (publication.education?.title ?? publication.education?.name)?.substring(0, 255);
+  const currency = mapCurrencyFromSuperjob(salary?.currency ?? publication.currency);
+  const specializations = (publication.profession?.title ?? publication.catalogues?.[0]?.title)?.substring(0, 255);
+  const phrasesData = publication.key_skills ?? publication.skills ?? publication.phrase;
+  const phrasesFormatted = Array.isArray(phrasesData)
+    ? phrasesData.map((s: any) => (typeof s === 'string' ? s : s?.title ?? s?.name)).filter(Boolean).join(', ')
+    : (typeof phrasesData === 'string' ? phrasesData : undefined);
+
+  const vacancyData: any = {
+    name: name || 'Импортированная вакансия',
+    description: finalDescription,
+    salary_from: salaryFrom,
+    salary_to: salaryTo,
+    currency: currency?.substring(0, 255),
+    employment: employment?.substring(0, 255),
+    schedule: schedule?.substring(0, 255),
+    experience: experience?.substring(0, 255),
+    education: education?.substring(0, 255),
+    place: place,
+    location: location?.substring(0, 255),
+    specializations: specializations?.substring(0, 255),
+    phrases: phrasesFormatted,
+    status: 'draft',
+  };
+
+  return vacancyData;
+}
+
+function mapWorkSpaceFromSuperjob(place?: any, workPlace?: string | number): number | undefined {
+  if (workPlace) {
+    return mapWorkSpaceFromHh(workPlace);
+  }
+  const title = place?.title ?? place?.name ?? (typeof place === 'string' ? place : '');
+  if (!title) return 1;
+  const lower = title.toLowerCase();
+  if (lower.includes('удален') || lower.includes('remote') || lower.includes('дистанц')) return 3;
+  if (lower.includes('гибрид') || lower.includes('hybrid')) return 2;
+  return 1;
+}
+
+function mapCurrencyFromSuperjob(currency?: string | { code?: string }): string | undefined {
+  if (!currency) return undefined;
+  const code = typeof currency === 'object' ? currency?.code : currency;
+  if (!code) return 'RUB (рубль)';
+  const currencyMap: Record<string, string> = {
+    'RUR': 'RUB (рубль)',
+    'RUB': 'RUB (рубль)',
+    'USD': 'USD (доллар)',
+    'EUR': 'EUR (евро)',
+  };
+  return currencyMap[code] ?? 'RUB (рубль)';
+}
+
+/**
  * Маппинг типа занятости из формата rabota.ru
  */
 function mapEmploymentFromRabota(employmentType?: any, employmentTypeId?: number, employment?: any): string | undefined {
@@ -869,29 +964,33 @@ export function getPlatformId(platformName: string): number | undefined {
  */
 export function mapPublicationToVacancy(
   publication: any,
-  platform: 'hh.ru' | 'avito.ru' | 'rabota.ru',
+  platform: 'hh.ru' | 'avito.ru' | 'rabota.ru' | 'superjob' | 'superjob.ru',
   currentVacancyId?: number,
   platformId?: number
 ): any {
   let vacancyData: any;
-  
+
+  const platformNorm = platform === 'superjob.ru' ? 'superjob' : platform;
+
   if (platform === 'hh.ru') {
     vacancyData = mapHhPublicationToVacancy(publication, currentVacancyId);
   } else if (platform === 'avito.ru') {
     vacancyData = mapAvitoPublicationToVacancy(publication, currentVacancyId);
   } else if (platform === 'rabota.ru') {
     vacancyData = mapRabotaPublicationToVacancy(publication, currentVacancyId);
+  } else if (platformNorm === 'superjob') {
+    vacancyData = mapSuperjobPublicationToVacancy(publication, currentVacancyId);
   } else {
     throw new Error(`Маппинг для платформы ${platform} не поддерживается`);
   }
-  
+
   // Добавляем platform_id (приоритет у переданного параметра, иначе определяем по названию)
-  const finalPlatformId = platformId !== undefined ? platformId : getPlatformId(platform);
+  const finalPlatformId = platformId !== undefined ? platformId : getPlatformId(platformNorm);
   if (finalPlatformId !== undefined) {
     vacancyData.platform_id = finalPlatformId;
     console.log(`Добавлен platform_id: ${finalPlatformId} для платформы: ${platform}`);
   } else {
-    console.warn(`Не удалось определить platform_id для платформы: ${platform}. Доступные платформы: hh.ru, avito.ru, rabota.ru`);
+    console.warn(`Не удалось определить platform_id для платформы: ${platform}. Доступные платформы: hh.ru, avito.ru, rabota.ru, superjob`);
   }
   
   // Добавляем base_id (base_vacancy_id) если есть текущая вакансия

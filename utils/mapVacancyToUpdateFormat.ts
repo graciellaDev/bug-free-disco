@@ -10,7 +10,8 @@ export interface VacancyFormData {
   professional_roles?: Array<{ id?: string | number; name?: string } | null>;
   industry?: { id?: string | number; name?: string; key?: string } | null;
   employment_form?: { id?: string; name?: string } | null;
-  work_schedule_by_days?: { id?: string; name?: string } | null;
+  work_schedule_by_days?: { id?: string; name?: string } | Array<{ id?: string | number; name?: string } | null> | null;
+  working_hours?: { id?: string; name?: string } | Array<{ id?: string | number; name?: string } | null> | null;
   experience?: { id?: string; name?: string } | null;
   education_level?: { id?: string; name?: string } | null;
   salary_range?: {
@@ -21,6 +22,7 @@ export interface VacancyFormData {
   salary_type?: { id?: string; name?: string } | null;
   area?: { id?: string | number; name?: string } | null;
   address?: { id?: string | number; name?: string } | null;
+  location?: string | null;
   workSpace?: string;
   executor_id?: number | null;
   executor_name?: string | null;
@@ -48,6 +50,7 @@ export interface UpdateVacancyData {
   currency?: string | null;
   place?: number | null;
   location?: string | null;
+  work_hours_per_day?: string | null;
   executor_id?: number | null;
   executor_name?: string | null;
   executor_phone?: string | null;
@@ -173,9 +176,22 @@ export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacan
     updateData.employment = mapObjectToString(formData.employment_form, 255);
   }
   
-  // График работы (schedule)
+  // График работы (schedule) — может быть объект или массив (MultiSelect)
   if (formData.work_schedule_by_days) {
-    updateData.schedule = mapObjectToString(formData.work_schedule_by_days, 255);
+    if (Array.isArray(formData.work_schedule_by_days)) {
+      updateData.schedule = mapArrayToString(formData.work_schedule_by_days, 255);
+    } else {
+      updateData.schedule = mapObjectToString(formData.work_schedule_by_days, 255);
+    }
+  }
+
+  // Рабочие часы в день (work_hours_per_day)
+  if (formData.working_hours) {
+    if (Array.isArray(formData.working_hours)) {
+      updateData.work_hours_per_day = mapArrayToString(formData.working_hours, 255);
+    } else {
+      updateData.work_hours_per_day = mapObjectToString(formData.working_hours, 255);
+    }
   }
   
   // Опыт работы (experience)
@@ -216,12 +232,12 @@ export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacan
     updateData.place = mapWorkSpaceToPlace(formData.workSpace);
   }
   
-  // Локация (location) - из area или address
-  if (formData.area?.name) {
-    const locationStr = formData.area.name;
-    updateData.location = locationStr.length > 255 ? locationStr.substring(0, 255) : locationStr;
-  } else if (formData.address?.name) {
-    const locationStr = formData.address.name;
+  // Локация / город размещения (location) — из area, address или строки location
+  const locationStr =
+    formData.area?.name ||
+    formData.address?.name ||
+    (typeof formData.location === 'string' ? formData.location : null);
+  if (locationStr) {
     updateData.location = locationStr.length > 255 ? locationStr.substring(0, 255) : locationStr;
   }
   

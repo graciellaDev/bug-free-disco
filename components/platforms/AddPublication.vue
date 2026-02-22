@@ -451,7 +451,7 @@
               ></DropDownTypes>
             </template> -->
             <UiButton @click="savePublication" variant="action" size="semiaction" class="font-semibold">
-              Опубликовать
+              {{ isEditingMode ? 'Обновить' : 'Опубликовать' }}
             </UiButton>
             <div class="status" v-if="status">
               {{ status }}
@@ -532,6 +532,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['saved', 'cancel'])
+
+const isEditingMode = computed(() => props.editingVacancy != null)
+
 import { 
   getProfile as profileHh, 
   getAvailableTypes as typesHh, 
@@ -554,7 +557,7 @@ import {
   getExperienceLevels as getExperienceLevelsRabota,
   getEducationLevels as getEducationLevelsRabota
 } from '@/utils/rabotaAccount'
-import { getVacancy } from '@/utils/getVacancies';
+import { getVacancy as getVacancyById } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
 import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
@@ -654,17 +657,34 @@ const findValue = (array, value) => {
   return array.find((item) => item.name == value) || null
 }
 
+/** Поиск в справочнике по name или siteName (для маппинга полей вакансии в форму) */
+const findValueByNameOrSiteName = (array, value) => {
+  if (!array || value == null || value === '') return null
+  return array.find((item) => item.name == value || item.siteName == value) || null
+}
+
+/** Поиск по id или name (API может вернуть id или строку названия) */
+const findValueByIdOrName = (array, value) => {
+  if (!array || value == null || value === '') return null
+  const v = value && typeof value === 'object' ? value?.id ?? value?.name : value
+  return array.find((item) => String(item.id) === String(v) || item.name == v) || array.find((item) => item.name == v) || null
+}
+
 const handleIdUpdate = (property, value) => {
   if (property === 'address' || property === 'area') {
     if (value) {
-      data.value[property].id = value
-      // Если пользователь изменил город вручную, сбрасываем флаг
+      data.value[property] = data.value[property] || (property === 'address' ? { show_metro_only: false } : {});
+      data.value[property].id = value;
       if (property === 'area') {
         isCitySetFromVacancy.value = false
         console.log('Город изменен пользователем, сброшен флаг isCitySetFromVacancy')
       }
     } else {
-      delete data.value[property].id
+      if (property === 'address') {
+        data.value.address = { show_metro_only: data.value.address?.show_metro_only ?? false };
+      } else {
+        data.value.area = {};
+      }
       if (property === 'area') {
         isCitySetFromVacancy.value = false
       }
@@ -978,16 +998,21 @@ const applyComputedValues = async () => {
       console.log('Найденный город в списке hh.ru:', city);
       console.log('Текущий data.value.area:', data.value.area);
       
-      // Устанавливаем город с правильной структурой
+      // Устанавливаем город публикации и город размещения (из location вакансии — один и тот же город)
       data.value.area = {
         id: city.id,
         name: city.name
+      };
+      data.value.address = {
+        id: city.id,
+        name: city.name,
+        show_metro_only: data.value.address?.show_metro_only ?? false
       };
       
       // Устанавливаем флаг, что город был установлен из вакансии
       isCitySetFromVacancy.value = true;
       
-      console.log('✅ Установлен город публикации из вакансии:', data.value.area);
+      console.log('✅ Установлен город публикации и город размещения из вакансии:', data.value.area);
       console.log('Город должен быть в citiesOptions:', citiesOptions.value.find(c => c.id === city.id));
       console.log('citiesOptions.length:', citiesOptions.value.length);
       
@@ -1214,21 +1239,112 @@ const loadTariffsForHh = async (employerId) => {
 //   return tariffsOptions.value.find(tariff => tariff.property_type === propertyType) || null
 // })
 
-// Загружаем вакансию ДО загрузки городов, чтобы получить location
-const vacancyId = route.query.id
-if (vacancyId) {
-  if (!globCurrentVacancy.value || vacancyId !== globCurrentVacancy.value.id.toString()) {
-    
-    const  vacancy = await getVacancy(vacancyId)
-    if (vacancy) {
-      
-      globCurrentVacancy.value = vacancy
-      console.log('Загружена вакансия, location:', vacancy.location)
-      // Обновляем вычисленные значения после загрузки вакансии (но города еще нет)
-      updateComputedValues()
+/** Заполняет форму из загруженной вакансии (globCurrentVacancy). Вызывать после установки globCurrentVacancy. */
+async function fillFormFromCurrentVacancy() {
+  const vacancy = globCurrentVacancy.value
+  if (!vacancy) return
+
+  const platformKey = data.value.platform?.platform ?? data.value.platform
+  const platformProps = platformKey ? (PLATFORM_PROPERTIES[platformKey] || {}) : {}
+  for (const key in platformProps) {
+    data.value[key] = vacancy[key]
+  }
+  if (vacancy.salary_from != null) data.value.salary_range.from = vacancy.salary_from
+  if (vacancy.salary_to != null) data.value.salary_range.to = vacancy.salary_to
+  if (vacancy.education) {
+    data.value.education_level = HH_EDUCATION_LAVEL.find((item) => item.name == vacancy.education)
+  }
+  if (vacancy.phrases) data.value.phrases = vacancy.phrases
+  if (vacancy.drivers) data.value.driver_license_types = vacancy.drivers
+  if (vacancy.location) data.value.location = vacancy.location
+
+  // График работы: API может вернуть один id/name или несколько через запятую (например "FOUR_ON_FOUR_OFF, FOUR_ON_THREE_OFF")
+  const scheduleVal = vacancy.schedule ?? vacancy.work_schedule
+  if (scheduleVal != null && scheduleVal !== '') {
+    const scheduleOpts = workSchedulesOptions.value || []
+    const parts = typeof scheduleVal === 'string' ? scheduleVal.split(',').map(s => s.trim()).filter(Boolean) : [scheduleVal]
+    const ids = []
+    for (const part of parts) {
+      const scheduleObj = findValueByIdOrName(scheduleOpts, part) || findValue(scheduleOpts, part) || findValueByNameOrSiteName(scheduleOpts, part)
+      if (scheduleObj) {
+        const id = scheduleObj.id != null ? String(scheduleObj.id) : scheduleObj.id
+        if (id && !ids.some(item => item.id === id)) ids.push({ id })
+      }
+    }
+    data.value.work_schedule_by_days = ids
+  }
+  // Рабочие часы в день: API может вернуть один id/name или несколько через запятую (например "HOURS_3, HOURS_5")
+  const hoursFromApi = vacancy.work_hours_per_day ?? vacancy.workHoursPerDay ?? vacancy.working_hours
+  if (hoursFromApi != null && hoursFromApi !== '') {
+    const parts = typeof hoursFromApi === 'string' ? hoursFromApi.split(',').map(s => s.trim()).filter(Boolean) : [hoursFromApi]
+    const ids = []
+    for (const part of parts) {
+      const hoursObj = findValueByIdOrName(HH_WORKING_HOURS, part) || findValue(HH_WORKING_HOURS, part)
+      if (hoursObj) {
+        const id = hoursObj.id != null ? String(hoursObj.id) : hoursObj.id
+        if (id && !ids.some(item => item.id === id)) ids.push({ id })
+      }
+    }
+    data.value.working_hours = ids
+  }
+  if (vacancy.place != null && vacancy.place !== '') {
+    data.value.workSpace = String(vacancy.place)
+  }
+
+  updateComputedValues()
+  await applyComputedValues()
+}
+
+const vacancyIdFields = ['experience', 'employment_form']
+
+// Заполнение формы: при редактировании из «Активные публикации» — вакансия по id строки (GET /api/vacancies/{id}), иначе — по id из URL
+async function loadInitialFormData() {
+  const platformIdToName = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' };
+
+  let vacancyId = route.query.id;
+
+  if (props.editingVacancy?.id) {
+    vacancyId = String(props.editingVacancy.id);
+    const platformData = props.editingVacancy.platforms_data?.[0];
+    if (platformData) {
+      const platformName = platformIdToName[platformData.id];
+      const platformKey = platforms.value?.find(p => p.platform === platformName) || platforms.value?.[0];
+      if (platformKey) {
+        data.value.platform = platformKey;
+      }
+    }
+  }
+
+  if (vacancyId) {
+    // Загружаем вакансию с API только если ещё нет или id изменился
+    if (!globCurrentVacancy.value || vacancyId !== globCurrentVacancy.value.id?.toString()) {
+      const vacancy = await getVacancyById(vacancyId);
+      if (vacancy) {
+        globCurrentVacancy.value = vacancy;
+        console.log('Загружена вакансия, location:', vacancy.location);
+      }
+    }
+    // Всегда заполняем форму при открытии (в т.ч. при повторном открытии модалки без перезагрузки)
+    if (globCurrentVacancy.value && globCurrentVacancy.value.id?.toString() === vacancyId) {
+      updateComputedValues();
+      await fillFormFromCurrentVacancy();
+      vacancyIdFields.forEach((field) => {
+        const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
+        const values = mappingFieldsHH[field].values
+        const found = field === 'employment_form'
+          ? findValueByNameOrSiteName(values, fieldValue)
+          : findValue(values, fieldValue)
+        if (found == null) {
+          handleIdUpdate(field, values[0])
+        } else {
+          handleIdUpdate(field, found)
+        }
+      })
     }
   }
 }
+
+await loadInitialFormData();
 
 const getPhrasesVacancy = async function() {
   const { data, error } = await getPhrases()
@@ -1237,50 +1353,19 @@ const getPhrasesVacancy = async function() {
 
 phrases.value = await getPhrasesVacancy()
 
-const vacancyIdFields = [
-  'experience',
-  'employment_form', 
-]
-
+// Дефолты для experience/employment_form, если вакансия не загружалась (форма «добавить»)
 vacancyIdFields.forEach((field) => {
-  if (findValue(
-    mappingFieldsHH[field].values, 
-    globCurrentVacancy.value[mappingFieldsHH[field]?.field]
-  ) == null) {
-    handleIdUpdate(field, mappingFieldsHH[field].values[0]);
-  }else {
-    handleIdUpdate(
-      field, 
-      findValue(mappingFieldsHH[field].values, globCurrentVacancy.value[mappingFieldsHH[field]?.field])
-    );
+  const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
+  const values = mappingFieldsHH[field].values
+  const found = field === 'employment_form'
+    ? findValueByNameOrSiteName(values, fieldValue)
+    : findValue(values, fieldValue)
+  if (found == null) {
+    handleIdUpdate(field, values[0])
+  } else {
+    handleIdUpdate(field, found)
   }
 })
-
-if (globCurrentVacancy.value) {
-  for (const key in PLATFORM_PROPERTIES[data.value.platform]) {
-    data.value[key] = globCurrentVacancy.value[key]
-  }
-
-  if (globCurrentVacancy.value['salary_from']) {
-      data.value.salary_range.from = globCurrentVacancy.value.salary_from
-  }
-  if (globCurrentVacancy.value.salary_to) {
-      data.value.salary_range.to = globCurrentVacancy.value.salary_to
-  }
-  if (globCurrentVacancy.value.education) {
-    data.value.education_level = HH_EDUCATION_LAVEL.find((item) => item.name == globCurrentVacancy.value.education)
-  }
-  if (globCurrentVacancy.value.phrases) {
-    data.value.phrases = globCurrentVacancy.value.phrases
-  }
-  if (globCurrentVacancy.value.drivers) {
-    data.value.driver_license_types = globCurrentVacancy.value.drivers
-  }
-  
-  // Обновляем вычисленные значения после обработки globCurrentVacancy
-  updateComputedValues()
-  applyComputedValues()
-}
 
 if (vacancyData.value) {
   data.value.name = vacancyData.value.name
@@ -1535,12 +1620,14 @@ const updateValidField = (field, value) => {
 }
 
 const savePublication = async () => {
-  if (!validateFields()) {
+  const isEditing = props.editingVacancy != null && props.editingVacancy?.id != null;
+
+  if (!isEditing && !validateFields()) {
     statusValidate.value = false
     return
   }
   statusValidate.value = true
-  
+
   // Определяем текущую платформу
   const currentPlatform = data.value.platform?.platform || 'hh'
   
@@ -1573,23 +1660,48 @@ const savePublication = async () => {
     });
   }
   
-  // Проверяем, редактируем ли мы существующую вакансию
-  const isEditing = props.editingVacancy !== null && props.editingVacancy !== undefined;
-  
-  // Если редактируем, используем fetchVacancyUpdate
-  if (isEditing && props.editingVacancy.id) {
+  // Если редактируем, обновляем вакансию на API и на привязанной платформе
+  if (isEditing) {
     try {
-      // Маппим данные из формы в формат для обновления
       const mappedData = mapVacancyToUpdateFormat(data.value);
-      
+      console.log('edit vacancy', props.editingVacancy);
+
       const { data: updateData, error } = await fetchVacancyUpdate(mappedData, props.editingVacancy.id);
-      
+
       if (error) {
         status.value = error || 'Ошибка при обновлении вакансии';
+        return;
+      }
+
+      // Обновляем кэш вакансии данными с сервера, чтобы при повторном открытии модалки отображались актуальные график/часы
+      if (updateData) {
+        globCurrentVacancy.value = (typeof updateData === 'object' && updateData !== null && 'data' in updateData)
+          ? updateData.data
+          : updateData;
+      }
+
+      const platformData = props.editingVacancy.platforms_data?.[0];
+      if (platformData?.id && platformData?.platform_id != null) {
+        const platformId = platformData.id;
+        const vacancyPlatformId = platformData.platform_id;
+        const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
+        let platformResponse = null;
+        if (platformId === 1) {
+          platformResponse = await publishVacancyToHh(payload);
+        } else if (platformId === 2) {
+          platformResponse = await publishVacancyToAvito(payload);
+        } else if (platformId === 3) {
+          platformResponse = await publishVacancyToRabota(payload);
+        }
+        if (platformResponse?.error || platformResponse?.errorDraft) {
+          status.value = 'Вакансия обновлена. Ошибка обновления на платформе: ' + (platformResponse?.error || platformResponse?.errorDraft || 'неизвестная ошибка');
+        } else {
+          status.value = 'Вакансия и публикация на платформе успешно обновлены';
+        }
       } else {
         status.value = 'Вакансия успешно обновлена';
-        emit('saved');
       }
+      emit('saved');
     } catch (err) {
       console.error('Ошибка при обновлении вакансии:', err);
       status.value = 'Ошибка при обновлении вакансии';

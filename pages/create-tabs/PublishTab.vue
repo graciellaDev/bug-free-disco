@@ -593,6 +593,11 @@
             </Popup>
         </div>
 
+        <!-- Оповещение о снятии с публикации (перевод в архив) -->
+        <div v-if="archiveNotify.text" class="mb-3 rounded-lg px-4 py-2 text-sm" :class="archiveNotify.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">
+            {{ archiveNotify.text }}
+        </div>
+
         <!-- Таблица на Grid -->
         <div class="table-container">
             <!-- Хедер -->
@@ -707,18 +712,21 @@ import {
     getAvailableTypes,
     getVacancyCountViews,
     getVacancyResponses,
-    getAddresses
+    getAddresses,
+    archivePublication as archivePublicationHh
 } from "~/utils/hhAccount";
-import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito, getPublications as getPublicationsAvito, getAllPublications as getAllPublicationsAvito } from "~/utils/avitoAccount";
-import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota } from "~/utils/rabotaAccount";
+import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito, getPublications as getPublicationsAvito, getAllPublications as getAllPublicationsAvito, archivePublication as archivePublicationAvito } from "~/utils/avitoAccount";
+import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota, archivePublication as archivePublicationRabota } from "~/utils/rabotaAccount";
+import { getProfile as getProfileSuperjob, auth as authSuperjob, unlinkProfile as unlinkProfileSuperjob, getAllPublications as getAllPublicationsSuperjob, archivePublication as archivePublicationSuperjob } from "~/utils/superjobAccount";
 import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
-import { getVacancy, getVacancies } from '@/utils/getVacancies'
+import { getVacancy, getVacancies, updateVacancy } from '@/utils/getVacancies'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
 import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationToVacancy'
+import { getPublicationViewUrl } from '@/utils/publicationViewUrl'
 import { validateVacancyData, normalizeVacancyData } from '@/utils/validateVacancyData'
 import { HH_EMPLOYMENT_TYPES, HH_WORK_SCHEDULE_BY_DAYS, HH_EDUCATION_LAVEL } from '@/src/constants'
 import experience from '~/src/data/experience.json'
@@ -957,6 +965,8 @@ async function authPlatform(platformName) {
         window.location.href = `${base}/code-avito?customerToken=${tokenCookie.value}`;
     } else if (platformName === 'rabota.ru') {
         window.location.href = `${base}/code-rabota?customerToken=${tokenCookie.value}`;
+    } else if (platformName === 'superjob.ru' || platformName === 'superjob') {
+        window.location.href = `${base}/code-superjob?customerToken=${tokenCookie.value}`;
     } else {
         authError.value[platformName] = `Платформа ${platformName} пока не поддерживается`;
     }
@@ -1434,6 +1444,8 @@ async function openImportPopup(platformName) {
             result = await getAllPublicationsRabota();
         } else if (platformName === 'avito.ru') {
             result = await getAllPublicationsAvito();
+        } else if (platformName === 'superjob.ru' || platformName === 'superjob') {
+            result = await getAllPublicationsSuperjob();
         } else {
             result = await getPublications();
         }
@@ -1897,6 +1909,8 @@ async function confirmUnlink() {
             result = await unlinkProfileAvito();
         } else if (platformToUnlink.value === 'rabota.ru') {
             result = await unlinkProfileRabota();
+        } else if (platformToUnlink.value === 'superjob.ru' || platformToUnlink.value === 'superjob') {
+            result = await unlinkProfileSuperjob();
         } else {
             unlinkError.value = `Отвязка профиля для платформы ${platformToUnlink.value} пока не поддерживается`;
             isUnlinking.value = false;
@@ -1943,6 +1957,12 @@ onMounted(async () => {
     console.log('rabotaProfile', rabotaProfile);
     if (rabotaProfile && !rabotaProfile.error && rabotaProfile.data) {
         platformsAuth.value['rabota.ru'] = true;
+    }
+
+    // Проверяем авторизацию SuperJob
+    const superjobProfile = await getProfileSuperjob();
+    if (superjobProfile && !superjobProfile.error && superjobProfile.data) {
+        platformsAuth.value['superjob'] = true;
     }
 
     // Обработка редиректа после авторизации
@@ -1993,6 +2013,18 @@ onMounted(async () => {
             const response = await authRabota();
             if (response && response.data) {
                 platformsAuth.value['rabota.ru'] = true;
+                shouldRedirect = true;
+            }
+        }
+    }
+
+    // Обработка редиректа после авторизации SuperJob
+    if (query.popup_account === 'true' && query.platform === 'superjob' && query.message === 'success') {
+        const processAuth = useCookie('process_auth');
+        if (processAuth.value) {
+            const response = await authSuperjob();
+            if (response && response.data) {
+                platformsAuth.value['superjob'] = true;
                 shouldRedirect = true;
             }
         }
@@ -2119,16 +2151,61 @@ const dropdownOptions = ["Редактировать текст", "Посмот�
 const isEditPopupOpen = ref(false);
 const editingVacancy = ref(null);
 
+// Оповещение о результате снятия с публикации (перевод в архив)
+const archiveNotify = ref({ type: 'success', text: '' });
+let archiveNotifyTimer = null;
+
+async function handleArchivePublication(vacancyItem) {
+    const platformData = vacancyItem?.platforms_data?.[0];
+    const platformId = platformData?.id;
+    const publicationId = platformData?.platform_id != null ? String(platformData.platform_id) : null;
+    if (!platformData || !publicationId) {
+        archiveNotify.value = { type: 'error', text: 'Не удалось определить платформу или ID публикации.' };
+        if (archiveNotifyTimer) clearTimeout(archiveNotifyTimer);
+        archiveNotifyTimer = setTimeout(() => { archiveNotify.value = { type: 'success', text: '' }; }, 6000);
+        return;
+    }
+    let result = { data: null, error: null };
+    if (platformId === 1) result = await archivePublicationHh(publicationId);
+    else if (platformId === 2) result = await archivePublicationAvito(publicationId);
+    else if (platformId === 3) result = await archivePublicationRabota(publicationId);
+    else if (platformId === 4) result = await archivePublicationSuperjob(publicationId);
+    else {
+        archiveNotify.value = { type: 'error', text: 'Неизвестная платформа.' };
+        if (archiveNotifyTimer) clearTimeout(archiveNotifyTimer);
+        archiveNotifyTimer = setTimeout(() => { archiveNotify.value = { type: 'success', text: '' }; }, 6000);
+        return;
+    }
+    if (result.error) {
+        archiveNotify.value = { type: 'error', text: result.error };
+        if (archiveNotifyTimer) clearTimeout(archiveNotifyTimer);
+        archiveNotifyTimer = setTimeout(() => { archiveNotify.value = { type: 'success', text: '' }; }, 6000);
+        return;
+    }
+    const updateResult = await updateVacancy(vacancyItem.id, { status: 'archive' });
+    if (updateResult?.error) {
+        archiveNotify.value = { type: 'error', text: 'Публикация снята с платформы, но не удалось обновить статус в системе: ' + (updateResult.error || '').slice(0, 80) };
+    } else {
+        archiveNotify.value = { type: 'success', text: 'Публикация успешно снята с публикации и переведена в архив.' };
+    }
+    if (archiveNotifyTimer) clearTimeout(archiveNotifyTimer);
+    archiveNotifyTimer = setTimeout(() => { archiveNotify.value = { type: 'success', text: '' }; }, 6000);
+    loadPublicationPlatforms();
+}
+
 // Обработчик действий из dropdown
 const handleDropdownAction = (action, vacancyItem) => {
     if (action === "Редактировать текст") {
         openEditPopup(vacancyItem);
     } else if (action === "Посмотреть публикацию") {
-        // TODO: Реализовать просмотр публикации
-        console.log("Посмотреть публикацию", vacancyItem);
+        const url = getPublicationViewUrl(vacancyItem);
+        if (url) {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+            console.warn('Не удалось сформировать ссылку на публикацию', vacancyItem);
+        }
     } else if (action === "Снять с публикации") {
-        // TODO: Реализовать снятие с публикации
-        console.log("Снять с публикации", vacancyItem);
+        handleArchivePublication(vacancyItem);
     } else if (action === "Дублировать публикацию") {
         // TODO: Реализовать дублирование публикации
         console.log("Дублировать публикацию", vacancyItem);
