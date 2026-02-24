@@ -26,6 +26,10 @@
       adaptiveHeight?: boolean;
       lgSize?: boolean;
       parentRounded?: boolean;
+      /** false = у блока с контентом внутри окна не будет скруглений (само окно не меняется) */
+      contentRounded?: boolean;
+      /** false = один слой отступа 25px (внутренняя обёртка без padding), иначе два слоя по 25px */
+      contentPadding?: boolean;
     }>(),
     {
       showCloseButton: false,
@@ -41,6 +45,8 @@
       adaptiveHeight: false,
       lgSize: false,
       parentRounded: false,
+      contentRounded: true,
+      contentPadding: true,
     }
   );
 
@@ -123,7 +129,12 @@
       }"
     >
       <div
-        class="relative h-full w-full transform rounded-fifteen bg-white p-25px"
+        class="relative h-full w-full transform bg-white"
+        :class="[
+          contentRounded ? 'rounded-fifteen' : 'rounded-none',
+          contentPadding ? 'p-25px' : 'p-0',
+          { 'pr-2.5': customStyles },
+        ]"
         :style="{
           maxWidth: width,
           height: height === 'auto' ? 'auto' : lgSize ? 'auto' : height,
@@ -135,7 +146,6 @@
           top: topActive ? '-10%' : 'auto',
           maxHeight: maxHeight ? 'none' : maxHeightValue,
         }"
-        :class="{ 'pr-2.5': customStyles }"
       >
         <div
           ref="scrollContainer"

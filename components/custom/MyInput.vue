@@ -29,6 +29,10 @@
       type: Boolean,
       default: false,
     },
+    error: {
+      type: Boolean,
+      default: false,
+    },
   });
 
   const emit = defineEmits(['update:modelValue', 'blur', 'focus']);
@@ -66,12 +70,15 @@
     <input
       :type="type"
       ref="inputRef"
-      class="min-h-10 w-full rounded-ten border border-athens bg-athens-gray pl-15px text-sm font-normal text-[#2F353D]"
+      class="min-h-10 w-full rounded-ten border pl-15px text-sm font-normal text-[#2F353D]"
+      :class="[
+        props.error ? 'border-red-500 bg-athens-gray' : 'border-athens bg-athens-gray',
+        { focused: isFocused }, { search: search }, props.class
+      ]"
       :placeholder="isFocused ? '' : placeholder"
       :value="props.modelValue"
       @input="updateValue"
       @focus="handleFocus"
-      :class="[{ focused: isFocused }, { search: search }, props.class]"
       @blur="handleBlur"
       :readonly="props.readonly"
     />

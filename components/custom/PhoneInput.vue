@@ -2,7 +2,7 @@
   <div class="w-full">
     <input v-model="formattedValue"
       class="bg-athens-gray border border-athens rounded-ten min-h-10 w-full pl-15px text-sm font-normal text-[#2F353D]"
-      :class="{ focused: isFocused, 'border-red-500': error }" placeholder="+7-000-000-0000" @focus="isFocused = true"
+      :class="{ focused: isFocused, 'border-red-500': error || props.invalid }" placeholder="+7-000-000-0000" @focus="isFocused = true"
       @blur="validatePhone" @input="handleInput" />
     <span v-if="error" class="text-red-500 text-xs">{{ error }}</span>
   </div>
@@ -13,9 +13,14 @@ import { ref, watch } from 'vue'
 
 const props = defineProps({
   modelValue: String,
+  /** Когда true, подсвечивает поле красным (например, при blur если пусто) */
+  invalid: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'blur'])
 
 const isFocused = ref(false)
 const error = ref('')
@@ -58,6 +63,7 @@ const validatePhone = () => {
     !rawValue.value || rawValue.value.length < 11
       ? 'Введите полный номер телефона'
       : ''
+  emit('blur')
 }
 </script>
 

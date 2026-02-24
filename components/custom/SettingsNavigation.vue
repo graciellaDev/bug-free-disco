@@ -1,6 +1,21 @@
 <!-- components/SettingsNavigation.vue -->
 <template>
   <nav class="max-w-[275px] p-25px bg-white rounded-fifteen w-full h-fit">
+    <!-- Пользователи -->
+    <div class="nav-group">
+      <h3 class="text-sm font-medium text-space mb-2.5">Пользователи</h3>
+      <ul>
+        <li :class="{ active: isActive('/settings/users/SettingsEmployees') }">
+          <NuxtLink to="/settings/users/SettingsEmployees">Сотрудники</NuxtLink>
+        </li>
+        <li :class="{ active: isActive('/settings/users/SettingsDepartments') }">
+          <NuxtLink to="/settings/users/SettingsDepartments">
+            Отделы и роли
+          </NuxtLink>
+        </li>
+      </ul>
+    </div>
+
     <!-- Рекрутинг -->
     <div class="nav-group">
       <h3 class="text-sm font-medium text-space mb-2.5">Рекрутинг</h3>
@@ -18,24 +33,6 @@
         <li :class="{ active: isActive('/settings/recruiting/settingsfunnel') }">
           <NuxtLink to="/settings/recruiting/settingsfunnel">
             Воронка найма
-          </NuxtLink>
-        </li>
-      </ul>
-    </div>
-
-    <!-- Пользователи -->
-    <div class="nav-group">
-      <h3 class="text-sm font-medium text-space mb-2.5">Пользователи</h3>
-      <ul>
-        <li :class="{ active: isActive('/settings/users/SettingsCustomers') }">
-          <NuxtLink to="/settings/users/SettingsCustomers">Заказчики</NuxtLink>
-        </li>
-        <li :class="{ active: isActive('/settings/users/SettingsEmployees') }">
-          <NuxtLink to="/settings/users/SettingsEmployees">Сотрудники</NuxtLink>
-        </li>
-        <li :class="{ active: isActive('/settings/users/SettingsDepartments') }">
-          <NuxtLink to="/settings/users/SettingsDepartments">
-            Отделы и роли
           </NuxtLink>
         </li>
       </ul>

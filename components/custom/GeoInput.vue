@@ -23,27 +23,49 @@
 
   const currentCity = ref(props.modelValue)
   const cities = ref([
-    'Санкт-Петербург, ул. Дорожная, д2',
-    'Москва, ул. дорожная д2',
-    'Челябинск, проспект дорожный,д2',
-    'Пермь, проспект дорожный, д2',
-    'Томск, переулок дорожный, д2',
-    'Волгоград, дорожный проспект, д2',
+    'Москва',
+    'Санкт-Петербург',
+    'Новосибирск',
+    'Екатеринбург',
+    'Казань',
+    'Нижний Новгород',
+    'Челябинск',
+    'Самара',
+    'Пермь',
+    'Томск',
+    'Волгоград',
   ])
 
   const filteredCities = ref([])
+  const isLoadingSuggest = ref(false)
 
   const filterCities = debounce(async () => {
-    const input = currentCity.value.toLowerCase()
-    const adresses = await ymaps.suggest(input);
-    filteredCities.value = adresses.map(address => address.value);
-
-    // filteredCities.value = cities.value.filter(city =>
-    //   city.toLowerCase().includes(input)
-    // ) 
+    const input = (currentCity.value || '').trim().toLowerCase()
+    if (!input) {
+      filteredCities.value = []
+      return
+    }
+    isLoadingSuggest.value = true
+    try {
+      const ym = typeof window !== 'undefined' ? window.ymaps : null
+      if (ym && typeof ym.suggest === 'function') {
+        const addresses = await ym.suggest(input)
+        const values = Array.isArray(addresses)
+          ? addresses.map((a) => (typeof a === 'string' ? a : a?.value || a?.displayName || '')).filter(Boolean)
+          : []
+        filteredCities.value = values.length ? values : cities.value.filter((c) => c.toLowerCase().includes(input))
+      } else {
+        filteredCities.value = cities.value.filter((c) => c.toLowerCase().includes(input))
+      }
+    } catch (e) {
+      console.warn('GeoInput suggest error:', e)
+      filteredCities.value = cities.value.filter((c) => c.toLowerCase().includes(input))
+    } finally {
+      isLoadingSuggest.value = false
+    }
     if (!filteredCities.value.length) {
       emit('update:modelValue', currentCity.value)
-    } 
+    }
   }, 300)
 
   const clearCity = () => {
@@ -107,7 +129,7 @@
           </li>
         </ul>
         <div
-          v-else-if="currentCity && isFocused"
+          v-else-if="currentCity && isFocused && !isLoadingSuggest && filteredCities.length === 0"
           class="no-cities absolute w-full bg-white border border-athens rounded-plus shadow-shadow-droplist top-12 z-10"
         >
           <div class="text-slate-custom text-sm font-normal py-10px px-15px">

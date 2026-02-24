@@ -59,6 +59,17 @@ interface ApiResponseDepartments {
     'data'?: [ApiDepartment];
 }
 
+interface ApiRole {
+    id: number;
+    name: string;
+    [key: string]: unknown;
+}
+
+interface ApiResponseRoles {
+    message?: string;
+    data?: ApiRole[];
+}
+
 export async function  executorsList() {
     const config = useRuntimeConfig();
     const authToken = useCookie('auth_token').value;
@@ -85,6 +96,34 @@ export async function  executorsList() {
 
         return { executors };
 };
+
+export async function getRoles(): Promise<{ id: number; name: string }[]> {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+    try {
+        const response: ApiResponseRoles = await $fetch(
+            `${config.public.apiBase}/roles`,
+            {
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${authToken}`,
+                    'X-Auth-User': `${authUser}`,
+                },
+            }
+        );
+        if (response.data && Array.isArray(response.data)) {
+            return response.data.map((r: ApiRole) => ({ id: r.id, name: r.name }));
+        }
+    } catch (e) {
+        console.warn('getRoles:', (e as Error)?.message || e);
+    }
+    return [
+        { id: 1, name: 'Администратор' },
+        { id: 3, name: 'Рекрутер' },
+        { id: 5, name: 'Заказчик' },
+    ];
+}
 
 export async function  getDepartments(divisions: boolean = false) {
     const config = useRuntimeConfig();
@@ -209,23 +248,23 @@ export async function  employeesList() {
     const authToken = useCookie('auth_token').value;
     const authUser = useCookie('auth_user').value;
 
-    const response: ApiResponseExecutors = await $fetch(`${config.public.apiBase}/customer-with-roles/employees`, {
+    const response = await $fetch<ApiResponseExecutors>(`${config.public.apiBase}/customer-with-roles/employees`, {
         headers: {
             Accept: 'application/json',
             Authorization: `Bearer ${authToken}`,
              'X-Auth-User': `${authUser}`
         }
-    });
+    }).catch(() => ({ data: [] }));
 
-    if (!response.data || !response.data || !Array.isArray(response.data)) {
-        throw new Error('Данные исполнителей не найдены или имеют неверный формат');
+    if (!response?.data || !Array.isArray(response.data)) {
+        return [];
     }
 
     const employees: Executor[] = response.data.map((executor: ApiExecutor) => ({
             id: executor.id,
             name: executor.name,
             email: executor.email,
-            role: executor.role.name 
+            role: executor?.role?.name ?? ''
         }));
 
         return employees;
@@ -236,7 +275,7 @@ export async function  teamList(id: string) {
     const authToken = useCookie('auth_token').value;
     const authUser = useCookie('auth_user').value;
 
-    const response: ApiResponseTeam = await $fetch(`${config.public.apiBase}/team/${id}`, {
+    const response = await $fetch<ApiResponseTeam>(`${config.public.apiBase}/team/${id}`, {
         headers: {
             Accept: 'application/json',
             Authorization: `Bearer ${authToken}`,
@@ -244,15 +283,15 @@ export async function  teamList(id: string) {
         }
     });
 
-    if (!response.data || !response.data || !Array.isArray(response.data)) {
-        throw new Error('Данные команды не найдены или имеют неверный формат');
+    if (!response?.data || !Array.isArray(response.data)) {
+        return [];
     }
 
     const employees: Team[] = response.data.map((executor: ApiTeam) => ({
             id: executor.id,
             name: executor.name,
             email: executor.email,
-            role: executor.role.name 
+            role: executor?.role?.name ?? ''
         }));
 
         return employees;
