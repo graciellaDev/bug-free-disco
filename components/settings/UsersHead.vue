@@ -1,8 +1,8 @@
 <template>
-    <div class="w-full bg-white rounded-t-fifteen p-25px flex justify-between gap-2.5 pb-23px">
+    <div class="w-full bg-white p-25px flex justify-between gap-2.5 pb-23px" :class="props.showTabs ? 'rounded-t-fifteen' : 'rounded-fifteen'">
         <div>
             <div class="mb-2">
-                <p class="text-xl font-semibold">
+                <p class="text-xl font-semibold" :class="{ 'page-title-employees': title === 'Сотрудники' }">
                     {{ title }} 
                 </p>
             </div>
@@ -21,7 +21,7 @@
             </button>
         </div>
     </div>
-    <div class="relative top-25px -left-25px" style="width: calc(100% + 50px);">
+    <div v-if="props.showTabs" class="relative top-25px -left-25px" style="width: calc(100% + 50px);">
         <div class="bg-catskill w-full px-50px py-15px rounded-b-fifteen">
             <div class="gap-x-2.5 flex">
                 <button 
@@ -51,7 +51,7 @@
               :lgSize="true" :parentRounded="true"
               :overflowVisible="true">
       <FormAddClient v-if="props.typeUser === 'client'" @update="update('invites')"/>
-      <FormAddRecruiter v-if="props.typeUser === 'recruiter'" @update="update('invites')"/>
+      <FormAddRecruiter v-if="props.typeUser === 'recruiter'" @update="update('invites')" @close="handleCloseSettingsPopup"/>
     </Popup>
   </transition>
 </template>
@@ -72,9 +72,12 @@ const props = defineProps({
     },
     activeTab: {
         type: String,
-        required: true,
-        default: 'list'
-    }
+        default: 'list',
+    },
+    showTabs: {
+        type: Boolean,
+        default: true,
+    },
 });
 
 const emit = defineEmits(['childClick']);
@@ -98,3 +101,15 @@ function disableBodyScroll() {
     document.body.style.overflow = 'hidden' // Отключаем прокрутку
 }
 </script>
+
+<style scoped>
+/* Head/SB 20 — заголовок «Сотрудники» */
+.page-title-employees {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 130%;
+    letter-spacing: 0;
+    color: #2F353D;
+}
+</style>

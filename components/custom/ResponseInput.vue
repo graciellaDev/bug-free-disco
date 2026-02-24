@@ -70,6 +70,10 @@
   watch(() => props.modelValue, (val) => {
     currentResponse.value = val ?? ''
   })
+
+  watch(() => props.responses, () => {
+    filterResponses()
+  }, { deep: true })
 </script>
 
 <template>
@@ -80,7 +84,7 @@
           type="text"
           v-model="currentResponse"
           @input="filterResponses"
-          @focus="isFocused = true; emit('focus')"
+          @focus="isFocused = true; filterResponses(); emit('focus')"
           @blur="isFocused = false; emit('blur')"
           :placeholder="isFocused ? '' : placeholder"
           :class="[

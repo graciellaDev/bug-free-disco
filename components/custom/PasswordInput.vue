@@ -14,6 +14,10 @@ const props = defineProps({
         type: String,
         default: 'Введите пароль',
     },
+    invalid: {
+        type: Boolean,
+        default: false,
+    },
 })
 
 const emit = defineEmits(['update:modelValue', 'blur'])
@@ -43,7 +47,8 @@ const handleBlur = (event) => {
 <template>
     <div class="relative">
         <input type="password" ref="passRef"
-          class="password-input text-sm font-normal bg-athens-gray border border-athens rounded-ten min-h-10 w-full pl-15px focus:outline-none focus:border focus:border-dodger"
+          class="password-input text-sm font-normal rounded-ten min-h-10 w-full pl-15px focus:outline-none focus:border focus:border-dodger"
+          :class="invalid ? 'border border-red-500 bg-athens-gray' : 'border border-athens bg-athens-gray'"
           :placeholder="placeholder" @blur="handleBlur" v-model="password" @input="updateValue">
         <button class="toggle-pass" @click="passToggle">
             <span v-if="passView" class="pass-show"></span>

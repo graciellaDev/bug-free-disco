@@ -82,6 +82,10 @@ const props = defineProps({
     type: String,
     default: 'default', // 'default' | 'semiaction' — стиль как у кнопки «В черновик»
   },
+  error: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'select', 'open'])
@@ -92,14 +96,14 @@ const triggerVariantClasses = computed(() => {
   const base = 'leading-normal'
   if (props.triggerVariant === 'semiaction') {
     return [
-      'bg-zumthor text-dodger border border-transparent',
-      isDropDownVisible.value ? 'border-dodger' : '',
+      'bg-zumthor text-dodger border',
+      props.error ? 'border-red-500' : (isDropDownVisible.value ? 'border-dodger' : 'border-transparent'),
       base,
     ].filter(Boolean).join(' ')
   }
   return [
     'border bg-athens-gray',
-    isDropDownVisible.value ? 'border-[#5898ff]' : 'border-athens',
+    props.error ? 'border-red-500' : (isDropDownVisible.value ? 'border-[#5898ff]' : 'border-athens'),
     base,
   ].join(' ')
 })

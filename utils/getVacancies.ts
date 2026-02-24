@@ -169,10 +169,12 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
             params.append(key, String(value));
         }
     });
+    // POST нужен, чтобы PHP разбирал тело запроса; Laravel воспринимает как PUT по _method
+    params.append('_method', 'PUT');
 
     try {
         const response = await $fetch(`/vacancies/${id}`, {
-            method: 'PUT',
+            method: 'POST',
             baseURL: config.public.apiBase as string,
             headers: {
                 'Accept': 'application/json',
@@ -187,7 +189,10 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
     } catch (err: any) {
         console.error('Ошибка при обновлении вакансии:', err);
 
-        if (err.response?.status === 401) {
+        const status = err.response?.status ?? err.statusCode ?? err.status;
+        const body = err.data ?? err.response?.data ?? err.response?._data;
+
+        if (status === 401) {
             const userStore = useUserStore();
             userStore.clearUserData();
 
@@ -198,13 +203,13 @@ export const updateVacancy = async (id: string | number, data: UpdateVacancyData
             return { data: null, error: 'Срок сессии истек. Пожалуйста, авторизуйтесь снова.' };
         }
 
-        // Обработка ошибок валидации (422)
-        if (err.response?.status === 422) {
-            const validationErrors = err.response._data?.errors || err.response._data?.message;
+        if (status === 422) {
+            const validationErrors = body?.errors || body?.message;
             return { data: null, error: validationErrors || 'Ошибка валидации данных' };
         }
 
-        return { data: null, error: err.response?._data?.message || 'Ошибка при обновлении вакансии' };
+        const msg = body?.message ?? body?.error ?? 'Ошибка при обновлении вакансии';
+        return { data: null, error: typeof msg === 'string' ? msg : JSON.stringify(msg) };
     }
 };
 

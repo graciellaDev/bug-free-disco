@@ -4,17 +4,24 @@
             <div>
                 <p class="text-xl font-semibold text-space mb-2.5">Ваша команда</p>
                 <p class="text-sm font-normal text-slate-custom">
-                    Назначьте рекрутер или заказчиков, которые будут взаимодействовать с&nbsp;этой вакансией
+                    Назначьте рекрутеров или заказчиков, которые будут взаимодействовать с&nbsp;этой вакансией
                 </p>
             </div>
             <UiButton variant="black" size="black" class="font-bold" @click="openPopup">Добавить участников</UiButton>
         </div>
-        <TableUsers :users="users" :dropdownOptions="dropdownOptions" @delete-user="openDeletePopup" />
+        <TableUsers variant="vacancyTeam" :users="users" :dropdownOptions="dropdownOptions" @delete-user="openDeletePopup" />
     </div>
     <transition v-if="activePopup === 'invite'" name="fade" @after-leave="enableBodyScroll">
-        <Popup :isOpen="isPopupOpen" @close="closePopup" :showCloseButton="false" :width="'490px'"
-          :height="'fit-content'" :disableOverflowHidden="true">
-            <!-- Первое окно -->
+        <Popup
+          :isOpen="isPopupOpen"
+          @close="closePopup"
+          :showCloseButton="false"
+          width="490px"
+          :height="'fit-content'"
+          :disableOverflowHidden="true"
+          :contentPadding="false"
+        >
+            <!-- Первое окно: Новый участник -->
             <div>
                 <p class="text-xl font-semibold text-space mb-2.5">Новый участник</p>
                 <p class="text-sm font-normal text-slate-custom mb-25px">
@@ -32,12 +39,12 @@
                 <response-input
                   class="mb-15px"
                   placeholder="Выберите рекрутера"
-                  v-model="selectedEmployee"
-                  :responses="employees"
+                  :modelValue="selectedEmployee?.name ?? ''"
+                  :responses="employeesNotInTeam"
                   :showRoles="true"
                   @update:modelValue="(name, id, email) => {
-                    emailInvoice = email;
-                    selectedEmployee = employees.find(emp => emp.id === id) || null;
+                    emailInvoice = email ?? '';
+                    selectedEmployee = id != null ? (employeesNotInTeam.find(emp => emp.id === id) || null) : null;
                   }"
                  />
                 <!-- <EmailInput v-model="emailInvoice" class="mb-15px" /> -->
@@ -52,9 +59,16 @@
         </Popup>
     </transition>
     <transition v-if="activePopup === 'confirmation'" name="fade" @after-leave="enableBodyScroll">
-        <Popup :isOpen="isPopupOpen" @close="closePopup" :showCloseButton="false" :width="'490px'"
-          :height="'fit-content'" :disableOverflowHidden="true">
-            <!-- Второе окно -->
+        <Popup
+          :isOpen="isPopupOpen"
+          @close="closePopup"
+          :showCloseButton="false"
+          width="490px"
+          :height="'fit-content'"
+          :disableOverflowHidden="true"
+          :contentPadding="false"
+        >
+            <!-- Второе окно: Приглашение отправлено -->
             <div v-if="activePopup === 'confirmation'">
                 <p class="text-xl font-semibold text-space mb-2.5">Приглашение отправлено</p>
                 <p class="text-sm font-normal text-slate-custom mb-25px">
@@ -69,22 +83,45 @@
         </Popup>
     </transition>
     <transition v-if="activePopup === 'delete'" name="fade" @after-leave="enableBodyScroll">
-        <Popup :isOpen="isPopupOpen" @close="closePopup" :showCloseButton="false" :width="'490px'"
-          :height="'fit-content'" :disableOverflowHidden="true">
-            <div>
-                <p class="text-xl font-semibold text-space mb-2.5">Удаление участника</p>
-                <p class="text-sm font-normal text-slate-custom mb-25px">
-                    Вы действительно хотите удалить сотрудника <span class="font-medium text-space">{{ userToDelete?.name }}</span> из команды?
+        <Popup
+          :isOpen="isPopupOpen"
+          @close="closePopup"
+          width="490px"
+          :showCloseButton="false"
+          :lgSize="true"
+          :parentRounded="true"
+          :contentRounded="false"
+          :contentPadding="false"
+        >
+            <div class="popup-delete-content flex flex-col gap-y-6">
+                <h2 class="text-xl font-semibold text-space">
+                    Подтверждение удаления
+                </h2>
+                <p class="text-sm text-slate-custom">
+                    Вы уверены, что хотите удалить сотрудника
+                    <strong v-if="userToDelete">{{ userToDelete.name }}</strong>
+                    из команды?
                 </p>
-                <div class="flex gap-x-15px">
-                    <UiButton variant="delete" size="delete" @click="confirmDelete" :disabled="isDeleting">
-                        {{ isDeleting ? 'Удаление...' : 'Удалить' }}
-                    </UiButton>
-                    <UiButton variant="back" size="back" @click="closePopup">Отмена</UiButton>
-                </div>
-                <p class="text-red-500 text-xs mt-3" v-if="deleteErrorMessage">
+                <p class="text-red-500 text-xs" v-if="deleteErrorMessage">
                     {{ deleteErrorMessage }}
                 </p>
+                <div class="flex gap-x-3">
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-red-500 hover:bg-red-600 text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold"
+                      @click="confirmDelete"
+                      :disabled="isDeleting"
+                    >
+                        {{ isDeleting ? 'Удаление...' : 'Удалить' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-athens-gray border border-athens text-slate-custom p-border-semi-btn text-sm rounded-ten leading-normal font-medium"
+                      @click="closePopup"
+                    >
+                        Отмена
+                    </button>
+                </div>
             </div>
         </Popup>
     </transition>
@@ -92,7 +129,7 @@
 </template>
 
 <script setup>
-import { ref, onBeforeUnmount, watch } from "vue";
+import { ref, computed, onBeforeUnmount, watch, onMounted } from "vue";
 
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdonw from '~/components/custom/DotsDropdown.vue';
@@ -123,7 +160,34 @@ const deleteErrorMessage = ref(null);
 const route = useRoute();
 const currectVacancyId = route.query.id;
 
-employees.value = await employeesList();
+async function loadTeamData() {
+    try {
+        const list = await employeesList();
+        employees.value = Array.isArray(list) ? list : [];
+    } catch (e) {
+        console.error('Ошибка загрузки списка сотрудников:', e);
+        employees.value = [];
+    }
+    if (currectVacancyId) {
+        try {
+            users.value = await teamList(currectVacancyId);
+        } catch (e) {
+            console.error('Ошибка загрузки команды вакансии:', e);
+            users.value = [];
+        }
+    }
+}
+
+onMounted(() => {
+    loadTeamData();
+});
+
+// В списке добавления показываем только тех, кто ещё не в команде
+const employeesNotInTeam = computed(() => {
+    const teamIds = new Set(users.value.map((u) => u.id));
+    return employees.value.filter((emp) => !teamIds.has(emp.id));
+});
+
 // Функции для управления прокруткой
 function disableBodyScroll() {
     document.body.style.overflow = 'hidden'; // Отключаем прокрутку
@@ -188,16 +252,30 @@ async function switchToConfirmation() {
                 : 'Ошибка при обновлении вакансии';
             return;
         }
-        users.value = await teamList(currectVacancyId);
+
+        const addedId = selectedEmployee.value?.id;
+        const addedName = selectedEmployee.value?.name;
+        const addedEmail = selectedEmployee.value?.email ?? emailInvoice.value;
+        const addedRoleName = selectedRole.value?.title ?? selectedRole.value?.name ?? '';
+
+        let newList = await teamList(currectVacancyId);
+        if (addedId && !newList.some((u) => u.id === addedId)) {
+            newList = [...newList, { id: addedId, name: addedName, email: addedEmail, role: addedRoleName }];
+        }
+        users.value = newList;
 
         // Очищаем форму только после успешного обновления
         resetForm();
 
         // Переключаемся на окно confirmation
         activePopup.value = 'confirmation';
-    } catch (error) {
-        console.error('Ошибка при обновлении вакансии:', error);
-        errorMessage.value = 'Произошла ошибка при обновлении вакансии';
+    } catch (err) {
+        console.error('Ошибка при обновлении вакансии:', err);
+        const body = err?.data ?? err?.response?.data ?? err?.response?._data;
+        const serverMsg = body?.message ?? body?.error;
+        errorMessage.value = serverMsg
+            ? (typeof serverMsg === 'string' ? serverMsg : JSON.stringify(serverMsg))
+            : 'Произошла ошибка при обновлении вакансии';
     }
 }
 
@@ -249,11 +327,6 @@ async function confirmDelete() {
 onBeforeUnmount(() => {
     enableBodyScroll();
 });
-
-if (currectVacancyId) {
-    users.value = await teamList(currectVacancyId);
-}
-
 
 const optionsData = [
     {

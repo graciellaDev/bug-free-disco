@@ -1,84 +1,15 @@
 <template>
-  <div>
-    <div class="default-template">
-      <UsersHead 
-      typeUser="client" 
-      title="Заказчики" 
-      @childClick="updateActiveTab" />
-    </div>
-    <div class="default-template">
-      <TableClients v-if="activeTab === 'list'" :list="listActive.list" emptyText="У вас пока нет заказчиков"/>
-      <TableClients v-if="activeTab === 'invites'" typeList="invites" :list="listInvites.list" emptyText="Активных приглашений нет" />
-    </div>
-  </div>
+  <div />
 </template>
 
 <script setup>
-import TableClients from '@/components/settings/TableClients.vue';
-import UsersHead from '@/components/settings/UsersHead.vue';
-import { clientsList } from '@/utils/clientsList';
-
+// Заказчики отображаются на странице «Сотрудники» (раздел «Заказчики»)
 definePageMeta({
   layout: 'settings',
-})
-
-useHead({
-  title: 'Настройки — Заказчики',
-})
-
-const activeTab = ref('list');
-const updateActiveTab = async (tab, update = false) => {
-  activeTab.value = tab;
-  if (activeTab.value === 'invites' && (!listInvites.value.isGet || update)) {
-    const {clients: clients, error: error} = await clientsList('clients', 'status=new');
-    if (!error) {
-      listInvites.value.list = clients
-      listInvites.value.isGet = true
-    }
-  }
-  if (activeTab.value === 'list' && (!listActive.value.isGet || update)) {
-    const {clients: clients, error: error} = await clientsList('clients', 'status=active');
-    if (!error) {
-      listActive.value.list = clients
-      listActive.value.isGet = true
-    }
-  }
-}
-
-const listActive = ref({
-  isGet: false,
-  list: []
 });
-const listInvites = ref({
-  isGet: false,
-  list: []
-})
 
-const {clients: clients, error: error} = await clientsList('clients', 'status=active');
-if (!error) {
-  listActive.value.list = clients
-} else {
-  console.error(error)
-}
-
-const {clients: inviteClients, error: inviteError} = await clientsList('clients', 'status=new');
-if (!inviteError) {
-  listInvites.value.list = inviteClients
-} else {
-  console.error(inviteError)
-}
-
+await navigateTo('/settings/users/SettingsEmployees', { replace: true });
 </script>
 
 <style scoped>
-  .default-template {
-    background-color: #fff;
-    padding: 25px;
-    border-radius: 15px;
-    display: flex;
-    flex-direction: column;
-  }
-  .default-template:not(:last-child) {
-    margin-bottom: 10px;
-  }
 </style>

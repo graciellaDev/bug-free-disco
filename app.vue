@@ -21,7 +21,7 @@
 
 <script setup>
 import { PLATFORMS_DEFAULT } from '@/src/constants'
-import { provide } from 'vue';
+import { provide, ref } from 'vue';
 
 
 provide('platformsGlobal',  PLATFORMS_DEFAULT)

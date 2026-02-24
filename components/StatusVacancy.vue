@@ -59,7 +59,8 @@
               </div>
             </li>
             <li :class="{ 'active-tab': currentTab === 'team' }"
-              class="border-r border-athens w-full px-4.5px max-w-card-width" @click="changeTab('team')">
+              class="border-r border-athens w-full px-4.5px max-w-card-width cursor-pointer"
+              @click.prevent="changeTab('team')">
               <div
                 class="cursor-pointer opacity-30 hover:opacity-100 transition-all hover:bg-athens-gray px-25px pt-10px pb-10px rounded-ten h-full"
                 :class="isHovered ? 'opacity-30' : 'opacity-100'">
