@@ -16,8 +16,7 @@
   import type { Candidate } from '@/types/candidates';
   import type { FormConfig } from '@/types/form';
   import { getCandidateById } from '@/src/api/candidates';
-  import type { Stage } from '@/types/funnels';
-  import { getFunnelStages } from '@/src/api/funnels';
+  import type { VacancyStage } from '@/types/vacancy';
 
   const route = useRoute();
   const router = useRouter();
@@ -33,7 +32,7 @@
   const selected = ref<Record<number, boolean>>({});
   const allSelected = ref(false);
   const isActiveAll = ref(true);
-  const stages = ref<Stage[] | []>([]);
+  const stages = ref<VacancyStage[]>([]);
   const userRole = ref<UserRole>('admin');
 
   // const vacancyFilter = computed(() => {
@@ -227,6 +226,7 @@
       const result = await getVacancyById(id);
       if (result) {
         vacancy.value = result;
+        stages.value = result.stages ?? [];
       } else {
         console.error('Ошибка загрузки вакансии');
       }
@@ -484,7 +484,6 @@
     }
 
     isInitialLoad.value = false;
-    stages.value = await getFunnelStages();
   });
 
   watch(
@@ -578,12 +577,16 @@
       <button
         v-for="(stage, index) in stages"
         :key="stage.id"
-        class="flex cursor-pointer gap-x-2.5 rounded-ten px-15px py-2.5 text-sm font-medium text-space"
+        class="flex cursor-pointer gap-x-2.5 rounded-ten px-15px py-2.5 text-sm font-medium"
         @click="handleStageClick(stage.id)"
         :class="
           selectedStageId === stage.id
             ? 'bg-space text-white'
-            : 'bg-transparent text-space'
+            : stage.name === 'Нанят на работу'
+              ? 'bg-feta text-space'
+              : stage.name === 'Отказ'
+                ? 'bg-pink text-space'
+                : 'bg-transparent text-space'
         "
       >
         <p>{{ stage.name }}</p>

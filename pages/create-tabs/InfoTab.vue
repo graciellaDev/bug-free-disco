@@ -764,61 +764,6 @@ function setPlace(val) {
   selectedCard.value = newVacancy.value?.place?.[0] ?? '1'
 }
 
-/** Заполнить форму тестовыми данными (только для режима создания, чтобы не вводить всё вручную при проверке). */
-function fillTestData() {
-  const d = newVacancy.value
-  d.name = 'Менеджер по продажам (тест)'
-  d.code = 'TEST-001'
-  d.description = defaultDescriptionTemplate.replace(/<li><\/li>/g, '<li>Опыт работы от 1 года.</li><li>Навыки ведения переговоров.</li><li>Грамотная речь.</li>')
-  d.location = 'Москва'
-  d.workAddress = 'ул. Тверская, д. 1'
-  d.hideWorkAddress = false
-  d.executor_name = 'Иван Иванов'
-  d.executor_phone = '+7 (999) 123-45-67'
-  d.executor_email = 'test@example.com'
-  d.place = ['1']
-  selectedCard.value = '1'
-  d.oformlenie = ['labor']
-  d.schedule = ['5/2']
-  d.workHoursPerDay = ['8']
-  d.hasEveningNightShifts = false
-  d.employment = employmentOptions.value?.[0] || { id: 'FULL', name: 'Полная', siteName: 'Полная' }
-  d.experience = 'between1And3'
-  d.education = ArrayEducation?.length ? (ArrayEducation[1]?.value ?? 1) : 1
-  d.currency = 'RUB (рубль)'
-  d.salary_frequency = 'За месяц'
-  d.salary_payment_frequency = 'Раз в месяц'
-  d.salary_from = 50000
-  d.salary_to = 90000
-  d.status = 'В работе'
-  d.dateEnd = '31.12.2025'
-  d.comment = 'Тестовый комментарий к вакансии. Ссылка на вакансию: https://example.com/vacancy'
-  d.department = 'Отдел продаж'
-  d.peoples = 1
-  d.phrases = (tags.value?.length >= 2 ? tags.value.slice(0, 2) : [{ id: '1', name: 'Коммуникабельность' }, { id: '2', name: 'Работа в команде' }])
-  d.conditions = []
-  d.drivers = (ArrayCarId?.length >= 2 ? [{ id: ArrayCarId[1].id, value: ArrayCarId[1].value }] : [{ id: 2, value: 'B' }])
-  d.additions = []
-  d.languages = [{ language: 'Русский', languageLevel: 'Родной' }]
-  if (hhIndustries.value?.length) {
-    const cat = hhIndustries.value[0]
-    d.industry = { id: cat.id, name: cat.name, roles: cat.roles }
-    const role = cat.roles?.[0]
-    d.specializations = role ? { id: role.id, name: role.name } : { id: '1', name: 'Менеджер по продажам' }
-  } else {
-    d.industry = { id: '1', name: 'Продажи', roles: [] }
-    d.specializations = { id: '1', name: 'Менеджер по продажам' }
-  }
-  salary.value.from = 50000
-  salary.value.to = 90000
-  nameFieldEmptyError.value = false
-  workAddressFieldEmptyError.value = false
-  executorNameFieldEmptyError.value = false
-  specializationsFieldEmptyError.value = false
-  publicationCityFieldEmptyError.value = false
-  if (errors.value) Object.keys(errors.value).forEach((k) => delete errors.value[k])
-}
-
 const onWorkAddressBlur = () => {
   nextTick(() => {
     const v = newVacancy.value.workAddress
@@ -1144,6 +1089,15 @@ const validateVacancy = () => {
     if (errors.value.description) delete errors.value.description
   }
 
+  const spec = newVacancy.value.specializations
+  const specEmpty = !spec || (typeof spec === 'object' && !spec.name) || (typeof spec === 'string' && !String(spec).trim())
+  if (specEmpty) {
+    specializationsFieldEmptyError.value = true
+    errorsValid = false
+  } else {
+    specializationsFieldEmptyError.value = false
+  }
+
   if (!newVacancy.value.location || !String(newVacancy.value.location).trim()) {
     publicationCityFieldEmptyError.value = true
     errorsValid = false
@@ -1201,6 +1155,30 @@ const validateVacancy = () => {
   }
 
   return errorsValid
+}
+
+/** Порядок полей для прокрутки к первой ошибке (совпадает с порядком проверки в validateVacancy). */
+const ERROR_FIELD_ORDER = ['name', 'description', 'specializations', 'location', 'schedule', 'workHoursPerDay', 'workAddress', 'executor_name', 'salary', 'response']
+
+function scrollToFirstError() {
+  for (const field of ERROR_FIELD_ORDER) {
+    let hasError = false
+    if (field === 'name') hasError = !!errors.value.name
+    else if (field === 'description') hasError = !!errors.value.description
+    else if (field === 'specializations') hasError = specializationsFieldEmptyError.value
+    else if (field === 'location') hasError = publicationCityFieldEmptyError.value
+    else if (field === 'schedule') hasError = !!errors.value.schedule
+    else if (field === 'workHoursPerDay') hasError = !!errors.value.workHoursPerDay
+    else if (field === 'workAddress') hasError = workAddressFieldEmptyError.value
+    else if (field === 'executor_name') hasError = executorNameFieldEmptyError.value
+    else if (field === 'salary') hasError = !!errors.value.salary
+    else if (field === 'response') hasError = !!errors.value.response
+    if (hasError) {
+      const el = document.querySelector(`[data-error-field="${field}"]`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      break
+    }
+  }
 }
 
 // Функция для сравнения значений (включая массивы и объекты)
@@ -1292,14 +1270,21 @@ function cleanDataForSending(data) {
 }
 
 async function saveVacancy(opt) {
-  if (validateVacancy()) {
+  if (!validateVacancy()) {
+    await nextTick()
+    scrollToFirstError()
+    throw new Error('Validation failed')
+  }
+  {
     let response, error;
     
     // Используем vacancyData для получения правильных данных (phrases как массив)
     const fullData = { ...vacancyData.value };
     fullData.application = route.query.application ?? null;
-    
-    if (props.type === 'edit') {
+    // id для редактирования: при вызове с других вкладок берём из родителя (vacancyIdRef), т.к. props.id у закэшированного InfoTab может быть устаревшим
+    const effectiveId = (props.id || vacancyIdRef?.value) ?? null;
+    const isEdit = props.type === 'edit' || (effectiveId != null && String(effectiveId) !== '');
+    if (isEdit && effectiveId) {
       // При редактировании отправляем только измененные поля
       const changedFields = getChangedFields(fullData, originalVacancyData.value);
       // Формат работы (place): массив, как oformlenie — все выбранные значения
@@ -1313,7 +1298,7 @@ async function saveVacancy(opt) {
       }
       // Очищаем от null значений
       const cleanedData = cleanDataForSending(changedFields);
-      const result = await updateVacancy(props.id, cleanedData);
+      const result = await updateVacancy(String(effectiveId), cleanedData);
       response = result.data;
       error = result.error;
     } else {
@@ -1336,25 +1321,47 @@ async function saveVacancy(opt) {
           errors.value.response = 'Произошла ошибка при создании вакансии'
           break
       }
-    } else {
+      throw new Error('Save failed')
+    }
+    if (opt?.goToPublish) {
       emit('goToPublish')
     }
+    // API создания возвращает { message, data: vacancy } — id в response.data.id
+    const id = response?.data?.id ?? response?.id ?? effectiveId ?? props.id
+    return id != null ? { id: Number(id) } : undefined
   }
 }
 
 const saveAndContinueHandler = inject('saveAndContinueHandler', null)
+const mainSaveHandler = inject('mainSaveHandler', null)
+const vacancyIdRef = inject('vacancyIdRef', null)
 onMounted(() => {
   if (saveAndContinueHandler) {
     saveAndContinueHandler.value = saveVacancy
+  }
+  if (mainSaveHandler) {
+    mainSaveHandler.value = saveVacancy
   }
 })
 onBeforeUnmount(() => {
   if (saveAndContinueHandler) {
     saveAndContinueHandler.value = null
   }
+  if (mainSaveHandler) {
+    mainSaveHandler.value = null
+  }
 })
 
 defineExpose({ saveVacancy })
+
+/** Обработчик нижней кнопки «Сохранить и продолжить» — перехватывает ошибку валидации, чтобы не было unhandled rejection. */
+async function onSaveAndContinueClick() {
+  try {
+    await saveVacancy({ goToPublish: true })
+  } catch (_) {
+    // Валидация не прошла или ошибка сохранения — остаёмся на вкладке
+  }
+}
 
 const updateEvent = (data, property) => {
   newVacancy.value[property] = data
@@ -1449,17 +1456,9 @@ const updateExecutor = (value, id) => {
       <div class="max-w-[875px] flex-grow p-25px bg-white rounded-fifteen">
         <div class="flex items-center justify-between gap-4 mb-8">
           <p class="text-space text-xl font-semibold">Основная информация</p>
-          <button
-            v-if="!id"
-            type="button"
-            class="text-sm text-dodger hover:underline shrink-0"
-            @click="fillTestData"
-          >
-            Заполнить тестовыми данными
-          </button>
         </div>
         <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="flex-[3] min-w-0">
+          <div class="flex-[3] min-w-0" data-error-field="name">
             <div class="flex items-center gap-1 mb-4">
               <p class="text-sm font-medium leading-normal text-space">
                 <span class="text-red-custom">*</span>
@@ -1479,13 +1478,10 @@ const updateExecutor = (value, id) => {
               placeholder="Например, Менеджер по продажам"
               :show-search-icon="false"
               :maxlength="80"
-              :error="nameFieldEmptyError"
+              :error="nameFieldEmptyError || !!errors.name"
               class="mb-11px"
             />
-            <div v-if="errors.name" class="text-red-500 text-xs mt-1">
-              {{ errors.name }}
-            </div>
-            <p v-if="nameFieldEmptyError" class="text-xs text-red-500 mt-1">
+            <p v-if="nameFieldEmptyError || errors.name" class="text-xs text-red-500 mt-1">
               Напишите, кого ищете
             </p>
             <p v-else class="text-xs text-bali">
@@ -1554,7 +1550,7 @@ const updateExecutor = (value, id) => {
               />
               </div>
         </div>
-        <div class="w-full mb-6">
+        <div class="w-full mb-6" data-error-field="specializations">
           <div class="flex items-center gap-1 mb-3.5">
             <p class="text-sm font-medium text-space">
               <span class="text-red-custom">*</span>
@@ -1718,7 +1714,7 @@ const updateExecutor = (value, id) => {
           График и часы работы
         </p>
         <div class="flex gap-25px mb-6 items-start">
-          <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start">
+          <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start" data-error-field="schedule">
             <div class="w-full flex items-center gap-1 mb-3.5">
               <p class="text-sm font-medium text-space">
                 График работы
@@ -1742,7 +1738,7 @@ const updateExecutor = (value, id) => {
             </button>
             <p v-if="errors.schedule" class="w-full text-xs text-red-500 mt-1">{{ errors.schedule }}</p>
           </div>
-          <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start">
+          <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start" data-error-field="workHoursPerDay">
             <p class="w-full text-sm font-medium text-space mb-3.5">
               Рабочие часы в день
             </p>
@@ -1777,7 +1773,7 @@ const updateExecutor = (value, id) => {
         <p class="text-space text-xl font-semibold mb-[31px]">
           Город публикации и адрес работы
         </p>
-        <div class="w-full mb-6">
+        <div class="w-full mb-6" data-error-field="location">
           <p class="text-sm font-medium text-space mb-3.5">
             <span class="text-red-custom">*</span>
             Город публикации
@@ -1799,7 +1795,7 @@ const updateExecutor = (value, id) => {
             Выберите город, где опубликовать вакансию
           </p>
         </div>
-        <div class="w-full mb-6">
+        <div class="w-full mb-6" data-error-field="workAddress">
           <p class="text-sm font-medium text-space mb-3.5">
             <span class="text-red-custom">*</span>
             Адрес работы сотрудника
@@ -1843,7 +1839,7 @@ const updateExecutor = (value, id) => {
         </p>
         <div class="flex flex-col gap-4">
           <div class="flex gap-4 items-start">
-            <div class="w-[60%] min-w-0">
+            <div class="w-[60%] min-w-0" data-error-field="salary">
               <p class="text-sm font-medium text-space mb-3.5">
                 Диапазон заработной платы
               </p>
@@ -1922,7 +1918,7 @@ const updateExecutor = (value, id) => {
         <p class="text-space text-xl font-semibold mb-[31px]">
           Описание вакансии
         </p>
-        <div class="w-full mb-3.5">
+        <div class="w-full mb-3.5" data-error-field="description">
           <div class="w-full flex justify-between">
             <p class="text-sm font-medium text-space">
               <span class="text-red-custom">*</span>
@@ -2062,6 +2058,7 @@ const updateExecutor = (value, id) => {
           class="mb-6"
         />
         <template v-if="!hideContactFields">
+        <div data-error-field="executor_name">
         <p class="text-sm font-medium text-space mb-16px">
           <span class="text-red-custom">*</span>
           Контактное лицо
@@ -2080,6 +2077,7 @@ const updateExecutor = (value, id) => {
         <p v-if="executorNameFieldEmptyError" class="text-xs text-red-500 mt-1">
           Укажите, к кому кандидаты могут обращаться
         </p>
+        </div>
         <div class="w-full flex justify-between gap-x-[25px]">
           <div class="w-full max-w-[400px]">
             <p class="text-sm font-medium text-space leading-normal mb-4">
@@ -2108,11 +2106,13 @@ const updateExecutor = (value, id) => {
         </p>
       </div> -->
     </div>
-    <UiButton @click="saveVacancy({ goToPublish: true })" variant="action" size="semiaction" class="font-semibold">
+    <div data-error-field="response">
+    <UiButton @click="onSaveAndContinueClick" variant="action" size="semiaction" class="font-semibold">
       Сохранить и продолжить
     </UiButton>
     <div v-if="errors.response" class="text-red-500 text-xs mt-1">
       {{ errors.response }}
+    </div>
     </div>
   </div>
 </template>
@@ -2122,7 +2122,7 @@ const updateExecutor = (value, id) => {
   max-width: calc(50% - 12.5px);
 }
 .block {
-  padding-top: 12rem;
+  padding-top: 1.5rem;
 }
 .plan-hire-input-wrapper:focus-within {
   border-color: #5898ff;
