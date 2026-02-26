@@ -1,5 +1,5 @@
 <template>
-    <div class="container pb-72 pt-48">
+    <div class="container pb-72 pt-6">
         <div class="mb-9">
                  <!-- Третий блок(магазин) -->
             <p class="text-xl font-semibold text-space mb-5px">Размещения</p>
@@ -535,6 +535,52 @@
             </div>
         </Popup>
 
+        <!-- Попапы редактирования и добавления публикации (всегда в DOM) -->
+        <Popup
+            :isOpen="isEditPopupOpen"
+            @close="closeEditPopup"
+            :width="'900px'"
+            :height="'fit-content'"
+            :showCloseButton="false"
+            :disableOverflowHidden="true"
+            maxHeight
+        >
+            <div class="p-25px max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-25px">
+                    <div>
+                        <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии</p>
+                        <p class="text-sm font-normal text-slate-custom">
+                            Редактирование вакансии из таблицы "Активные публикации"
+                        </p>
+                    </div>
+                    <button @click="closeEditPopup" class="text-slate-custom hover:text-space transition-colors">
+                        <svg-icon name="close" width="20" height="20" />
+                    </button>
+                </div>
+                <AddPublication 
+                    v-if="editingVacancy"
+                    :selectedPlatform="null"
+                    :editingVacancy="editingVacancy"
+                    @saved="handleVacancyUpdated"
+                    @cancel="closeEditPopup"
+                />
+            </div>
+        </Popup>
+
+        <Popup
+            :isOpen="isOpenPopup"
+            @close="() => (isOpenPopup = false)"
+            :width="'740px'"
+            :showCloseButton="false"
+            :disableOverflowHidden="true"
+            :overflowContainer="true"
+            maxHeight
+            :lgSize="true"
+        >
+            <AddPublication :selectedPlatform="selectedPlatformForPublish"/>
+        </Popup>
+
+        <template v-if="isLoadingPublicationPlatforms || sortedData.length > 0">
         <!-- Заголовок -->
         <div class="flex justify-between bg-white rounded-fifteen p-25px items-center mb-15px">
             <div>
@@ -544,53 +590,6 @@
                     из&nbsp;подключенных профилей
                 </p>
             </div>
-            <!--<UiButton variant="action" size="action" class="font-bold" @click="openPopupNewPublication">
-                Добавить публикацию
-            </UiButton>-->
-            <!-- Попап редактирования вакансии -->
-            <Popup
-                :isOpen="isEditPopupOpen"
-                @close="closeEditPopup"
-                :width="'900px'"
-                :height="'fit-content'"
-                :showCloseButton="false"
-                :disableOverflowHidden="true"
-                maxHeight
-            >
-                <div class="p-25px max-h-[90vh] overflow-y-auto">
-                    <div class="flex items-center justify-between mb-25px">
-                        <div>
-                            <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии</p>
-                            <p class="text-sm font-normal text-slate-custom">
-                                Редактирование вакансии из таблицы "Активные публикации"
-                            </p>
-                        </div>
-                        <button @click="closeEditPopup" class="text-slate-custom hover:text-space transition-colors">
-                            <svg-icon name="close" width="20" height="20" />
-                        </button>
-                    </div>
-                    <AddPublication 
-                        v-if="editingVacancy"
-                        :selectedPlatform="null"
-                        :editingVacancy="editingVacancy"
-                        @saved="handleVacancyUpdated"
-                        @cancel="closeEditPopup"
-                    />
-                </div>
-            </Popup>
-
-            <Popup
-                  :isOpen="isOpenPopup"
-                  @close="() => (isOpenPopup = false)"
-                  :width="'740px'"
-                  :showCloseButton="false"
-                  :disableOverflowHidden="true"
-                  :overflowContainer="true"
-                  maxHeight
-                  :lgSize="true"
-            >
-            <AddPublication :selectedPlatform="selectedPlatformForPublish"/>
-            </Popup>
         </div>
 
         <!-- Оповещение о снятии с публикации (перевод в архив) -->
@@ -683,11 +682,12 @@
                 </div>
             </div>
         </div>
+        </template>
     </div>
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent, watch, onMounted, nextTick } from "vue";
+import { ref, computed, defineAsyncComponent, watch, onMounted, onBeforeUnmount, nextTick, inject } from "vue";
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdown from '~/components/custom/DotsDropdown.vue';
 import CardIcon from '~/components/custom/CardIcon.vue';
@@ -755,6 +755,11 @@ const publicationsHh = ref([]);
 const publicationPlatforms = ref([]);
 //const publications = await getPublications()
 const cartStore = useCartStore()
+const saveAndContinueHandler = inject('saveAndContinueHandler', null)
+const setPublicationsCount = inject('setPublicationsCount', null)
+
+// Синхронизация количества публикаций с вкладкой (для подписи «Публикации (N)»)
+watch(() => publicationPlatforms.value.length, (len) => { setPublicationsCount?.(len); }, { immediate: true })
 
 // if (publications && !publications.error && !publications.errorRoles) {
 //     publicationsHh.value = publications.roles?.items || [];
@@ -1934,6 +1939,9 @@ async function confirmUnlink() {
 }
 
 onMounted(async () => {
+    if (saveAndContinueHandler) {
+      saveAndContinueHandler.value = async () => {}
+    }
     await Promise.all([
       cartStore.setCardsData(cardsData),
       cartStore.setRatesData(ratesData),
@@ -2039,6 +2047,12 @@ onMounted(async () => {
         setCookie('auth_return_url', '', -1);
         // Редирект на исходную страницу
         await navigateTo(redirectUrl);
+    }
+  })
+
+  onBeforeUnmount(() => {
+    if (saveAndContinueHandler) {
+      saveAndContinueHandler.value = null
     }
   })
 

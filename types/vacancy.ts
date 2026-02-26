@@ -39,7 +39,16 @@ export interface Vacancy {
   customer_email?: string;
   created_at?: string;
   updated_at?: string;
+  stages?: VacancyStage[];
 }
+
+export type VacancyStage = {
+  id: number;
+  name: string;
+  position?: number;
+  fixed?: boolean;
+  max_days?: number | null;
+};
 
 export type ApiResponseVacanciesData = {
   data: Vacancy[];

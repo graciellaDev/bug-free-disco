@@ -1,5 +1,5 @@
 <template>
-    <div class="container pb-72 pt-48">
+    <div class="container pb-72 pt-6">
         <div class="flex justify-between bg-white rounded-fifteen p-25px items-center mb-15px">
             <div>
                 <p class="text-xl font-semibold text-space mb-2.5">Ваша команда</p>
@@ -129,7 +129,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount, watch, onMounted } from "vue";
+import { ref, computed, onBeforeUnmount, watch, onMounted, onActivated, inject } from "vue";
 
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdonw from '~/components/custom/DotsDropdown.vue';
@@ -141,6 +141,10 @@ import ResponseInput from "~/components/custom/ResponseInput.vue";
 import TableUsers from "@/components/custom/TableUsers.vue";
 import { useRoute } from 'vue-router'
 import { updateVacancy } from '@/utils/getVacancies';
+
+const props = defineProps({
+    id: { type: [String, Number], default: null },
+});
 
 const selected = ref({}); // Выбранные чекбоксы
 const allSelected = ref(false);
@@ -158,7 +162,9 @@ const userToDelete = ref(null);
 const isDeleting = ref(false);
 const deleteErrorMessage = ref(null);
 const route = useRoute();
-const currectVacancyId = route.query.id;
+// id вакансии: приоритет у prop от родителя (актуален после создания), затем route
+const currectVacancyId = computed(() => props.id ?? route.params?.id ?? route.query?.id ?? null);
+const saveAndContinueHandler = inject('saveAndContinueHandler', null);
 
 async function loadTeamData() {
     try {
@@ -168,18 +174,35 @@ async function loadTeamData() {
         console.error('Ошибка загрузки списка сотрудников:', e);
         employees.value = [];
     }
-    if (currectVacancyId) {
-        try {
-            users.value = await teamList(currectVacancyId);
-        } catch (e) {
-            console.error('Ошибка загрузки команды вакансии:', e);
-            users.value = [];
+    const id = currectVacancyId.value;
+    try {
+        if (id) {
+            users.value = await teamList(String(id));
+        } else {
+            // До сохранения вакансии показываем создателя (текущего пользователя) через GET /team/0
+            users.value = await teamList('0');
         }
+    } catch (e) {
+        console.error('Ошибка загрузки команды вакансии:', e);
+        users.value = [];
     }
 }
 
 onMounted(() => {
+    if (saveAndContinueHandler) {
+      saveAndContinueHandler.value = async () => {};
+    }
     loadTeamData();
+});
+
+// Перезагрузка команды при появлении id вакансии (например после сохранения и редиректа)
+watch(currectVacancyId, (id) => {
+    if (id) loadTeamData();
+}, { immediate: false });
+
+// При переключении на вкладку «Команда» перезагружаем список (актуально после создания вакансии)
+onActivated(() => {
+    if (currectVacancyId.value) loadTeamData();
 });
 
 // В списке добавления показываем только тех, кто ещё не в команде
@@ -226,7 +249,7 @@ async function switchToConfirmation() {
     }
 
     // Проверяем наличие ID вакансии
-    if (!currectVacancyId) {
+    if (!currectVacancyId.value) {
         errorMessage.value = 'ID вакансии не найден';
         return;
     }
@@ -244,7 +267,7 @@ async function switchToConfirmation() {
 
     try {
         // Отправляем запрос на обновление вакансии
-        const result = await updateVacancy(currectVacancyId, updateData);
+        const result = await updateVacancy(currectVacancyId.value, updateData);
 
         if (result.error) {
             errorMessage.value = typeof result.error === 'string'
@@ -258,7 +281,7 @@ async function switchToConfirmation() {
         const addedEmail = selectedEmployee.value?.email ?? emailInvoice.value;
         const addedRoleName = selectedRole.value?.title ?? selectedRole.value?.name ?? '';
 
-        let newList = await teamList(currectVacancyId);
+        let newList = await teamList(currectVacancyId.value);
         if (addedId && !newList.some((u) => u.id === addedId)) {
             newList = [...newList, { id: addedId, name: addedName, email: addedEmail, role: addedRoleName }];
         }
@@ -292,7 +315,7 @@ function openDeletePopup(user) {
 }
 
 async function confirmDelete() {
-    if (!userToDelete.value || !currectVacancyId) {
+    if (!userToDelete.value || !currectVacancyId.value) {
         deleteErrorMessage.value = 'Ошибка: не удалось определить сотрудника или вакансию';
         return;
     }
@@ -301,7 +324,7 @@ async function confirmDelete() {
     deleteErrorMessage.value = null;
 
     try {
-        const result = await removeFromTeam(currectVacancyId, userToDelete.value.id);
+        const result = await removeFromTeam(currectVacancyId.value, userToDelete.value.id);
 
         if (result.error) {
             deleteErrorMessage.value = typeof result.error === 'string'
@@ -311,7 +334,7 @@ async function confirmDelete() {
         }
 
         // Обновляем список команды после успешного удаления
-        users.value = await teamList(currectVacancyId);
+        users.value = await teamList(currectVacancyId.value);
         
         // Закрываем попап
         closePopup();
@@ -325,6 +348,9 @@ async function confirmDelete() {
 
 // Убедимся, что при размонтировании компонента скролл включится
 onBeforeUnmount(() => {
+    if (saveAndContinueHandler) {
+      saveAndContinueHandler.value = null;
+    }
     enableBodyScroll();
 });
 

@@ -32,7 +32,7 @@
         </li>
         <li :class="{ active: isActive('/settings/recruiting/settingsfunnel') }">
           <NuxtLink to="/settings/recruiting/settingsfunnel">
-            Воронка найма
+            Шаблоны воронок
           </NuxtLink>
         </li>
       </ul>

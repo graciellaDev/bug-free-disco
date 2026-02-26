@@ -1,7 +1,7 @@
 <template>
   <div class="w-full relative" ref="wrapperRef">
     <div
-      class="flex items-center border rounded-ten min-h-10 bg-athens-gray overflow-hidden"
+      class="flex items-center border rounded-ten h-10 min-h-10 bg-athens-gray overflow-hidden"
       :class="[
         props.error ? 'border-red-500' : 'border-athens',
         { 'border-[#5898ff]': !props.error && (isDropdownOpen || isCatalogOpen) }
@@ -22,7 +22,7 @@
       </div>
       <button
         type="button"
-        class="shrink-0 p-3 border-l border-athens hover:bg-athens-gray transition-colors text-bali hover:text-space"
+        class="shrink-0 py-2 px-3 border-l border-athens hover:bg-athens-gray transition-colors text-bali hover:text-space flex items-center justify-center"
         @click.stop="openCatalog"
         aria-label="Открыть каталог специализаций"
       >

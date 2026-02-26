@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full bg-space">
+  <div class="sticky top-0 z-50 w-full bg-space">
     <div class="max-w-2xl px-50px py-[12.8px] mx-auto flex leading-normal items-center">
       <NuxtLink to="/vacancies">
         <h1 class="text-white text-25px font-bold uppercase px-3 py-0.5 mr-4">

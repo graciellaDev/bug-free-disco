@@ -132,6 +132,19 @@ export async function apiPut<T, B = any>(
   } as ApiRequestOptions<ApiSuccessResponse<T>>);
 }
 
+// Вспомогательная функция для PATCH запросов
+export async function apiPatch<T, B = any>(
+  endpoint: string,
+  body?: B,
+  options?: Partial<ApiRequestOptions<ApiSuccessResponse<T>>>
+): Promise<ApiSuccessResponse<T>> {
+  return apiFetch<T>(endpoint, {
+    ...options,
+    method: 'PATCH',
+    body,
+  } as ApiRequestOptions<ApiSuccessResponse<T>>);
+}
+
 // Вспомогательная функция для DELETE запросов (удаление данных)
 export async function apiDelete<T>(
   endpoint: string,
