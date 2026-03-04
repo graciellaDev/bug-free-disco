@@ -137,6 +137,7 @@ export interface CandidateCreateRequest {
   resume?: string | null;
   resumePath?: string | null;
   coverPath?: string | null;
+  source?: string | null;
   customFields?: number | null;
   skills?: number[];
   tags?: number[];

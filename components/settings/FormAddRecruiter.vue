@@ -267,8 +267,12 @@ function fillFromInitialData(item) {
   const parts = (item.name || '').trim().split(/\s+/);
   const firstName = parts[0] || '';
   const lastName = parts.slice(1).join(' ') || '';
-  const roleId = item.role_id ?? item.role?.id ?? item.role?.value ?? item.role;
-  const roleOption = ROLE_OPTIONS.find(r => r.id === roleId || r.value === roleId) || null;
+  const roleIdRaw = item.role_id ?? item.role?.id ?? item.role?.value;
+  const roleId = roleIdRaw != null ? Number(roleIdRaw) : null;
+  let roleOption = roleId != null ? ROLE_OPTIONS.find(r => r.id === roleId || r.value === roleId) || null : null;
+  if (!roleOption && typeof item.role === 'string' && item.role.trim()) {
+    roleOption = ROLE_OPTIONS.find(r => r.name === item.role.trim()) || null;
+  }
   data.value = {
     firstName,
     lastName,

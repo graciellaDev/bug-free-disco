@@ -52,7 +52,7 @@
   );
 
   const typeSave = ref(route.query.type ? route.query.type : (vacancyId.value ? 'edit' : 'create'));
-  const headerStatus = ref('В работе');
+  const headerStatus = ref('Открыта');
   provide('headerVacancyStatus', headerStatus);
 
   async function loadVacancyName() {

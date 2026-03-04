@@ -5,6 +5,7 @@
         typeUser="recruiter"
         title="Сотрудники"
         :show-tabs="false"
+        :show-invite-button="true"
         activeTab="list"
         @childClick="refreshList"
       />

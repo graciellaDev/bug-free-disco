@@ -350,6 +350,7 @@
                         </p>
                         <GeoInput
                             :model-value="publishFormData.location"
+                            :use-api-cities="true"
                             @update:model-value="publishFormData.location = $event"
                         />
                     </div>

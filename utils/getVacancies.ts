@@ -23,7 +23,7 @@ interface UpdateVacancyData {
     currency?: string | null;
     place?: string | null;
     location?: string | null;
-    status?: 'active' | 'draft' | 'archive' | null;
+    status?: 'active' | 'draft' | 'closed' | 'archive' | null;
     executor_id?: number | null;
     executor_name?: string | null;
     executor_phone?: string | null;
@@ -79,6 +79,31 @@ export const getVacancies = async (params: any = '') => {
       alert('Срок сессии истек. Пожалуйста, авторизуйтесь снова.');
       navigateTo('/auth');
     }
+    return null;
+  }
+};
+
+/** Список уникальных городов по вакансиям аккаунта (для фильтра на странице вакансий). */
+export const getVacancyCities = async (): Promise<string[] | null> => {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const serverToken = serverTokenCookie.value;
+  const userTokenCookie = useCookie('auth_user');
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) return null;
+  try {
+    const response = await $fetch<{ data?: string[] }>('/vacancies/cities', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    return Array.isArray(response?.data) ? response.data : null;
+  } catch (err: any) {
+    console.error('Ошибка при получении списка городов вакансий:', err);
     return null;
   }
 };

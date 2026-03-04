@@ -25,17 +25,50 @@
     </div>
     <transition name="slide-fade">
       <div
-        class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-10"
+        class="options-wrapper absolute z-50 w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14"
         v-if="isDropDownVisible">
         <div
+          v-if="searchable"
+          class="border-b border-athens p-2"
+          @click.stop
+        >
+          <input
+            v-model="searchQuery"
+            type="text"
+            :placeholder="searchPlaceholder"
+            class="w-full rounded-md border border-athens bg-athens-gray py-2 pl-3 pr-3 text-sm text-space placeholder:text-slate-custom focus:border-dodger focus:outline-none"
+          />
+        </div>
+        <div
+          v-if="showSelectAll"
+          class="option border-b border-athens text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer"
+          @click.stop="toggleSelectAll"
+        >
+          <label class="flex items-start w-full cursor-pointer gap-[6px]">
+            <input type="checkbox" :checked="allSelected" class="hidden" @click.stop />
+            <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center border rounded-md check-item mt-0.5" :class="{
+              'bg-dodger border-dodger': allSelected,
+              'border-athens bg-athens-gray': !allSelected
+            }">
+              <svg v-if="allSelected" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
+                viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd"
+                  d="M16.704 5.293a1 1 0 00-1.408 0L7.5 12.086 4.704 9.293a1 1 0 00-1.408 1.414l3.5 3.5a1 1 0 001.408 0l8-8a1 1 0 000-1.414z"
+                  clip-rule="evenodd" />
+              </svg>
+            </div>
+            <span class="min-w-0 flex-1">{{ selectAllLabel }}</span>
+          </label>
+        </div>
+        <div
           class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer first:rounded-t-ten last:rounded-b-ten"
-          v-for="(option, index) in props.options" :key="getOptionValue(option) || index"
+          v-for="(option, index) in filteredOptions" :key="getOptionValue(option) || index"
           @click.stop="toggleOptionSelect(option)">
-          <label class="flex items-center w-full cursor-pointer">
+          <label class="flex items-start w-full cursor-pointer gap-[6px]">
             <!-- Скрытый чекбокс -->
             <input type="checkbox" :checked="isSelected(option)" class="hidden" @click.stop />
-            <!-- Кастомный чекбокс -->
-            <div class="w-5 h-5 flex items-center justify-center border rounded-md check-item mr-[6px]" :class="{
+            <!-- Кастомный чекбокс — по верху, не сжимается -->
+            <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center border rounded-md check-item mt-0.5" :class="{
               'bg-dodger border-dodger': isSelected(option),
               'border-athens bg-athens-gray': !isSelected(option)
             }">
@@ -46,7 +79,7 @@
                   clip-rule="evenodd" />
               </svg>
             </div>
-            <span>{{ getOptionLabel(option) }}</span>
+            <span class="min-w-0 flex-1">{{ getOptionLabel(option) }}</span>
           </label>
         </div>
       </div>
@@ -78,6 +111,22 @@ const props = defineProps({
   defaultValue: {
     type: String,
     default: 'Выберите значения'
+  },
+  searchable: {
+    type: Boolean,
+    default: false
+  },
+  searchPlaceholder: {
+    type: String,
+    default: 'Поиск...'
+  },
+  showSelectAll: {
+    type: Boolean,
+    default: false
+  },
+  selectAllLabel: {
+    type: String,
+    default: 'Выбрать все'
   }
 })
 
@@ -86,6 +135,31 @@ const emit = defineEmits(['update:modelValue'])
 const dropDown = ref(null)
 const isDropDownVisible = ref(false)
 const selectedOptions = ref([])
+const searchQuery = ref('')
+
+const filteredOptions = computed(() => {
+  if (!props.searchable || !searchQuery.value.trim()) return props.options
+  const q = searchQuery.value.toLowerCase().trim()
+  return props.options.filter(opt => {
+    const label = getOptionLabel(opt)
+    return (typeof label === 'string' ? label : String(label)).toLowerCase().includes(q)
+  })
+})
+
+const allSelected = computed(() => {
+  const opts = props.options
+  if (!opts.length) return false
+  return opts.every(opt => isSelected(opt))
+})
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedOptions.value = []
+  } else {
+    selectedOptions.value = [...props.options]
+  }
+  emit('update:modelValue', getEmitValue(selectedOptions.value))
+}
 
 // Хелперы для работы с опциями (строки или объекты)
 const getOptionValue = (option) => {
@@ -149,6 +223,7 @@ const isSelected = (option) => {
 // Открытие/закрытие выпадающего списка
 const toggleDropDown = () => {
   isDropDownVisible.value = !isDropDownVisible.value
+  if (!isDropDownVisible.value) searchQuery.value = ''
 }
 
 // Выбор/снятие опции

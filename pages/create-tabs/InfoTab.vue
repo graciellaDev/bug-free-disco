@@ -289,7 +289,7 @@ const newVacancy = ref({
   currency: 'RUB (рубль)',
   salary_frequency: 'За месяц',
   salary_payment_frequency: 'Раз в месяц',
-  status: 'В работе',
+  status: 'Открыта',
   experience: 'noExperience',
   employment: { id: 'FULL', name: 'Полная', siteName: 'Полная' },
   languages: [{ language: null, languageLevel: null }],
@@ -332,7 +332,7 @@ if (props.id) {
       })
     }
     // Преобразуем статус из формата API в русское название для отображения
-    const statusDisplay = currectVacancy.status ? getStatusDisplayValue(currectVacancy.status) : 'В работе'
+    const statusDisplay = currectVacancy.status ? getStatusDisplayValue(currectVacancy.status) : 'Открыта'
     newVacancy.value.status = statusDisplay
     if (headerVacancyStatus) {
       headerVacancyStatus.value = statusDisplay
@@ -600,11 +600,13 @@ function getStatusValue(statusValue) {
   
   // Маппинг русских названий в значения API
   const statusMap = {
-    'В работе': 'active',
-    'Черновик': 'draft',
+    'Открыта': 'active',
+    'Приостановлена': 'draft',
+    'Закрыта': 'closed',
     'Архив': 'archive',
     'active': 'active',
     'draft': 'draft',
+    'closed': 'closed',
     'archive': 'archive',
   };
   
@@ -623,11 +625,13 @@ function getStatusDisplayValue(statusValue) {
   
   // Обратный маппинг значений API в русские названия
   const statusDisplayMap = {
-    'active': 'В работе',
-    'draft': 'Черновик',
+    'active': 'Открыта',
+    'draft': 'Приостановлена',
+    'closed': 'Закрыта',
     'archive': 'Архив',
-    'В работе': 'В работе',
-    'Черновик': 'Черновик',
+    'Открыта': 'Открыта',
+    'Приостановлена': 'Приостановлена',
+    'Закрыта': 'Закрыта',
     'Архив': 'Архив',
   };
   
@@ -1784,6 +1788,7 @@ const updateExecutor = (value, id) => {
               :model-value="newVacancy.location"
               :error="publicationCityFieldEmptyError"
               placeholder="Например, Москва, Санкт-Петербург"
+              :use-api-cities="true"
               @update:model-value="onPublicationCityUpdate"
               @blur="onPublicationCityBlur"
             />

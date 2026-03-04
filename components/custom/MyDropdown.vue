@@ -1,7 +1,7 @@
 <template>
   <div class="dropdown-wrapper cursor-pointer relative" ref="dropDown">
     <div
-      class="dropdown-selected-option relative flex items-center gap-3.5 rounded-ten py-9px pl-3.5 pr-3.5 text-sm font-normal transition-colors"
+      class="dropdown-selected-option relative flex w-full min-w-0 items-center gap-2 rounded-ten py-9px pl-3.5 pr-3.5 text-sm font-normal transition-colors"
       :class="triggerVariantClasses"
       @click="toggleDropDown"
     >
@@ -11,12 +11,21 @@
           'text-space': selectedOption && triggerVariant !== 'semiaction',
           'text-dodger': triggerVariant === 'semiaction',
         }"
-        class="text-sm min-w-0 truncate"
+        class="min-w-0 flex-1 truncate text-sm"
       >
         {{ displayText }}
       </span>
       <div
-        class="dropdown-arrow shrink-0 transition-transform duration-300"
+        v-if="clearable && selectedOption"
+        class="ml-auto shrink-0 text-dodger hover:opacity-80"
+        @click.stop="resetSelection"
+        aria-label="Очистить"
+      >
+        <svg-icon name="dropdown-cross" width="20" height="20" />
+      </div>
+      <div
+        v-show="!clearable || !selectedOption"
+        class="dropdown-arrow ml-auto shrink-0 transition-transform duration-300"
         :class="[
           triggerVariant === 'semiaction' ? 'text-dodger' : (isDropDownVisible ? 'text-dodger' : 'text-bali'),
           { 'rotate-180': isDropDownVisible },
@@ -27,9 +36,23 @@
     </div>
     <transition name="slide-fade">
       <div
-        class="options-wrapper my-dropdown-list absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
+        class="options-wrapper my-dropdown-list absolute w-max min-w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
         v-if="isDropDownVisible">
-        <template v-for="(option, idx) in props.options" :key="option?.type === 'header' ? 'header-' + option.name + idx : getOptionKey(option)">
+        <div
+          v-if="searchable"
+          class="border-b border-athens p-2"
+          @click.stop
+        >
+          <input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            type="text"
+            :placeholder="searchPlaceholder"
+            class="w-full rounded-md border border-athens bg-athens-gray py-2 pl-3 pr-3 text-sm text-space placeholder:text-slate-custom focus:border-dodger focus:outline-none"
+            @click.stop
+          />
+        </div>
+        <template v-for="(option, idx) in filteredOptions" :key="option?.type === 'header' ? 'header-' + option.name + idx : getOptionKey(option)">
           <div
             v-if="option?.type === 'header'"
             class="option text-xs font-medium text-slate-custom py-8px px-15px bg-athens-gray cursor-default"
@@ -38,7 +61,7 @@
           </div>
           <div
             v-else
-            class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer"
+            class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer whitespace-nowrap"
             @click="toggleOptionSelect(option)"
           >
             {{ getOptionLabel(option) }}
@@ -86,6 +109,18 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  clearable: {
+    type: Boolean,
+    default: false,
+  },
+  searchable: {
+    type: Boolean,
+    default: false,
+  },
+  searchPlaceholder: {
+    type: String,
+    default: 'Поиск…',
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'select', 'open'])
@@ -110,6 +145,18 @@ const triggerVariantClasses = computed(() => {
 const isDropDownVisible = ref(false)
 const openDelayTimer = ref(null)
 const selectedOption = ref(props.defaultValue ? props.defaultValue : null)
+const searchQuery = ref('')
+const searchInputRef = ref(null)
+
+const filteredOptions = computed(() => {
+  if (!props.searchable || !searchQuery.value.trim()) return props.options
+  const q = searchQuery.value.trim().toLowerCase()
+  return props.options.filter((opt) => {
+    if (opt?.type === 'header') return true
+    const label = getOptionLabel(opt)
+    return typeof label === 'string' && label.toLowerCase().includes(q)
+  })
+})
 
 // Утилиты для обработки options
 const getOptionValue = (option) => option?.value ?? option
@@ -126,9 +173,18 @@ const displayText = computed(() => {
   return getOptionLabel(val)
 })
 
-// Поиск опции по значению, названию или id (для совместимости с API)
+// Поиск опции по значению, названию, id или по объекту опции (id/value/name)
 const findOption = (value) => {
   if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const id = value?.id ?? value?.value
+    const name = value?.name
+    const found = props.options.find(opt =>
+      (id !== undefined && (opt?.id === id || opt?.value === id)) ||
+      (name != null && getOptionLabel(opt) === name)
+    )
+    return found ?? null
+  }
   return props.options.find(opt =>
     getOptionValue(opt) === value ||
     getOptionLabel(opt) === value ||
@@ -151,6 +207,7 @@ const initializeSelectedOption = () => {
 const toggleDropDown = () => {
   if (isDropDownVisible.value) {
     isDropDownVisible.value = false
+    searchQuery.value = ''
     if (openDelayTimer.value) {
       clearTimeout(openDelayTimer.value)
       openDelayTimer.value = null
@@ -161,6 +218,9 @@ const toggleDropDown = () => {
       isDropDownVisible.value = true
       openDelayTimer.value = null
       emit('open')
+      if (props.searchable && searchInputRef.value) {
+        setTimeout(() => searchInputRef.value?.focus(), 50)
+      }
     }, 120)
   }
 }
@@ -189,6 +249,7 @@ const closeDropDown = (event) => {
       openDelayTimer.value = null
     }
     isDropDownVisible.value = false
+    searchQuery.value = ''
   }
 }
 

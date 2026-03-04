@@ -230,6 +230,17 @@
         </div>
         <div class="flex items-center leading-[1.5]">
           <span
+            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
+          >
+            Источник:
+          </span>
+          <span v-if="candidate.source" class="text-sm font-medium text-space">
+            {{ candidate.source }}
+          </span>
+          <span v-else class="text-sm font-medium text-space">Не указан</span>
+        </div>
+        <div class="flex items-center leading-[1.5]">
+          <span
             class="mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
           >
             Теги:

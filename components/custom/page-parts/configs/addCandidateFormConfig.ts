@@ -60,6 +60,16 @@ export const addCandidateFormConfig: FormConfig = {
         message: 'Введите корректный номер телефона (+7XXXXXXXXXX)',
       },
     },
+    {
+      name: 'source',
+      label: 'Источник',
+      type: 'text',
+      placeholder: 'Например, hh.ru, Рекомендация',
+      row: 5,
+      validation: {
+        required: false,
+      },
+    },
   ],
   submitButtonText: 'Добавить кандидата',
   cancelButtonText: 'Отмена',

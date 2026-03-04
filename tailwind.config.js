@@ -33,6 +33,7 @@ module.exports = {
         'red-custom': '#f50a0a',
         gallery: '#f0f0f0',
         bali: '#9098b4',
+        'bali-light': '#a0a8c0',
         violet: '#8d47ff',
         feta: '#e4fde4',
         orange: '#ff6b00',

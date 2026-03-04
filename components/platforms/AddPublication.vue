@@ -562,6 +562,18 @@ import { useRoute } from 'vue-router'
 import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 
+/** Уникальные города по названию (первое вхождение) — для чистого списка без дублей */
+function dedupeAreasByName (arr) {
+  if (!Array.isArray(arr)) return []
+  const seen = new Set()
+  return arr.filter((c) => {
+    const name = (c && c.name != null) ? String(c.name).trim() : ''
+    if (!name || seen.has(name)) return false
+    seen.add(name)
+    return true
+  })
+}
+
 // Функция для плавного скролла к элементу
 const scrollToElement = (elementId) => {
   const element = document.getElementById(elementId)
@@ -1144,11 +1156,11 @@ const loadDictionaries = async (platform) => {
       currectRole.value = roles.categories
     }
     
-    // Загрузка списка городов из API hh.ru
+    // Загрузка списка городов из API (локальная БД hh_areas)
     const { data: areasData, error: areasError } = await getAreasHh()
     if (!areasError && areasData) {
-      cities.value = areasData
-      console.log('Загружены города из hh.ru в loadDictionaries, количество:', cities.value.length)
+      cities.value = dedupeAreasByName(areasData)
+      console.log('Загружены города в loadDictionaries, количество:', cities.value.length)
       // Обновляем вычисленные значения после загрузки городов
       updateComputedValues()
       // Применяем значения, включая установку города из вакансии
@@ -1166,12 +1178,11 @@ if (!errorRoles) {
   await applyComputedValues()
 }
 
-// Загрузка списка городов из API hh.ru
-// После загрузки городов ищем город из вакансии и устанавливаем его
+// Загрузка списка городов из API (локальная БД hh_areas), без дублей по названию
 const { data: areasData, error: areasError } = await getAreasHh()
 if (!areasError && areasData) {
-  cities.value = areasData
-  console.log('Загружены города из hh.ru, количество:', cities.value.length)
+  cities.value = dedupeAreasByName(areasData)
+  console.log('Загружены города, количество:', cities.value.length)
   
   // Обновляем вычисленные значения после загрузки городов
   updateComputedValues()

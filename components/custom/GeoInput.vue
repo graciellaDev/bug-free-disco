@@ -1,8 +1,7 @@
 <script setup>
-  import { ref, watch } from 'vue'
+  import { ref, watch, onMounted } from 'vue'
   import debounce from 'lodash/debounce'
-  import { loadScript } from '@/plugins/loader'
-  import { useScriptTag } from '@vueuse/core'
+  import { getAreas } from '@/utils/hhAccount'
 
   const props = defineProps({
     placeholder: {
@@ -17,12 +16,18 @@
       type: Boolean,
       default: false,
     },
+    /** Использовать список городов из API (hh_areas) — без дублей и без улиц */
+    useApiCities: {
+      type: Boolean,
+      default: false,
+    },
   })
 
-  const isFocused = ref(false)
+  const emit = defineEmits(['update:modelValue', 'blur'])
 
+  const isFocused = ref(false)
   const currentCity = ref(props.modelValue)
-  const cities = ref([
+  const defaultCities = [
     'Москва',
     'Санкт-Петербург',
     'Новосибирск',
@@ -34,15 +39,38 @@
     'Пермь',
     'Томск',
     'Волгоград',
-  ])
-
+  ]
+  const cities = ref([...defaultCities])
   const filteredCities = ref([])
   const isLoadingSuggest = ref(false)
+
+  onMounted(async () => {
+    if (props.useApiCities) {
+      const result = await getAreas()
+      const data = result?.data
+      if (Array.isArray(data) && data.length > 0) {
+        const seen = new Set()
+        const uniqueNames = data
+          .map((c) => (c && typeof c.name === 'string' ? c.name.trim() : ''))
+          .filter((name) => name && !seen.has(name) && (seen.add(name), true))
+        cities.value = uniqueNames.sort((a, b) => a.localeCompare(b, 'ru'))
+      }
+    }
+  })
+
+  watch(() => props.modelValue, (v) => {
+    if (currentCity.value !== v) currentCity.value = v ?? ''
+  }, { immediate: true })
 
   const filterCities = debounce(async () => {
     const input = (currentCity.value || '').trim().toLowerCase()
     if (!input) {
       filteredCities.value = []
+      return
+    }
+    if (props.useApiCities) {
+      filteredCities.value = cities.value.filter((c) => c.toLowerCase().includes(input)).slice(0, 50)
+      if (!filteredCities.value.length) emit('update:modelValue', currentCity.value)
       return
     }
     isLoadingSuggest.value = true
@@ -80,8 +108,6 @@
     isFocused.value = false
     emit('update:modelValue', city)
   }
-
-  const emit = defineEmits(['update:modelValue', 'blur'])
 
   const handleBlur = () => {
     isFocused.value = false

@@ -1,15 +1,18 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
 import MyInput from '~/components/custom/MyInput.vue'
-import MyDropdown from '~/components/custom/MyDropdown.vue'
-import EmailInput from '~/components/custom/EmailInput.vue'
 import PhoneInput from '~/components/custom/PhoneInput.vue'
 import Popup from '~/components/custom/Popup.vue'
 import PasswordInput from '~/components/custom/PasswordInput.vue'
+import ResponseInput from '~/components/custom/ResponseInput.vue'
+import { profile as getProfile } from '~/utils/loginUser'
+import { getDepartments } from '~/utils/executorsList'
+import { updateEmployee } from '~/utils/registerUser'
 
 const userStore = useUserStore()
 const userName = computed(() => userStore.name || 'Гость')
+const userRoleName = computed(() => userStore.role || '')
 
 definePageMeta({
   layout: 'settings',
@@ -19,46 +22,85 @@ useHead({
   title: 'Настройки — Профиль',
 })
 
+const profileId = ref(null)
 const firstName = ref('')
 const lastName = ref('')
 const position = ref('')
-const department = ref('')
+const division = ref(null)
 const phone = ref('')
 const email = ref('')
+const city = ref('')
+const departments = ref([])
+const loadError = ref(null)
+const saveLoading = ref(false)
+const saveSuccess = ref(false)
+
 const changePassword = ref(false)
 const currentPassword = ref('')
 const newPassword = ref('')
 const repeatNewPassword = ref('')
-
-const departments = ref([
-  {
-    name: 'HR',
-    value: 1,
-  },
-  {
-    name: 'Бухгалтерия',
-    value: 2,
-  },
-  {
-    name: 'Разработка',
-    value: 3,
-  },
-  {
-    name: 'Продажи',
-    value: 4,
-  }
-])
-
 const notMatch = ref(false)
 
 function checkRepeatPasswords() {
-  if (newPassword.value !== repeatNewPassword.value) {
-    notMatch.value = true
-    console.log('notMatch value is: ', notMatch.value)
+  notMatch.value = newPassword.value !== repeatNewPassword.value
+}
+
+function fillFromProfile(data) {
+  if (!data) return
+  profileId.value = data.id
+  const parts = (data.name || '').trim().split(/\s+/)
+  firstName.value = parts[0] || ''
+  lastName.value = parts.slice(1).join(' ') || ''
+  email.value = data.email || ''
+  phone.value = data.phone || ''
+  position.value = data.position || ''
+  city.value = data.city || ''
+  const deps = data.departments
+  if (deps && Array.isArray(deps) && deps.length > 0) {
+    division.value = { id: deps[0].id, name: deps[0].name }
   } else {
-    notMatch.value = false
-    console.log('notMatch value now: ', notMatch.value)
+    division.value = null
   }
+}
+
+onMounted(async () => {
+  try {
+    departments.value = await getDepartments()
+  } catch (e) {
+    console.warn('getDepartments:', e)
+    departments.value = []
+  }
+  const { data: res } = await getProfile()
+  const data = res?.data ?? res
+  fillFromProfile(data)
+  if (data?.name) userStore.setUserData({ name: data.name, email: data.email || '', role: data.role?.name || '' })
+})
+
+async function saveProfile() {
+  if (profileId.value == null) return
+  saveLoading.value = true
+  saveSuccess.value = false
+  loadError.value = null
+  let phoneVal = (phone.value || '').replace(/\D/g, '')
+  if (phoneVal.length === 11 && phoneVal.startsWith('8')) phoneVal = '7' + phoneVal.slice(1)
+  if (phoneVal.length === 10) phoneVal = '7' + phoneVal
+  const phoneFormatted = phoneVal.length === 11 && phoneVal.startsWith('7') ? `+${phoneVal}` : (phone.value || '').trim() || undefined
+  const payload = {
+    name: `${(firstName.value || '').trim()} ${(lastName.value || '').trim()}`.trim(),
+    email: (email.value || '').trim(),
+    phone: phoneFormatted,
+    position: (position.value || '').trim() || null,
+    city: (city.value || '').trim() || null,
+    department: division.value?.id ?? division.value ?? null,
+  }
+  const { error, message } = await updateEmployee(Number(profileId.value), payload)
+  saveLoading.value = false
+  if (error) {
+    loadError.value = message || 'Не удалось сохранить'
+    return
+  }
+  saveSuccess.value = true
+  userStore.setUserData({ name: payload.name, email: payload.email || '' })
 }
 </script>
 
@@ -74,44 +116,64 @@ function checkRepeatPasswords() {
           <p class="text-lg font-medium text-space leading-normal mb-5px">
             {{ userName }}
           </p>
-          <p class="text-sm font-normal text-bali">Администратор</p>
+          <p class="text-sm font-normal text-bali">{{ userRoleName || 'Администратор' }}</p>
         </div>
       </div>
       <div class="rounded-fifteen p-25px bg-white mb-15px">
         <p class="text-xl font-semibold text-space mb-25px">Основная информация</p>
+        <p v-if="loadError" class="text-red-500 text-sm mb-4">{{ loadError }}</p>
+        <p v-if="saveSuccess" class="text-green-600 text-sm mb-4">Изменения сохранены</p>
         <div class="mb-25px">
-          <div class="grid grid-cols-2 gap-x-15px mb-15px">
+          <div class="grid grid-cols-2 gap-x-15px gap-y-4 mb-15px">
             <div>
               <p class="text-sm font-medium text-space leading-150 mb-15px">Имя</p>
-              <MyInput v-model="firstName" :placeholder="'Ваше имя'" />
+              <MyInput v-model="firstName" placeholder="Ваше имя" />
             </div>
             <div>
               <p class="text-sm font-medium text-space leading-150 mb-15px">Фамилия</p>
-              <MyInput v-model="lastName" :placeholder="'Ваша фамилия'" />
+              <MyInput v-model="lastName" placeholder="Ваша фамилия" />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-x-15px mb-15px">
+          <div class="grid grid-cols-2 gap-x-15px gap-y-4 mb-15px">
             <div>
               <p class="text-sm font-medium text-space leading-150 mb-15px">Должность</p>
-              <MyInput v-model="position" :placeholder="'Введите вашу должность'" />
+              <MyInput v-model="position" placeholder="Введите вашу должность" />
             </div>
             <div>
               <p class="text-sm font-medium text-space leading-150 mb-15px">Отдел</p>
-              <MyDropdown v-model="department" :options="departments" />
+              <ResponseInput
+                :responses="departments"
+                :model-value="division?.name ?? ''"
+                :show-roles="true"
+                not-found="Отдел не найден"
+                placeholder="Выберите значение"
+                @update:model-value="(name, id) => { division = (id != null && name != null) ? { id, name } : null }"
+              />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-x-15px mb-15px">
+          <div class="grid grid-cols-2 gap-x-15px gap-y-4 mb-15px">
             <div>
               <p class="text-sm font-medium text-space leading-150 mb-15px">Email</p>
-              <EmailInput v-model="email" :placeholder="'Введите email'" />
+              <MyInput v-model="email" type="email" placeholder="Email" />
             </div>
             <div>
               <p class="text-sm font-medium text-space leading-150 mb-15px">Телефон</p>
-              <PhoneInput v-model="phone" :placeholder="'Введите ваш номер телефона'" />
+              <PhoneInput v-model="phone" placeholder="+7-000-000-0000" />
             </div>
           </div>
+          <div class="mb-15px">
+            <p class="text-sm font-medium text-space leading-150 mb-15px">Город</p>
+            <MyInput v-model="city" placeholder="Например, Москва, Санкт-Петербург" />
+          </div>
         </div>
-        <UiButton variant="black" size="semiaction">Сохранить изменения</UiButton>
+        <UiButton
+          variant="black"
+          size="semiaction"
+          :disabled="saveLoading"
+          @click="saveProfile"
+        >
+          {{ saveLoading ? 'Сохранение...' : 'Сохранить изменения' }}
+        </UiButton>
       </div>
       <div class="rounded-fifteen p-25px bg-white">
         <p class="text-xl font-semibold text-space mb-25px">Безопасность</p>

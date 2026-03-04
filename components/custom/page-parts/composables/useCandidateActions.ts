@@ -172,6 +172,7 @@ export function useCandidateActions(
         phone:
           formData.phone && formData.phone !== '+7' ? formData.phone : null,
         resume: formData.resume || null,
+        source: formData.source || null,
         messengerMax: prepareUsernameForApi(formData.messengerMax),
         telegram: prepareUsernameForApi(formData.telegram),
         imagePath: imagePath,
