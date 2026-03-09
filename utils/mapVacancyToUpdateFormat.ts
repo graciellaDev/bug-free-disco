@@ -23,6 +23,7 @@ export interface VacancyFormData {
   area?: { id?: string | number; name?: string } | null;
   address?: { id?: string | number; name?: string } | null;
   location?: string | null;
+  work_address?: string | null;
   workSpace?: string;
   executor_id?: number | null;
   executor_name?: string | null;
@@ -50,6 +51,7 @@ export interface UpdateVacancyData {
   currency?: string | null;
   place?: number | null;
   location?: string | null;
+  work_address?: string | null;
   work_hours_per_day?: string | null;
   executor_id?: number | null;
   executor_name?: string | null;
@@ -60,6 +62,14 @@ export interface UpdateVacancyData {
   base_id?: number | null;
   vacancy_platform_id?: number | null;
   status?: string | null;
+  /** Навыки (фразы): массив названий — бэкенд при обновлении поддерживает создание/привязку по названиям */
+  phrases?: string[] | null;
+  /** Водительские права: массив { id: <id категории прав в нашей БД> } (id из справочника vacancy-fields) */
+  drivers?: Array<{ id: string | number }> | null;
+  /** Готовы рассмотреть (SuperJob candidat — требования к кандидату). Для формы «Кто и как может откликаться» при платформе SuperJob. */
+  candidat?: string | null;
+  /** Чекбоксы «Готовы рассмотреть» SuperJob (массив id: accept_short_resume, accept_students и т.д.). */
+  superjob_ready_to_consider?: string[] | null;
 }
 
 /**
@@ -143,13 +153,23 @@ function mapCurrencyToString(currency: { id?: string; name?: string } | string |
 /**
  * Основная функция маппинга данных вакансии из формы в формат для обновления
  */
+/**
+ * Нормализует название вакансии из формы (строка или объект с name/title) в строку не длиннее 255 символов.
+ */
+function normalizeName(value: string | { name?: string; title?: string } | null | undefined): string | undefined {
+  if (value == null) return undefined;
+  const s = typeof value === 'string' ? value : (value?.name ?? value?.title ?? '');
+  const trimmed = typeof s === 'string' ? s.trim() : String(s).trim();
+  return trimmed.length > 0 ? trimmed.substring(0, 255) : undefined;
+}
+
 export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacancyData {
   const updateData: UpdateVacancyData = {};
   
-  // Обязательные поля
-  if (formData.name) {
-    updateData.name = formData.name.length > 255 ? formData.name.substring(0, 255) : formData.name;
-  }
+  // Обязательные поля: name (название вакансии) — бэкенд возвращает «Поле «Название вакансии» обязательно», если пусто
+  const nameRaw = formData.name ?? (formData as any).title ?? mapArrayToString(formData.professional_roles ?? null, 255);
+  const name = normalizeName(nameRaw) ?? normalizeName((formData as any).title) ?? 'Вакансия';
+  updateData.name = name.length > 255 ? name.substring(0, 255) : name;
   
   if (formData.description) {
     updateData.description = formData.description;
@@ -240,6 +260,15 @@ export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacan
   if (locationStr) {
     updateData.location = locationStr.length > 255 ? locationStr.substring(0, 255) : locationStr;
   }
+
+  // Адрес места работы (work_address) — для соответствия с импортом и SuperJob
+  const workAddressStr =
+    (typeof formData.work_address === 'string' ? formData.work_address : null) ||
+    (typeof formData.address === 'string' ? formData.address : formData.address?.name) ||
+    null;
+  if (workAddressStr) {
+    updateData.work_address = workAddressStr.length > 500 ? workAddressStr.substring(0, 500) : workAddressStr;
+  }
   
   // Контакты исполнителя
   if (formData.executor_id !== undefined && formData.executor_id !== null) {
@@ -297,6 +326,69 @@ export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacan
   if (formData.status !== undefined && formData.status !== null) {
     updateData.status = String(formData.status);
   }
-  
+
+  // Навыки (phrases): бэкенд принимает массив названий — находим/создаём фразы по имени
+  const phraseNames = toPhraseNamesArray(formData.key_skills ?? formData.phrases);
+  if (phraseNames.length > 0) {
+    updateData.phrases = phraseNames;
+  }
+
+  // Водительские права: массив { id: <id категории прав в нашей БД> } (из формы — id из справочника)
+  const driversMapped = toDriversOurDbIds(formData.driver_license_types ?? formData.drivers);
+  if (driversMapped.length > 0) {
+    updateData.drivers = driversMapped;
+  }
+
+  // Готовы рассмотреть (SuperJob candidat) — для платформы SuperJob и поля «Кто и как может откликаться»
+  if (formData.candidat !== undefined && formData.candidat !== null && String(formData.candidat).trim()) {
+    updateData.candidat = String(formData.candidat).trim().substring(0, 2000);
+  }
+  // Чекбоксы «Готовы рассмотреть» SuperJob (сохраняем в нашей БД для повторного открытия формы)
+  if (Array.isArray(formData.superjob_ready_to_consider) && formData.superjob_ready_to_consider.length > 0) {
+    updateData.superjob_ready_to_consider = formData.superjob_ready_to_consider;
+  }
+
   return updateData;
+}
+
+/**
+ * Преобразует значение из формы (key_skills или phrases) в массив названий фраз (string[]).
+ * Форма: key_skills — массив { name } или строк; phrases — строка через запятую или массив.
+ */
+function toPhraseNamesArray(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item : (item && typeof item === 'object' && 'name' in item ? (item as { name?: string }).name : null)))
+      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+      .map((name) => name.trim().substring(0, 50));
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => s.substring(0, 50));
+  }
+  return [];
+}
+
+/**
+ * Преобразует водительские права из формы в массив { id } для нашей БД: id — значение категории прав в нашей БД
+ * (из справочника vacancy-fields / driver_license_types: id или name как идентификатор категории).
+ */
+function toDriversOurDbIds(value: unknown): Array<{ id: string | number }> {
+  if (value == null || !Array.isArray(value) || value.length === 0) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string' && /^[A-E]E?$|^T[MB]$/i.test(item)) return { id: item.toUpperCase() };
+      if (item && typeof item === 'object') {
+        const obj = item as { id?: string | number; name?: string; value?: string };
+        const id = obj.id !== undefined && obj.id !== null ? obj.id : (obj.name ?? obj.value);
+        if (id === undefined || id === null) return null;
+        return { id: typeof id === 'number' ? id : String(id).trim().toUpperCase() };
+      }
+      return null;
+    })
+    .filter((d): d is { id: string | number } => d != null);
 }

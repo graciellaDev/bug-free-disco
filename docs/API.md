@@ -385,6 +385,7 @@ Authorization: Bearer <token>
 | GET | `/api/superjob/profile` | Профиль SuperJob |
 | GET | `/api/superjob/vacancies` | Вакансии |
 | GET | `/api/superjob/vacancies/{id}` | Вакансия по id |
+| PUT | `/api/superjob/vacancies/{id}` | Обновление вакансии на платформе (синхронизация с нашей БД) |
 | POST | `/api/superjob/vacancies/{id}/archive` | Перевод вакансии в архив (снятие с публикации) |
 | GET | `/api/superjob/catalogues` | Каталоги (отрасли) |
 | GET | `/api/superjob/references` | Справочники |
@@ -393,6 +394,49 @@ Authorization: Bearer <token>
 | GET | `/api/superjob/countries` | Страны |
 | POST | `/api/superjob/send-url` | Отправка ссылки |
 | DELETE | `/api/superjob/auth` | Отвязать SuperJob |
+
+#### Сопоставление сущностей: Отрасль компании и Специализация (наш сайт ↔ SuperJob)
+
+| Наш сайт | SuperJob (API) | При импорте (SuperJob → сайт) | При обновлении вакансии (сайт → SuperJob) |
+|----------|----------------|------------------------------|-------------------------------------------|
+| **Отрасль компании** (`vacancy.industry`, строка) | `client.industry` (массив, профиль работодателя) | `publication.client.industry` → `vacancy.industry` (строка) | Не передаётся в PUT вакансии (отрасль относится к профилю компании в SuperJob) |
+| **Специализация** (`vacancy.specializations`, строка; в форме — `professional_role` / роли из отрасли) | `catalogues[]` (профессиональная сфера вакансии: массив объектов с `id`, `title`) | `publication.catalogues[0].title` или `publication.profession` → `vacancy.specializations` | В payload передаются только `catalogues` из **текущей вакансии SuperJob** (`existing.catalogues`), чтобы на платформе сохранялись корректные значения. Выбор отрасли/специализации в форме идёт из справочника HH (`/api/specializations`), его `id` не совпадают с `id` каталогов SuperJob, поэтому подставлять `industry.id` из формы в `catalogues` нельзя. |
+
+**Итог при обновлении:** при PUT вакансии на SuperJob сохраняются текущие значения профессиональной сферы (`catalogues`) с самой платформы; изменения отрасли/специализации, сделанные на нашем сайте, на SuperJob при обновлении не отправляются. Чтобы при обновлении подставлять выбранную на сайте специализацию, нужно в форме для платформы SuperJob использовать справочник **GET /api/superjob/catalogues** и передавать в payload `catalogues` с id из этого справочника.
+
+**Опыт работы (experience):** при обновлении вакансии на SuperJob в payload подставляется опыт из формы. Значения нашего справочника (noExperience, between1And3, between3And6, moreThan6) маппятся в id SuperJob: 1 — без опыта, 2 — от 1 года, 3 — от 3 лет, 4 — от 6 лет. Если в форме опыт не выбран или не удаётся сопоставить, используется значение из текущей вакансии SuperJob.
+
+#### Полное сопоставление полей: API SuperJob ↔ наша БД ↔ форма обновления
+
+| Поле нашей БД (вакансия) | Поле API SuperJob (GET/PUT) | Импорт (SuperJob → БД) `mapSuperjobPublicationToVacancy` | Обновление БД (форма → API) `mapVacancyToUpdateFormat` | Обновление на SuperJob (форма → PUT) `mapVacancyToSuperjobPayload` |
+|--------------------------|-----------------------------|-----------------------------------------------------------|--------------------------------------------------------|-------------------------------------------------------------------|
+| `name` | `profession` (строка) | `publication.profession` (строка или `profession.title`) | `formData.name` / `professional_roles[0]` | `formData.name` → `payload.profession`, `payload.name` |
+| `description` | `vacancyRichText`, `candidat`, `work` | `vacancyRichText` \|\| объединение `work` + `candidat` \|\| `firm_activity` | `formData.description` | `formData.description` → `payload.vacancyRichText`, `description` |
+| `code` | `code` | `publication.code` | `formData.code` | `formData.code` → `payload.code` |
+| `specializations` | `catalogues[]` (id, title) | `catalogues[0].title` или `profession` | `formData.professional_roles` → строка | Не передаётся по id из формы (id HH ≠ id SuperJob); в payload — `existing.catalogues` или `formData.superjob_catalogue_id` → `catalogues` |
+| `industry` | `client.industry` (профиль) | `catalogues[0].parent`, `client.industry`, `firm_activity` | `formData.industry` → строка | Не передаётся в PUT (отрасль — в профиле компании SuperJob) |
+| `employment` | `type_of_work` (id) | `type_of_work.title` | `formData.employment_form` → строка | Только id из текущей вакансии: `existing.type_of_work.id` → `payload.typeOfWork` (число) |
+| `schedule` | `schedule` (id) | `schedule.title` | `formData.work_schedule_by_days` → строка | Только id из текущей вакансии: `existing.schedule.id` → `payload.schedule` (число) |
+| `experience` | `experience` (id: 1–4) | `experience.title` | `formData.experience` → строка | Маппинг из формы: noExperience→1, between1And3→2, between3And6→3, moreThan6→4; иначе `existing.experience.id` |
+| `education` | `education` (id) | `education.title` | `formData.education_level` → строка | Только id из текущей вакансии: `existing.education.id` → `payload.education` (число) |
+| `salary_from` | `payment_from` | `salary.from` / `payment_from` | `formData.salary_range.from` | `formData.salary_range.from` → `payload.payment_from` |
+| `salary_to` | `payment_to` | `salary.to` / `payment_to` | `formData.salary_range.to` | `formData.salary_range.to` → `payload.payment_to` |
+| `currency` | `currency` (код: rub, usd, eur) | `mapCurrencyFromSuperjob(salary.currency)` → «RUB (рубль)» и т.д. | `formData.salary_range.currency` | `mapCurrencyToSuperjob(currency)` → `payload.currency` |
+| `place` | `place_of_work` (id) | `mapWorkSpaceFromSuperjob(place_of_work)` → 1/2/3 | `formData.workSpace` → число | `existing.place_of_work.id` или `mapPlaceOfWork(workSpace)` (объект `{ title }` или id) |
+| `location` | `town` (id, title) | `town.title` / `area.name` | `formData.area.name` / `formData.location` | Не передаётся по названию; в payload только `existing.town` → `payload.town` (id числа) |
+| `work_address` | `address` | `publication.address` | `formData.work_address` / `formData.address` → `updateData.work_address` | `formData.work_address` / `formData.address` → `payload.address` |
+| `phrases` | `resumesubscription_keys[]` | `resumesubscription_keys` / `key_skills` → строка через запятую | Не в `UpdateVacancyData` (можно добавить при необходимости) | `formData.key_skills` / `formData.phrases` → `payload.resumesubscription_keys` |
+| `dateEnd` | `date_pub_to` (unix) | `date_pub_to` → формат d.m.Y | `formData.dateEnd` → d.m.Y | `formData.dateEnd` → unix `payload.date_pub_to` |
+| — | `firm_name` | — | — | Обязательно для PUT: из формы или `existing.firm_name` / `client.title` |
+| **Кто и как может откликаться** (наша форма) | **Готовы рассмотреть**: текст `candidat` + чекбоксы (accept_short_resume, accept_age_14, accept_pensioners, accept_handicapped, accept_students, accept_volunteers) | `publication.candidat` → `vacancyData.candidat`; флаги publication → `vacancyData.superjob_ready_to_consider` (массив id) | `formData.candidat`, `formData.superjob_ready_to_consider` → updateData | `formData.superjob_ready_to_consider` → флаги в payload; `formData.candidat` \|\| `existing.candidat` → `payload.candidat` |
+
+**Справочники SuperJob (по [api.superjob.ru/#references](https://api.superjob.ru/#references)):** тип занятости (`type_of_work`: 6 — полный день, 10 — неполный, 12 — сменный, 13 — частичная, 7 — временная, 9 — вахта); место работы (`place_of_work`: 1 — офис, 2 — удалёнка, 3 — разъездной); опыт (`experience`: 1–4); образование (`education`: 2–6); водительские права — только категории A, B, C, D, E; город (`town`) — id из справочника; каталог отраслей (`catalogues`) — id из GET /api/superjob/catalogues.
+
+**Замечания по реализации:**
+
+- **Обновление нашей БД:** используется `mapVacancyToUpdateFormat` → `PUT /api/vacancies/{id}`. Поле `work_address` передаётся из формы (`work_address` или `address`) в теле обновления; бэкенд должен принимать и сохранять его при поддержке.
+- **Обновление на SuperJob:** используется `mapVacancyToSuperjobPayload(formData, existingVacancy)`. Для полей, требующих id справочника SuperJob (`town`, `typeOfWork`, `schedule`, `education`, `place_of_work`, `catalogues`), при отсутствии в форме подставляются значения из `existingVacancy` (ответ `GET /api/superjob/vacancies/{id}`).
+- **Специализация (catalogues):** чтобы при обновлении отправлять выбранную на сайте категорию, в форме для SuperJob нужно использовать справочник `GET /api/superjob/catalogues` и передавать в форме `superjob_catalogue_id`; тогда он попадёт в `payload.catalogues`.
 
 ---
 
@@ -462,14 +506,14 @@ Authorization: Bearer <token>
 - **Ответ 200:** `{ "message": "Success", "data": <paginator> }`. Элементы: `id`, `title`, `city`, `created_at`, `dateEnd`, `footerData`, `stages`, при необходимости `platforms_data`.
 
 **POST /api/vacancies**
-- **Body (JSON):** `name` (обязательно, 3–255), `description` (обязательно, min 3), `dateEnd` (d.m.Y), `code`, `specializations`, `industry`, `employment`, `schedule`, `work_hours_per_day`, `has_evening_night_shifts`, `experience`, `education`, `salary_type`, `salary_from`, `salary_to`, `currency`, `salary_frequency`, `salary_payment_frequency`, `place`, `location`, `work_address`, `oformlenie`, `languages`, `comment`, `department` и др. (см. VacancyController::create).
+- **Body (JSON):** `name` (обязательно, 3–255), `description` (обязательно, min 3), `dateEnd` (d.m.Y), `code`, `specializations`, `industry`, `employment`, `schedule`, `work_hours_per_day`, `has_evening_night_shifts`, `experience`, `education`, `salary_type`, `salary_from`, `salary_to`, `currency`, `salary_frequency`, `salary_payment_frequency`, `place`, `location`, `work_address`, `oformlenie`, `languages`, `comment`, `department` и др. (см. VacancyController::create). **Навыки (phrases):** массив названий `phrases` (string[]) — бэкенд создаёт/находит фразы по имени и привязывает к вакансии.
 - **Ответ:** объект вакансии или ошибка 401/422.
 
 **GET /api/vacancies/{id}**
 - **Ответ 200:** `{ "message": "Success", "data": { ...vacancy, "conditions", "drivers", "additions", "phrases", "place" } }`. 404 при отсутствии доступа.
 
 **PUT /api/vacancies/{id}**
-- **Body:** те же поля, что при создании, но все опциональны (nullable). Дополнительно: `drivers`.
+- **Body:** те же поля, что при создании, но все опциональны (nullable). Дополнительно: `drivers` — массив объектов `{ id: <id категории прав в нашей БД> }` (id из справочника vacancy-fields). **Навыки (phrases):** массив названий `phrases` (string[]) — бэкенд поддерживает обновление/добавление навыков по названиям (создание или привязка сущностей phrases).
 - **Ответ:** обновлённая вакансия или 404/500.
 
 **DELETE /api/vacancies/{id}**

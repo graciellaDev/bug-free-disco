@@ -272,6 +272,16 @@ export const HH_ADDITIONAL_CONDITIONS = [
   },
 ];
 
+/** Чекбоксы «Готовы рассмотреть» на платформе SuperJob. Маппинг с нашего поля «Кто и как может откликаться». */
+export const SUPERJOB_READY_TO_CONSIDER = [
+  { id: 'accept_short_resume', name: 'Соискателей с короткой формой резюме', superjobKey: 'accept_short_resume' },
+  { id: 'accept_age_14', name: 'Соискателей от 14 лет', superjobKey: 'accept_age_14' },
+  { id: 'accept_pensioners', name: 'Пенсионеров', superjobKey: 'accept_pensioners' },
+  { id: 'accept_handicapped', name: 'Соискателей с ограниченными возможностями', superjobKey: 'accept_handicapped' },
+  { id: 'accept_students', name: 'Студентов', superjobKey: 'accept_students' },
+  { id: 'accept_volunteers', name: 'Волонтеров', superjobKey: 'accept_volunteers' },
+];
+
 export const HH_BILLING_TYPES = [
         {
             "id": "free",

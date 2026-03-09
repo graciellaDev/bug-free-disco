@@ -356,12 +356,32 @@
           <p class="text-sm font-medium mb-4 leading-normal text-space">
             Кто и как может откликаться
           </p>
-          <MultiSelect  
-          :options="additionalConditionsOptions"
-          defaultValue="Сделайте выбор"
-          :withId="true"
-          v-model="data.additional_conditions"
-          ></MultiSelect >
+          <!-- SuperJob: чекбоксы «Готовы рассмотреть» (как на платформе SuperJob) -->
+          <template v-if="currentPlatform === 'superjob'">
+            <div class="flex flex-col gap-3">
+              <label
+                v-for="opt in SUPERJOB_READY_TO_CONSIDER"
+                :key="opt.id"
+                class="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  :checked="(data.superjob_ready_to_consider || []).includes(opt.id)"
+                  @change="toggleSuperjobReadyConsider(opt.id, $event.target.checked)"
+                  class="rounded border-gray-300"
+                />
+                <span class="text-space">{{ opt.name }}</span>
+              </label>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">На платформе SuperJob отображается как «Готовы рассмотреть» (+15% к откликам)</p>
+          </template>
+          <MultiSelect
+            v-else
+            :options="additionalConditionsOptions"
+            defaultValue="Сделайте выбор"
+            :withId="true"
+            v-model="data.additional_conditions"
+          />
         </div>
         <div class="w-full flex justify-between gap-25px mb-6">
           <div class="w-full">
@@ -515,6 +535,7 @@ import {
   HH_SALARY_FREQUENCY,
   HH_DRIVER_LICENSE_TYPES,
   HH_ADDITIONAL_CONDITIONS,
+  SUPERJOB_READY_TO_CONSIDER,
   HH_BILLING_TYPES,
 } from '@/src/constants'
 import experience from '~/src/data/experience.json'
@@ -557,7 +578,9 @@ import {
   getExperienceLevels as getExperienceLevelsRabota,
   getEducationLevels as getEducationLevelsRabota
 } from '@/utils/rabotaAccount'
-import { getVacancy as getVacancyById } from '@/utils/getVacancies';
+import { updatePublication as updatePublicationSuperjob, getVacancy as getSuperjobVacancy, getCatalogues as getSuperjobCatalogues } from '@/utils/superjobAccount'
+import { mapVacancyToSuperjobPayload } from '@/utils/mapVacancyToSuperjob'
+import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFields, buildDriverDbIdToNameMap } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
 import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
@@ -711,8 +734,13 @@ const handleIdUpdate = (property, value) => {
         // Если список пуст, сохраняем переданный объект
         data.value.professional_roles = [value]
       }
+      // Синхронизация с SuperJob: id выбранной специализации уходит в catalogues при обновлении
+      if (currentPlatform.value === 'superjob' && (value?.id != null || value?.key != null)) {
+        data.value.superjob_catalogue_id = Number(value?.id ?? value?.key) || (value?.id ?? value?.key)
+      }
     } else {
       data.value.professional_roles = [null]
+      if (currentPlatform.value === 'superjob') data.value.superjob_catalogue_id = null
     }
   } else {
     data.value[property] = value ? { id: value.id } : null
@@ -791,8 +819,12 @@ const handleIndustryChange = async (industry) => {
   if (selectedIndustry && selectedIndustry.roles && Array.isArray(selectedIndustry.roles) && selectedIndustry.roles.length > 0) {
     // Всегда выбираем первую специализацию из списка при изменении отрасли
     data.value.professional_roles = [selectedIndustry.roles[0]]
+    if (currentPlatform.value === 'superjob') {
+      data.value.superjob_catalogue_id = selectedIndustry.roles[0]?.id ?? selectedIndustry.roles[0]?.key ?? null
+    }
   } else {
     data.value.professional_roles = [null]
+    if (currentPlatform.value === 'superjob') data.value.superjob_catalogue_id = null
   }
 }
 
@@ -1137,6 +1169,23 @@ const loadDictionaries = async (platform) => {
         roles: [] // Специализации будут загружены при выборе профессии
       }))
     }
+  } else if (platform === 'superjob') {
+    // Каталог SuperJob: отрасли (key, title) и позиции (positions[].key, title). В вакансию передаём только id категории (position.key).
+    const cataloguesResult = await getSuperjobCatalogues()
+    if (cataloguesResult?.data && Array.isArray(cataloguesResult.data)) {
+      currectRole.value = cataloguesResult.data.map((c) => ({
+        id: c.key ?? c.id,
+        name: c.title ?? c.title_rus ?? '',
+        roles: (c.positions || []).map((p) => ({
+          id: p.key ?? p.id,
+          name: p.title ?? p.title_rus ?? '',
+        })),
+      }))
+      updateComputedValues()
+      await applyComputedValues()
+    } else {
+      currectRole.value = []
+    }
   } else {
     // Загружаем справочники hh.ru (по умолчанию)
     const { roles, errorRoles } = await getRolesHh()
@@ -1312,6 +1361,33 @@ async function loadInitialFormData() {
       if (platformKey) {
         data.value.platform = platformKey;
       }
+      // Для SuperJob: загружаем каталог и подставляем профессиональную сферу из текущей вакансии на платформе
+      if (platformData.id === 4) {
+        await loadDictionaries('superjob');
+        const { data: sjVacancy } = await getSuperjobVacancy(platformData.platform_id);
+        if (sjVacancy?.catalogues?.length && currectRole.value?.length) {
+          const cid = sjVacancy.catalogues[0].id ?? sjVacancy.catalogues[0].key;
+          for (const ind of currectRole.value) {
+            const role = ind.roles?.find(r => String(r.id) === String(cid));
+            if (role) {
+              data.value.industry = { ...ind };
+              data.value.professional_roles = [role];
+              data.value.superjob_catalogue_id = Number(cid) || cid;
+              break;
+            }
+          }
+        }
+        // Готовы рассмотреть (candidat): подставляем из текущей вакансии SuperJob, если в нашей БД ещё нет
+        if (sjVacancy?.candidat && (data.value.candidat == null || data.value.candidat === '')) {
+          data.value.candidat = typeof sjVacancy.candidat === 'string' ? sjVacancy.candidat : String(sjVacancy.candidat || '');
+        }
+        // Чекбоксы «Готовы рассмотреть»: из ответа SuperJob (accept_short_resume, accept_students и т.д.)
+        const readyIds = []
+        for (const opt of SUPERJOB_READY_TO_CONSIDER) {
+          if (sjVacancy?.[opt.superjobKey] === true) readyIds.push(opt.id)
+        }
+        if (readyIds.length > 0) data.value.superjob_ready_to_consider = readyIds
+      }
     }
   }
 
@@ -1371,23 +1447,23 @@ if (vacancyData.value) {
   data.value.name = vacancyData.value.name
   data.value.code = vacancyData.value.code
   data.value.description = vacancyData.value.description
-  data.value.industry = currectRole.value.filter(function (n, index) {
-    n.key = index
-    return n.name == vacancyData.value.industry
-  })[0]
-  if (data.value.industry !== undefined && data.value.industry.length == 0) {
-    data.value.professional_roles[0] = data.value.industry.roles.filter(function (n) {
-      return n.name == vacancyData.value.specializations
-    })
+  // Отрасль/специализацию из vacancyData не подставляем, если уже заданы из каталога SuperJob (редактирование вакансии с SuperJob)
+  if (data.value.superjob_catalogue_id == null) {
+    data.value.industry = currectRole.value.filter(function (n, index) {
+      n.key = index
+      return n.name == vacancyData.value.industry
+    })[0]
+    if (data.value.industry !== undefined && data.value.industry.length == 0) {
+      data.value.professional_roles[0] = data.value.industry.roles.filter(function (n) {
+        return n.name == vacancyData.value.specializations
+      })
+    }
+    if (data.value.professional_roles.length == 0) {
+      roleData.value = data.value.industry.roles[0]
+      data.value.professional_roles[0] = data.value.industry.roles[0]
+    }
   }
-  
-  if (data.value.professional_roles.length == 0) {
-    roleData.value = data.value.industry.roles[0]
-    data.value.professional_roles[0] = data.value.industry.roles[0]
-  }
-  
   // Обновляем вычисленные значения после обработки vacancyData
-  // Но не применяем город, так как города еще могут быть не загружены
   updateComputedValues()
 }
 // data.value.employment_form = HH_EMPLOYMENT_TYPES.filter( (item, i) => {
@@ -1530,6 +1606,15 @@ const additionalConditionsOptions = HH_ADDITIONAL_CONDITIONS.map(condition => ({
     value: condition.id
 }))
 
+// Переключение чекбокса «Готовы рассмотреть» для SuperJob
+function toggleSuperjobReadyConsider(id, checked) {
+  const arr = [...(data.value.superjob_ready_to_consider || [])]
+  const idx = arr.indexOf(id)
+  if (checked && idx === -1) arr.push(id)
+  else if (!checked && idx !== -1) arr.splice(idx, 1)
+  data.value.superjob_ready_to_consider = arr
+}
+
 // Преобразование HH_DRIVER_LICENSE_TYPES для MultiSelect (id -> value)
 const driverLicenseOptions = HH_DRIVER_LICENSE_TYPES.map(license => ({
   ...license,
@@ -1663,7 +1748,15 @@ const savePublication = async () => {
   // Если редактируем, обновляем вакансию на API и на привязанной платформе
   if (isEditing) {
     try {
-      const mappedData = mapVacancyToUpdateFormat(data.value);
+      let mappedData = mapVacancyToUpdateFormat(data.value);
+      // Для нашей платформы drivers — массив [{ id: 1 }, ...] (числовые id). Если в форме строковые id (A, B), разрешаем в id нашей БД.
+      if (mappedData.drivers?.length && mappedData.drivers.some((d) => typeof d?.id === 'string')) {
+        try {
+          mappedData = { ...mappedData, drivers: await resolveDriverNamesToDbIds(mappedData.drivers) };
+        } catch (e) {
+          console.warn('Не удалось разрешить водительские права в id нашей БД:', e);
+        }
+      }
       console.log('edit vacancy', props.editingVacancy);
 
       const { data: updateData, error } = await fetchVacancyUpdate(mappedData, props.editingVacancy.id);
@@ -1684,14 +1777,28 @@ const savePublication = async () => {
       if (platformData?.id && platformData?.platform_id != null) {
         const platformId = platformData.id;
         const vacancyPlatformId = platformData.platform_id;
-        const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
         let platformResponse = null;
         if (platformId === 1) {
+          const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
           platformResponse = await publishVacancyToHh(payload);
         } else if (platformId === 2) {
+          const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
           platformResponse = await publishVacancyToAvito(payload);
         } else if (platformId === 3) {
+          const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
           platformResponse = await publishVacancyToRabota(payload);
+        } else if (platformId === 4) {
+          const { data: currentSuperjobVacancy } = await getSuperjobVacancy(vacancyPlatformId);
+          // SuperJob ожидает driving_licence: ['A','B',...]. Если в форме числовые id (из нашей БД), конвертируем в названия.
+          let payloadFormData = data.value;
+          if (data.value.driver_license_types?.length && data.value.driver_license_types.some((d) => typeof d?.id === 'number')) {
+            const fields = await getVacancyFields();
+            const idToName = buildDriverDbIdToNameMap(fields?.data?.drivers);
+            const names = data.value.driver_license_types.map((d) => idToName.get(Number(d?.id ?? 0))).filter(Boolean);
+            payloadFormData = { ...data.value, driver_license_types: names.map((n) => ({ id: n })) };
+          }
+          const payload = mapVacancyToSuperjobPayload(payloadFormData, currentSuperjobVacancy ?? undefined);
+          platformResponse = await updatePublicationSuperjob(vacancyPlatformId, payload);
         }
         if (platformResponse?.error || platformResponse?.errorDraft) {
           status.value = 'Вакансия обновлена. Ошибка обновления на платформе: ' + (platformResponse?.error || platformResponse?.errorDraft || 'неизвестная ошибка');

@@ -110,6 +110,37 @@ export const unlinkProfile = async () => {
 };
 
 /**
+ * Получение каталога отраслей/категорий SuperJob (для формы «Отрасль / Специализация»).
+ * Ответ: массив отраслей с полями key, title, positions[] (каждая позиция: key, id_parent, title).
+ * Публичный эндпоинт, но при наличии токена можно передать заголовки.
+ */
+export const getCatalogues = async () => {
+  const authTokens = getAuthTokens();
+  const result = ref<ApiHhResult>({ data: null, error: null });
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (authTokens) {
+    const { serverToken, userToken } = authTokens;
+    headers.Authorization = `Bearer ${serverToken}`;
+    headers['X-Auth-User'] = userToken;
+  }
+  try {
+    const config = authTokens?.config ?? useRuntimeConfig();
+    const baseURL = (config?.public?.apiBase as string) || '';
+    const response = await $fetch<any>('/superjob/catalogues-public', {
+      baseURL,
+      headers,
+    });
+    const raw = response?.data ?? response;
+    result.value.data = Array.isArray(raw) ? raw : (raw?.data ?? []);
+  } catch (err: any) {
+    if (err.response?.status === 401) handle401Error();
+    result.value.error = err.response?._data?.message ?? 'Ошибка при загрузке каталога SuperJob';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение одной вакансии SuperJob по id
  */
 export const getVacancy = async (id: string | number) => {
@@ -175,6 +206,41 @@ export const archivePublication = async (vacancyId: string | number) => {
 };
 
 /**
+ * Обновление вакансии на SuperJob (синхронизация изменений с платформой).
+ * Бэкенд должен проксировать запрос в API SuperJob (PUT вакансии по id).
+ * @param vacancyId - ID вакансии на платформе (platform_id из platforms_data)
+ * @param payload - Данные вакансии в формате формы (name, description, salary_range, employment и т.д.)
+ */
+export const updatePublication = async (vacancyId: string | number, payload: Record<string, any>) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<any>(`/superjob/vacancies/${vacancyId}`, {
+      method: 'PUT',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: payload,
+    });
+    result.value.data = response?.data ?? response;
+  } catch (err: any) {
+    if (err.response?.status === 401) handle401Error();
+    result.value.error = err.response?._data?.message ?? err.response?._data?.error ?? 'Ошибка при обновлении вакансии на SuperJob';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение списка вакансий SuperJob (прокси к GET /api/superjob/vacancies)
  * Ответ бэкенда может повторять структуру API SuperJob: { objects: [...], total } или { data: { objects } }
  */
@@ -188,6 +254,7 @@ export const getPublications = async (_includeArchived: boolean = false) => {
 
   try {
     const response = await $fetch<any>('/superjob/vacancies', {
+      
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
@@ -195,7 +262,6 @@ export const getPublications = async (_includeArchived: boolean = false) => {
         'X-Auth-User': userToken,
       },
     });
-
     // Нормализация: SuperJob API возвращает { objects: [...] } или бэкенд может обернуть в data
     const raw = response?.data ?? response;
     const items = raw?.objects ?? raw?.items ?? raw?.vacancies ?? (Array.isArray(raw) ? raw : []);
@@ -225,7 +291,7 @@ export const getAllPublications = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<any>('/superjob/vacancies', {
+    const response = await $fetch<any>('/superjob/vacancies?published_all=1', {
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
@@ -240,7 +306,8 @@ export const getAllPublications = async () => {
     const normalizedItems = items.map((item: any) => ({
       ...item,
       id: item.id ?? item.vacancy_id ?? item.vacancyId,
-      name: item.profession?.title ?? item.name ?? item.title ?? '',
+      // name: item.profession?.title ?? item.name ?? item.title ?? '',
+      name: item?.profession ?? '',
       title: item.profession?.title ?? item.name ?? item.title ?? '',
       status: item.archived ? 'archived' : (item.status || 'published'),
       area: item.town ? { name: item.town.title ?? item.town.name ?? item.town } : (item.area || null),

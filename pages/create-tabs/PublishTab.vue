@@ -722,7 +722,7 @@ import { dateStringToDots } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
-import { getVacancy, getVacancies, updateVacancy } from '@/utils/getVacancies'
+import { getVacancy, getVacancies, updateVacancy, resolveDriverNamesToDbIds } from '@/utils/getVacancies'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
 import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationToVacancy'
@@ -1754,7 +1754,25 @@ async function importPublication(publication) {
             console.warn('platform_id не был добавлен в данные вакансии, используем полученный platformId');
             vacancyData.platform_id = platformId;
         }
-        
+
+        // Навыки (phrases): бэкенд принимает массив названий — создание/привязка по имени на бэке
+        if (vacancyData.phrases && typeof vacancyData.phrases === 'string' && vacancyData.phrases.trim()) {
+            vacancyData.phrases = vacancyData.phrases
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map((s) => s.substring(0, 50));
+        }
+
+        // Водительские права: для нашей платформы drivers — массив [{ id: 1 }, ...] (id = id категории в нашей БД)
+        if (vacancyData.drivers?.length && typeof vacancyData.drivers[0]?.id === 'string') {
+            try {
+                vacancyData.drivers = await resolveDriverNamesToDbIds(vacancyData.drivers);
+            } catch (e) {
+                console.warn('Не удалось разрешить водительские права в id нашей БД:', e);
+            }
+        }
+
         // Логируем данные для отладки (только для rabota.ru)
         if (platform === 'rabota.ru') {
             console.log('Импорт вакансии rabota.ru - исходные данные публикации:', {
