@@ -2,7 +2,8 @@ import type { Vacancy } from '@/types/vacancy';
 import { 
   HH_EMPLOYMENT_TYPES, 
   HH_EDUCATION_LAVEL, 
-  HH_WORK_SCHEDULE_BY_DAYS 
+  HH_WORK_SCHEDULE_BY_DAYS,
+  SUPERJOB_READY_TO_CONSIDER,
 } from '@/src/constants';
 import schedule from '~/src/data/work-schedule.json';
 import experience from '~/src/data/experience.json';
@@ -619,15 +620,22 @@ export function mapRabotaPublicationToVacancy(
 }
 
 /**
- * Маппинг данных публикации из SuperJob в формат вакансии для БД
- * SuperJob API: id, profession { title }, town { title }, payment_from, payment_to, currency { code },
- * type_of_work { title }, place { title }, education { title }, experience { title }, candidat, work, vacancyRichText
+ * Маппинг данных публикации из SuperJob в формат вакансии для БД.
+ * Структура SuperJob: id, profession (строка или { title }), town { title }, payment_from, payment_to,
+ * currency (строка "rub" или { code }), type_of_work { title }, place_of_work { title }, education { title },
+ * experience { title }, candidat, work, vacancyRichText, firm_activity, address, date_pub_to (unix),
+ * code, resumesubscription_keys[], resumesubscription_keywords, client { industry[] }, catalogues[],
+ * driving_licence (массив категорий ['A','B','C','D','E']), languages ([язык { id, title }, уровень { id, title }]).
  */
 export function mapSuperjobPublicationToVacancy(
   publication: any,
   currentVacancyId?: number
 ): Partial<Vacancy> {
-  const name = (publication.profession?.title ?? publication.name ?? publication.title ?? '').substring(0, 255);
+  // profession в API может быть строкой ("Менеджер низшего звена") или объектом { title }
+  const professionName = typeof publication.profession === 'string'
+    ? publication.profession
+    : (publication.profession?.title ?? publication.profession?.name ?? publication.name ?? publication.title ?? '');
+  const name = professionName.substring(0, 255);
 
   let description = publication.vacancyRichText ?? publication.description ?? '';
   if (publication.candidat || publication.work) {
@@ -637,6 +645,9 @@ export function mapSuperjobPublicationToVacancy(
     if (parts.length > 0) {
       description = parts.join('\n\n');
     }
+  }
+  if (!description || description.trim().length < 3) {
+    description = publication.firm_activity ?? '';
   }
 
   const salary = publication.salary ?? (publication.payment_from != null || publication.payment_to != null
@@ -656,17 +667,80 @@ export function mapSuperjobPublicationToVacancy(
   }
 
   const location = publication.town?.title ?? publication.town?.name ?? publication.area?.name ?? (typeof publication.town === 'string' ? publication.town : undefined);
-  const place = mapWorkSpaceFromSuperjob(publication.place, publication.work_place);
+  // place_of_work в SuperJob — офис/удалёнка/гибрид; place — устаревший вариант
+  const place = mapWorkSpaceFromSuperjob(publication.place_of_work ?? publication.place, publication.work_place);
   const employment = (publication.type_of_work?.title ?? publication.type_of_work?.name ?? publication.employment?.title)?.substring(0, 255);
   const schedule = (publication.schedule?.title ?? publication.schedule?.name)?.substring(0, 255);
   const experience = (publication.experience?.title ?? publication.experience?.name)?.substring(0, 255);
   const education = (publication.education?.title ?? publication.education?.name)?.substring(0, 255);
   const currency = mapCurrencyFromSuperjob(salary?.currency ?? publication.currency);
-  const specializations = (publication.profession?.title ?? publication.catalogues?.[0]?.title)?.substring(0, 255);
-  const phrasesData = publication.key_skills ?? publication.skills ?? publication.phrase;
-  const phrasesFormatted = Array.isArray(phrasesData)
-    ? phrasesData.map((s: any) => (typeof s === 'string' ? s : s?.title ?? s?.name)).filter(Boolean).join(', ')
-    : (typeof phrasesData === 'string' ? phrasesData : undefined);
+  // Профессиональная сфера (catalogues): первый элемент — выбранная категория; её parent — отрасль.
+  // Специализация = название выбранной категории (catalogues[0]).
+  const cat0 = publication.catalogues?.[0];
+  const catalogueTitle =
+    (cat0 && (typeof cat0 === 'string' ? cat0 : cat0?.title ?? cat0?.title_rus ?? cat0?.name)) || '';
+  const specializationsRaw = catalogueTitle || professionName;
+  const specializations = specializationsRaw ? String(specializationsRaw).trim().substring(0, 255) : undefined;
+
+  // Профессиональные навыки/ключевые слова → phrases в нашей БД.
+  // SuperJob API: resumesubscription_keywords (строка, через запятую), при ответе вакансии по id могут быть также resumesubscription_keys (массив), key_skills, skills, phrase.
+  const phrasesData =
+    publication.resumesubscription_keywords ??
+    publication.resumesubscription_keys ??
+    publication.key_skills ??
+    publication.skills ??
+    publication.phrase;
+  let phrasesFormatted: string | undefined;
+  if (Array.isArray(phrasesData)) {
+    phrasesFormatted = phrasesData
+      .map((s: any) => (typeof s === 'string' ? s : s?.title ?? s?.name ?? s?.title_rus ?? ''))
+      .filter(Boolean)
+      .join(', ');
+  } else if (typeof phrasesData === 'string' && phrasesData.trim()) {
+    // resumesubscription_keywords приходит строкой (например, через запятую)
+    phrasesFormatted = phrasesData.trim();
+  }
+  if (phrasesFormatted) phrasesFormatted = phrasesFormatted.substring(0, 2000);
+
+  // Адрес работы (address в SuperJob — полный адрес)
+  const workAddress = publication.address
+    ? (typeof publication.address === 'string' ? publication.address : (publication.address?.title ?? publication.address?.name ?? ''))
+    : undefined;
+
+  // Дата окончания публикации: date_pub_to — unix timestamp
+  let dateEnd: string | undefined;
+  if (publication.date_pub_to && Number(publication.date_pub_to) > 0) {
+    try {
+      const d = new Date(Number(publication.date_pub_to) * 1000);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        dateEnd = `${day}.${month}.${d.getFullYear()}`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Отрасль: приоритет у родителя из Профессиональной сферы (catalogues[0].parent), затем client.industry, затем firm_activity
+  let industry: string | undefined;
+  const parentCat = cat0 && typeof cat0 === 'object' && cat0.parent;
+  if (parentCat) {
+    const parentTitle = typeof parentCat === 'string' ? parentCat : (parentCat?.title ?? parentCat?.title_rus ?? parentCat?.name);
+    if (parentTitle) industry = String(parentTitle).trim();
+  }
+  if (!industry && Array.isArray(publication.client?.industry) && publication.client.industry.length > 0) {
+    industry = publication.client.industry
+      .map((i: any) => (typeof i === 'string' ? i : i?.title ?? i?.title_rus ?? i?.name))
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (!industry && publication.firm_activity) {
+    industry = typeof publication.firm_activity === 'string'
+      ? publication.firm_activity
+      : (publication.firm_activity?.title ?? publication.firm_activity?.name ?? '');
+  }
+  if (industry) industry = industry.substring(0, 255);
 
   const vacancyData: any = {
     name: name || 'Импортированная вакансия',
@@ -680,10 +754,73 @@ export function mapSuperjobPublicationToVacancy(
     education: education?.substring(0, 255),
     place: place,
     location: location?.substring(0, 255),
-    specializations: specializations?.substring(0, 255),
-    phrases: phrasesFormatted,
     status: 'draft',
   };
+
+  if (phrasesFormatted) vacancyData.phrases = phrasesFormatted;
+
+  // Всегда записываем отрасль и специализацию в vacancyData, чтобы они сохранялись в БД при импорте
+  if (industry) vacancyData.industry = industry;
+  if (specializations) vacancyData.specializations = specializations;
+
+  if (workAddress) vacancyData.work_address = workAddress;
+  if (dateEnd) vacancyData.dateEnd = dateEnd;
+  if (publication.code != null && publication.code !== '') vacancyData.code = String(publication.code).substring(0, 255);
+
+  // Готовы рассмотреть (SuperJob: candidat — «Требования к кандидату»). Сохраняем отдельно для формы «Кто и как может откликаться».
+  if (publication.candidat && typeof publication.candidat === 'string' && publication.candidat.trim()) {
+    vacancyData.candidat = publication.candidat.trim().substring(0, 2000);
+  }
+  // Чекбоксы «Готовы рассмотреть» (accept_short_resume, accept_students и т.д.) → массив id для формы
+  const readyIds: string[] = [];
+  for (const opt of SUPERJOB_READY_TO_CONSIDER) {
+    if ((publication as any)[opt.superjobKey] === true) readyIds.push(opt.id);
+  }
+  if (readyIds.length > 0) vacancyData.superjob_ready_to_consider = readyIds;
+
+  // Водительские права: на SuperJob только категории A, B, C, D, E. Кладём в vacancyData.drivers массив { id: название }.
+  // В PublishTab названия преобразуются в числовые id нашей БД через GET /api/vacancy-fields (resolveDriverNamesToDbIds).
+  const drivingLicence = publication.driving_licence ?? publication.driving_licence_ids;
+  if (Array.isArray(drivingLicence) && drivingLicence.length > 0) {
+    const superjobDriverCategories = /^[A-E]$/i; // только A, B, C, D, E
+    const drivers = drivingLicence
+      .map((item: string | { id?: string | number; name?: string; title?: string }) => {
+        const categoryName =
+          typeof item === 'string'
+            ? item.trim()
+            : String(item?.title ?? item?.name ?? (typeof item?.id === 'string' ? item.id : '')).trim();
+        const normalized = categoryName.toUpperCase();
+        if (!normalized || !superjobDriverCategories.test(normalized)) return null;
+        return { id: normalized };
+      })
+      .filter(Boolean);
+    if (drivers.length > 0) vacancyData.drivers = drivers;
+  }
+
+  // Иностранные языки: SuperJob — languages: [язык { id, title }, уровень { id, title }] или массив таких пар
+  const languagesRaw = publication.languages;
+  if (Array.isArray(languagesRaw) && languagesRaw.length > 0) {
+    const languages: Array<{ language?: string; languageLevel?: string; name?: string; level?: string }> = [];
+    // Вариант 1: один массив из двух элементов [langObj, levelObj]
+    const langObj = languagesRaw[0] && typeof languagesRaw[0] === 'object' ? languagesRaw[0] : null;
+    const levelObj = languagesRaw[1] && typeof languagesRaw[1] === 'object' ? languagesRaw[1] : null;
+    const langTitle = langObj ? (langObj.title ?? langObj.name ?? (typeof langObj === 'string' ? langObj : '')) : '';
+    const levelTitle = levelObj ? (levelObj.title ?? levelObj.name ?? (typeof levelObj === 'string' ? levelObj : '')) : '';
+    if (langTitle) {
+      languages.push({ language: String(langTitle).substring(0, 255), languageLevel: levelTitle ? String(levelTitle).substring(0, 255) : undefined });
+    }
+    // Вариант 2: массив пар [[lang, level], ...]
+    if (languages.length === 0 && languagesRaw.every((x) => Array.isArray(x))) {
+      for (const pair of languagesRaw) {
+        const l = pair[0];
+        const lev = pair[1];
+        const lt = l && typeof l === 'object' ? (l.title ?? l.name) : (typeof l === 'string' ? l : '');
+        const lvt = lev && typeof lev === 'object' ? (lev.title ?? lev.name) : (typeof lev === 'string' ? lev : '');
+        if (lt) languages.push({ language: String(lt).substring(0, 255), languageLevel: lvt ? String(lvt).substring(0, 255) : undefined });
+      }
+    }
+    if (languages.length > 0) vacancyData.languages = languages;
+  }
 
   return vacancyData;
 }
@@ -702,7 +839,8 @@ function mapWorkSpaceFromSuperjob(place?: any, workPlace?: string | number): num
 
 function mapCurrencyFromSuperjob(currency?: string | { code?: string }): string | undefined {
   if (!currency) return undefined;
-  const code = typeof currency === 'object' ? currency?.code : currency;
+  const raw = typeof currency === 'object' ? currency?.code : currency;
+  const code = typeof raw === 'string' ? raw.toUpperCase() : raw;
   if (!code) return 'RUB (рубль)';
   const currencyMap: Record<string, string> = {
     'RUR': 'RUB (рубль)',
