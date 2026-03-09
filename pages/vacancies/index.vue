@@ -1,82 +1,97 @@
 <script setup>
-  import DotsDropdown from '~/components/custom/DotsDropdown.vue';
   import VacancyCard from '~/components/custom/page-parts/VacancyCard.vue';
   import Pagination from '@/components/custom/Pagination.vue';
-  import GeoInput from '~/components/custom/GeoInput.vue';
-  import ResponseInput from '~/components/custom/ResponseInput.vue';
-  // import CheckboxGroup from '~/components/custom/CheckboxGroup.vue'
+  import MultiSelect from '~/components/custom/MultiSelect.vue';
   import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
-  import MyDropdown from '@/components/custom/MyDropdown.vue';
-  import DropdownCalendarStatic from '@/components/custom/DropdownCalendarStatic.vue';
+  import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
 
-  import { ref, computed, nextTick, watch, onMounted } from 'vue';
-  import { getVacancies } from '~/utils/getVacancies';
+  import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
+  import { getVacancies, getVacancyCities } from '~/utils/getVacancies';
   import { clientsList } from '@/utils/clientsList';
   import { getDepartments, responsiblesList } from '@/utils/executorsList';
 
   import VacancyCardDropdown from '@/src/data/vacancy-card-dropdown.json';
   import VacancyCardDraftDropdown from '@/src/data/vacancy-card-draft-dropdown.json';
+  import VacancyCardClosedDropdown from '@/src/data/vacancy-card-closed-dropdown.json';
   import VacancyCardArchiveDropdown from '@/src/data/vacancy-card-archive-dropdown.json';
-
-  const vacancyItems = [
-    'Пункт меню 1',
-    'Пункт меню 2',
-    'Пункт меню 3',
-    'Пункт меню 4',
-    'Пункт меню 5',
-    'Пункт меню 6',
-    'Пункт меню 7',
-  ];
 
   const isHoveredFunnel = ref(false);
   const isActiveFunnel = ref(false);
   const isHoveredSort = ref(false);
   const isActiveSort = ref(false);
+  /** Режим сортировки: new | old | urgent | non-urgent | asc | desc */
+  const sortMode = ref('new');
   const vacancies = ref([]);
   const vacanciesDraft = ref([]);
+  const vacanciesClosed = ref([]);
   const vacanciesArchive = ref([]);
   const currentPage = ref(1);
   const currentDraftPage = ref(1);
+  const currentClosedPage = ref(1);
   const currentArchivePage = ref(1);
   const itemsPerPage = 10;
   const itemsDraftPerPage = 10;
+  const itemsClosedPerPage = 10;
   const itemsArchivePerPage = 10;
   const cardsBlock = ref(null);
   const selectedMore = ref([]);
   const activeVacancies = ref(true);
-  const archiveVacancies = ref(false);
   const draftVacancies = ref(false);
+  const closedVacancies = ref(false);
+  const archiveVacancies = ref(false);
   const containerHeight = ref(0); // отслеживаю высоту контейнера
   const containerRef = ref(null); // ссылка на контейнер
-  const loading = ref(false);
+  const loading = ref(true);
   const clients = ref([]);
   const recruiters = ref([]);
   const departments = ref([]);
   const responsibles = ref([]);
-  const isOpenDateFrom = ref(false);
-  const isOpenDateTo = ref(false);
   const filters = ref({
-    status: null,
-    client: null,
-    city: null,
-    executor: null,
-    responsible: null,
-    create: {
-      from: null,
-      to: null,
-    },
+    city: [],
+    department: [],
+    create: { from: null, to: null },
+    close: { from: null, to: null },
+    responsible: [],
+    executor: [],
+    client: [],
   });
-  const filterStatuses = {
-    'В работе': 'active',
-    Черновик: 'draft',
-    Архив: 'archive',
-  };
+  /** Опции для фильтра «Город» (список городов) */
+  const citiesFilterOptions = ref([]);
+  /** Опции для фильтра «Отдел» (только отделы, без подразделений) */
+  const departmentsFilterOptions = ref([]);
+  /** Опции для мультиселектов: рекрутер, заказчик, согласующий — { value, name } */
+  const recruitersOptions = computed(() =>
+    (recruiters.value || []).map((r) => ({ value: r.id, name: r.name || '' }))
+  );
+  const clientsOptions = computed(() =>
+    (clients.value || []).map((c) => ({ value: c.id, name: c.name || '' }))
+  );
+  const responsiblesOptions = computed(() =>
+    (responsibles.value || []).map((r) => ({ value: r.id, name: r.name || '' }))
+  );
+
+  /** Есть ли активные фильтры (для подсветки иконки фильтра) */
+  const hasActiveFilters = computed(() => {
+    const f = filters.value;
+    return (
+      (Array.isArray(f.city) && f.city.length > 0) ||
+      (Array.isArray(f.department) && f.department.length > 0) ||
+      (Array.isArray(f.responsible) && f.responsible.length > 0) ||
+      (Array.isArray(f.executor) && f.executor.length > 0) ||
+      (Array.isArray(f.client) && f.client.length > 0) ||
+      (f.create?.from || f.create?.to) ||
+      (f.close?.from || f.close?.to)
+    );
+  });
 
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(vacancies.value.length / itemsPerPage))
   );
   const totalDraftPages = computed(() =>
     Math.max(1, Math.ceil(vacanciesDraft.value.length / itemsDraftPerPage))
+  );
+  const totalClosedPages = computed(() =>
+    Math.max(1, Math.ceil(vacanciesClosed.value.length / itemsClosedPerPage))
   );
   const totalArchivePages = computed(() =>
     Math.max(1, Math.ceil(vacanciesArchive.value.length / itemsArchivePerPage))
@@ -95,6 +110,14 @@
     );
   });
 
+  const paginatedClosedVacancies = computed(() => {
+    const startIndex = (currentClosedPage.value - 1) * itemsClosedPerPage;
+    return vacanciesClosed.value.slice(
+      startIndex,
+      startIndex + itemsClosedPerPage
+    );
+  });
+
   const paginatedArchiveVacancies = computed(() => {
     const startIndex = (currentArchivePage.value - 1) * itemsArchivePerPage;
     return vacanciesArchive.value.slice(
@@ -103,12 +126,25 @@
     );
   });
 
-  const updateFilters = event => {
-    if (event.target.classList.contains('filters-wrapper')) {
-      if (isOpenDateFrom.value) isOpenDateFrom.value = false;
-      if (isOpenDateTo.value) isOpenDateTo.value = false;
-    }
-  };
+  const updateFilters = () => {};
+
+  const filtersPanelRef = ref(null);
+  const funnelButtonRef = ref(null);
+
+  function handleFiltersClickOutside(event) {
+    if (!isActiveFunnel.value) return;
+    const path = event.composedPath ? event.composedPath() : [event.target];
+    const insidePanel = path.some((el) => {
+      if (!el || !(el instanceof Node)) return false;
+      if (filtersPanelRef.value && filtersPanelRef.value.contains(el)) return true;
+      if (funnelButtonRef.value && funnelButtonRef.value.contains(el)) return true;
+      if (el.getAttribute?.('role') === 'listbox' || el.getAttribute?.('role') === 'presentation') return true;
+      if (el.closest?.('[role="listbox"]') || el.closest?.('[role="presentation"]')) return true;
+      if (el.closest?.('.calendar-wrapper')) return true;
+      return false;
+    });
+    if (!insidePanel) isActiveFunnel.value = false;
+  }
 
   function handlePageChange(page) {
     currentPage.value = page;
@@ -116,6 +152,10 @@
 
   function handleDraftPageChange(page) {
     currentDraftPage.value = page;
+  }
+
+  function handleClosedPageChange(page) {
+    currentClosedPage.value = page;
   }
 
   function handleArchivePageChange(page) {
@@ -134,31 +174,73 @@
 
   function sortToggleActive() {
     isActiveSort.value = !isActiveSort.value;
-    console.log('isActiveSort.value', isActiveSort.value);
-    cardsBlock.value.style.borderBottomLeftRadius = isActiveSort.value
-      ? '0px'
-      : '15px';
-    cardsBlock.value.style.borderBottomRightRadius = isActiveSort.value
-      ? '0px'
-      : '15px';
+    if (cardsBlock.value) {
+      cardsBlock.value.style.borderBottomLeftRadius = isActiveSort.value
+        ? '0px'
+        : '15px';
+      cardsBlock.value.style.borderBottomRightRadius = isActiveSort.value
+        ? '0px'
+        : '15px';
+    }
+  }
+
+  async function applySort(mode) {
+    sortMode.value = mode;
+    isActiveSort.value = false;
+    if (cardsBlock.value) {
+      cardsBlock.value.style.borderBottomLeftRadius = '15px';
+      cardsBlock.value.style.borderBottomRightRadius = '15px';
+    }
+    loading.value = true;
+    try {
+      const statusParam =
+        activeVacancies.value
+          ? 'filters[status]=active'
+          : draftVacancies.value
+            ? 'filters[status]=draft'
+            : closedVacancies.value
+              ? 'filters[status]=closed'
+              : 'filters[status]=archive';
+      const params = `${statusParam}&sort=${mode}`;
+      const result = await getVacancies(params);
+      const list = result ?? [];
+      if (activeVacancies.value) vacancies.value = list;
+      else if (draftVacancies.value) vacanciesDraft.value = list;
+      else if (closedVacancies.value) vacanciesClosed.value = list;
+      else vacanciesArchive.value = list;
+    } catch (e) {
+      console.warn('Ошибка сортировки:', e);
+    } finally {
+      loading.value = false;
+    }
   }
 
   function showActiveVacancies() {
     activeVacancies.value = true;
+    draftVacancies.value = false;
+    closedVacancies.value = false;
     archiveVacancies.value = false;
-    draftVacancies.value = false;
-  }
-
-  function showArchiveVacancies() {
-    activeVacancies.value = false;
-    archiveVacancies.value = true;
-    draftVacancies.value = false;
   }
 
   function showDraftVacancies() {
     activeVacancies.value = false;
     draftVacancies.value = true;
+    closedVacancies.value = false;
     archiveVacancies.value = false;
+  }
+
+  function showClosedVacancies() {
+    activeVacancies.value = false;
+    draftVacancies.value = false;
+    closedVacancies.value = true;
+    archiveVacancies.value = false;
+  }
+
+  function showArchiveVacancies() {
+    activeVacancies.value = false;
+    draftVacancies.value = false;
+    closedVacancies.value = false;
+    archiveVacancies.value = true;
   }
 
   // Функция для обновления высоты контейнера
@@ -170,24 +252,41 @@
     }
   }
 
-  const sort = async type => {
-    loading.value = true;
-    const result = await getVacancies('sort=' + type);
-    if (result) {
-      vacancies.value = result;
-      loading.value = false;
-    } else {
-      console.log('Cannot fetch vacancies');
-    }
-  };
 
   // Обработчик удаления вакансии
   const handleVacancyDeleted = vacancyId => {
-    // Удаляем вакансию из списка
-    vacancies.value = vacancies.value.filter(
-      vacancy => vacancy.id !== vacancyId
-    );
-    console.log(`Вакансия с id ${vacancyId} удалена из списка`);
+    if (activeVacancies.value) {
+      vacancies.value = vacancies.value.filter((v) => v.id !== vacancyId);
+    } else if (draftVacancies.value) {
+      vacanciesDraft.value = vacanciesDraft.value.filter((v) => v.id !== vacancyId);
+    } else if (closedVacancies.value) {
+      vacanciesClosed.value = vacanciesClosed.value.filter((v) => v.id !== vacancyId);
+    } else if (archiveVacancies.value) {
+      vacanciesArchive.value = vacanciesArchive.value.filter((v) => v.id !== vacancyId);
+    }
+  };
+
+  const handleVacancyStatusChanged = async (vacancyId, newStatus) => {
+    if (activeVacancies.value) {
+      vacancies.value = vacancies.value.filter((v) => v.id !== vacancyId);
+    } else if (draftVacancies.value) {
+      vacanciesDraft.value = vacanciesDraft.value.filter((v) => v.id !== vacancyId);
+    } else if (closedVacancies.value) {
+      vacanciesClosed.value = vacanciesClosed.value.filter((v) => v.id !== vacancyId);
+    } else if (archiveVacancies.value) {
+      vacanciesArchive.value = vacanciesArchive.value.filter((v) => v.id !== vacancyId);
+    }
+    try {
+      const params = await buildFilterParams(newStatus);
+      const list = await getVacancies(params);
+      const data = Array.isArray(list) ? list : [];
+      if (newStatus === 'active') vacancies.value = data;
+      else if (newStatus === 'draft') vacanciesDraft.value = data;
+      else if (newStatus === 'closed') vacanciesClosed.value = data;
+      else if (newStatus === 'archive') vacanciesArchive.value = data;
+    } catch (e) {
+      console.warn('Ошибка обновления списка после смены статуса:', e);
+    }
   };
 
   const { clients: responseClients, error: clientsError } =
@@ -205,72 +304,131 @@
   // Инициализация высоты при монтировании
   // onMounted(updateContainerHeight, fetchVacancies);
   onMounted(async () => {
-    departments.value = await getDepartments();
-    responsibles.value = await responsiblesList();
+    try {
+      const [depts, respList, citiesList] = await Promise.all([
+        getDepartments(),
+        responsiblesList(),
+        getVacancyCities(),
+      ]);
+      departments.value = depts || [];
+      responsibles.value = respList || [];
+      if (Array.isArray(citiesList) && citiesList.length) {
+        citiesFilterOptions.value = citiesList.map((name) => ({ value: name, name }));
+      }
+      const deptsRaw = await getDepartments(true).catch(() => null);
+      if (deptsRaw && Array.isArray(deptsRaw)) {
+        departmentsFilterOptions.value = deptsRaw.map((d) => ({ value: d.id, name: d.name || '' }));
+      }
+    } catch (e) {
+      console.warn('Ошибка загрузки справочников:', e);
+    }
     updateContainerHeight();
+    await loadAllVacancyLists();
+    document.addEventListener('click', handleFiltersClickOutside);
+  });
+
+  async function buildFilterParams(forceStatus) {
+    const status = forceStatus ?? (activeVacancies.value ? 'active' : draftVacancies.value ? 'draft' : closedVacancies.value ? 'closed' : 'archive');
+    const parts = [`filters[status]=${status}`, `sort=${sortMode.value}`];
+    const f = filters.value;
+    const cityList = Array.isArray(f.city) ? f.city : [];
+    if (cityList.length) {
+      cityList.forEach((v) => parts.push(`filters[city][]=${encodeURIComponent(String(v))}`));
+    }
+    if (f.department?.length) {
+      f.department.forEach((v) => parts.push(`filters[department][]=${encodeURIComponent(v)}`));
+    }
+    if (f.executor?.length) {
+      f.executor.forEach((v) => parts.push(`filters[executor][]=${v}`));
+    }
+    if (f.client?.length) {
+      f.client.forEach((v) => parts.push(`filters[client][]=${v}`));
+    }
+    if (f.responsible?.length) {
+      f.responsible.forEach((v) => parts.push(`filters[responsible][]=${v}`));
+    }
+    if (f.create?.from || f.create?.to) {
+      const from = f.create.from || '01.01.1970';
+      const to = f.create.to || '01.01.3000';
+      parts.push(`filters[create]=${from};${to}`);
+    }
+    if (f.close?.from || f.close?.to) {
+      const from = f.close.from || '01.01.1970';
+      const to = f.close.to || '01.01.3000';
+      parts.push(`filters[close]=${from};${to}`);
+    }
+    return parts.join('&');
+  }
+
+  /** Загружает списки вакансий по всем четырём статусам с текущими фильтрами (при применении — с фильтрами, при сбросе — без). */
+  async function loadAllVacancyLists() {
     loading.value = true;
     try {
-      const [activeRes, draftRes, archiveRes] = await Promise.all([
-        getVacancies('filters[status]=active'),
-        getVacancies('filters[status]=draft'),
-        getVacancies('filters[status]=archive'),
+      const [paramsActive, paramsDraft, paramsClosed, paramsArchive] = await Promise.all([
+        buildFilterParams('active'),
+        buildFilterParams('draft'),
+        buildFilterParams('closed'),
+        buildFilterParams('archive'),
+      ]);
+      const [activeRes, draftRes, closedRes, archiveRes] = await Promise.all([
+        getVacancies(paramsActive),
+        getVacancies(paramsDraft),
+        getVacancies(paramsClosed),
+        getVacancies(paramsArchive),
       ]);
       vacancies.value = Array.isArray(activeRes) ? activeRes : [];
       vacanciesDraft.value = Array.isArray(draftRes) ? draftRes : [];
+      vacanciesClosed.value = Array.isArray(closedRes) ? closedRes : [];
       vacanciesArchive.value = Array.isArray(archiveRes) ? archiveRes : [];
     } catch (e) {
-      console.warn('Ошибка загрузки вакансий:', e);
+      console.warn('Ошибка загрузки списков вакансий:', e);
     } finally {
       loading.value = false;
     }
-  });
+  }
 
   const filteredVacancies = async () => {
-    loading.value = true;
-    let params = '';
-    for (let key in filters.value) {
-      if (filters.value[key]) {
-        if (key === 'status') {
-          params += `&filters[${key}]=${filterStatuses[filters.value[key]]}`;
-        } else {
-          if (key === 'create') {
-            console.log('create', filters);
-            if (filters.value.create.from || filters.value.create.to) {
-              const from = filters.value.create.from
-                ? filters.value.create.from
-                : '01.01.1970';
-              const to = filters.value.create.to
-                ? filters.value.create.to
-                : '01.01.3000';
-              params += `&filters[${key}]=${from};${to}`;
-            }
-          } else {
-            params += `&filters[${key}]=${filters.value[key]}`;
-          }
-        }
-      }
-    }
-    if (params !== '') {
-      params = params.slice(1);
-    }
-    const response = await getVacancies(params);
-
-    vacancies.value = response;
-    loading.value = false;
+    await loadAllVacancyLists();
+    isActiveFunnel.value = false;
   };
+
+  function resetFilters() {
+    filters.value = {
+      city: [],
+      department: [],
+      create: { from: null, to: null },
+      close: { from: null, to: null },
+      responsible: [],
+      executor: [],
+      client: [],
+    };
+    loadAllVacancyLists();
+    isActiveFunnel.value = false;
+  }
 
   // Следим за изменением активных блоков
   watch(
-    [activeVacancies, archiveVacancies, draftVacancies],
+    [activeVacancies, draftVacancies, closedVacancies, archiveVacancies],
     updateContainerHeight
   );
+
+  onBeforeUnmount(() => {
+    document.removeEventListener('click', handleFiltersClickOutside);
+  });
 </script>
 
 <template>
-  <div class="pb-28px container pt-35px">
+  <div class="pb-28px container pt-35px relative">
+    <!-- Прелоадер по центру экрана при загрузке вакансий -->
+    <div
+      v-if="loading"
+      class="fixed inset-0 z-[100] flex items-center justify-center"
+    >
+      <UiDotsLoader />
+    </div>
     <!-- header block -->
     <div
-      class="mb-px flex w-full items-center justify-between rounded-t-fifteen bg-white p-25px"
+      class="flex w-full items-center justify-between rounded-t-fifteen bg-white p-25px"
     >
       <div>
         <p class="mb-2.5 text-xl font-semibold leading-normal text-space">
@@ -290,10 +448,10 @@
     </div>
     <!-- cards block -->
     <div
-      class="filters-wrapper relative mb-15px rounded-b-[10px] bg-catskill px-25px pb-35px transition-all"
+      class="filters-wrapper relative mb-15px rounded-b-[10px] bg-catskill px-25px pt-[16px] pb-[16px] transition-all"
       ref="cardsBlock"
     >
-      <div class="flex justify-between pt-[15px]">
+      <div class="flex justify-between">
         <div class="flex">
           <div class="mr-2.5 flex justify-between gap-x-2.5">
             <button
@@ -310,7 +468,7 @@
                   : 'bg-transparent text-space'
               "
             >
-              <p>Активные вакансии</p>
+              <p>Открытые</p>
               <span class="text-sm font-medium text-slate-custom">
                 {{ vacancies.length }}
               </span>
@@ -329,9 +487,28 @@
                   : 'bg-transparent text-space'
               "
             >
-              <p>Черновики</p>
+              <p>Приостановлены</p>
               <span class="text-sm font-medium text-slate-custom">
                 {{ vacanciesDraft.length }}
+              </span>
+            </button>
+            <button
+              class="flex cursor-pointer gap-x-2.5 rounded-ten px-15px py-2.5 text-sm font-medium text-space"
+              @click="showClosedVacancies()"
+              style="
+                transition-property: background-color, color;
+                transition-duration: 0.2s;
+                transition-timing-function: ease-in-out;
+              "
+              :class="
+                closedVacancies
+                  ? 'bg-space text-white'
+                  : 'bg-transparent text-space'
+              "
+            >
+              <p>Закрыты</p>
+              <span class="text-sm font-medium text-slate-custom">
+                {{ vacanciesClosed.length }}
               </span>
             </button>
             <button
@@ -354,7 +531,6 @@
               </span>
             </button>
           </div>
-          <DotsDropdown :items="vacancyItems" />
         </div>
         <div class="flex gap-x-15px">
           <div class="relative">
@@ -374,59 +550,84 @@
             <transition name="fade">
               <div
                 v-if="isActiveSort"
-                class="absolute left-0 left-[unset] right-0 top-[50px] z-10 size-max rounded-b-ten bg-white p-25px pt-15px shadow-xl"
+                class="sort-dropdown absolute left-0 left-[unset] right-0 top-[50px] z-10 min-w-[280px] rounded-b-ten rounded-t-ten bg-white py-15px shadow-xl"
               >
-                <p
-                  class="mb-25px text-18px font-medium leading-normal text-space"
-                >
+                <p class="sort-dropdown__title px-25px pb-15px text-base font-semibold leading-normal text-space">
                   Сортировка
                 </p>
-                <div class="mb-[20px] flex gap-x-2.5">
+                <div class="sort-dropdown__group">
                   <button
-                    class="rounded-ten bg-athens-gray px-2.5 py-5px text-sm font-normal text-slate-custom"
+                    type="button"
+                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    :class="{ 'bg-athens-gray/60': sortMode === 'new' }"
+                    @click="applySort('new')"
                   >
-                    Новые
+                    <span>Сначала недавно созданные</span>
+                    <svg-icon v-if="sortMode === 'new'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
-                    class="rounded-ten bg-athens-gray px-2.5 py-5px text-sm font-normal text-slate-custom"
+                    type="button"
+                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    :class="{ 'bg-athens-gray/60': sortMode === 'old' }"
+                    @click="applySort('old')"
                   >
-                    Старые
-                  </button>
-                </div>
-                <div class="mb-[20px] flex gap-x-2.5">
-                  <button
-                    class="rounded-ten bg-athens-gray px-2.5 py-5px text-sm font-normal text-slate-custom"
-                  >
-                    Срочные
-                  </button>
-                  <button
-                    class="rounded-ten bg-athens-gray px-2.5 py-5px text-sm font-normal text-slate-custom"
-                  >
-                    Не срочные
+                    <span>Сначала давно созданные</span>
+                    <svg-icon v-if="sortMode === 'old'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
-                <div class="flex gap-x-2.5">
+                <div class="sort-dropdown__divider" />
+                <div class="sort-dropdown__group">
                   <button
-                    class="rounded-ten bg-athens-gray px-2.5 py-5px text-sm font-normal text-slate-custom"
+                    type="button"
+                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    :class="{ 'bg-athens-gray/60': sortMode === 'urgent' }"
+                    @click="applySort('urgent')"
                   >
-                    От А до Я
+                    <span>По дате закрытия. Сначала срочные</span>
+                    <svg-icon v-if="sortMode === 'urgent'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
-                    class="rounded-ten bg-athens-gray px-2.5 py-5px text-sm font-normal text-slate-custom"
+                    type="button"
+                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    :class="{ 'bg-athens-gray/60': sortMode === 'non-urgent' }"
+                    @click="applySort('non-urgent')"
                   >
-                    От Я до А
+                    <span>По дате закрытия. Сначала несрочные</span>
+                    <svg-icon v-if="sortMode === 'non-urgent'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
+                  </button>
+                </div>
+                <div class="sort-dropdown__divider" />
+                <div class="sort-dropdown__group">
+                  <button
+                    type="button"
+                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    :class="{ 'bg-athens-gray/60': sortMode === 'asc' }"
+                    @click="applySort('asc')"
+                  >
+                    <span>По названию от А до Я</span>
+                    <svg-icon v-if="sortMode === 'asc'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
+                  </button>
+                  <button
+                    type="button"
+                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    :class="{ 'bg-athens-gray/60': sortMode === 'desc' }"
+                    @click="applySort('desc')"
+                  >
+                    <span>По названию от Я до А</span>
+                    <svg-icon v-if="sortMode === 'desc'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
               </div>
             </transition>
           </div>
           <button
+            ref="funnelButtonRef"
             class="rounded-ten border p-2.5 transition-colors"
             @mouseover="isHoveredFunnel = true"
             @mouseleave="isHoveredFunnel = false"
             @click="funnelToggleActive()"
             :class="
-              isHoveredFunnel
+              isHoveredFunnel || hasActiveFilters
                 ? 'border-zumthor bg-zumthor text-dodger'
                 : 'border-athens bg-white text-slate-custom'
             "
@@ -438,94 +639,77 @@
       <transition name="fade">
         <div
           v-if="isActiveFunnel"
+          ref="filtersPanelRef"
           class="filters-wrapper relative left-0 top-[10px] z-10 w-full rounded-b-ten bg-white p-25px pt-15px"
           @click="event => updateFilters(event)"
         >
           <p class="mb-35px text-18px font-medium leading-normal text-space">
-            Сортировка
+            Фильтры
           </p>
           <div class="filters mb-6 grid grid-cols-4 gap-15px">
             <div>
-              <p class="mb-3.5 text-sm font-medium text-space">Статус</p>
-              <MyDropdown
-                :defaultValue="''"
-                placeholder="Выберите статус"
-                :options="['В работе', 'Черновик', 'Архив']"
-                :model-value="filters.status ? filters.status : ''"
-                @update:model-value="$event => (filters.status = $event)"
-              />
-            </div>
-            <div>
-              <p class="mb-3.5 text-sm font-medium text-space">Рекрутер</p>
-              <response-input
-                placeholder="Выберите рекрутера"
-                :responses="recruiters"
-                @update:modelValue="
-                  ($event, index) => (filters.executor = index)
-                "
-              />
-            </div>
-            <div>
-              <p class="mb-3.5 text-sm font-medium text-space">Заказчик</p>
-              <response-input
-                placeholder="Выберите заказчика"
-                :showRoles="false"
-                :responses="clients"
-                @update:modelValue="($event, index) => (filters.client = index)"
-              />
-            </div>
-            <div>
               <p class="mb-3.5 text-sm font-medium text-space">Город</p>
-              <geo-input
-                placeholder="Введите город"
-                :model-value="filters.city ? filters.city : ''"
-                @update:modelValue="$event => (filters.city = $event)"
+              <MultiSelect
+                v-model="filters.city"
+                :options="citiesFilterOptions"
+                placeholder="Выберите город"
+                defaultValue="Выберите города"
+                class="w-full"
               />
             </div>
             <div>
               <p class="mb-3.5 text-sm font-medium text-space">Отдел</p>
-              <response-input
+              <MultiSelect
+                v-model="filters.department"
+                :options="departmentsFilterOptions"
+                placeholder="Выберите отдел"
+                defaultValue="Выберите отделы"
                 class="w-full"
-                :responses="departments"
-                :model-value="filters.division ? filters.division.name : null"
-                :showRoles="true"
-                notFound="Отдел не найден"
-                placeholder="Введите название отдела"
-                @update:modelValue="(name, index) => console.log(name, index)"
+              />
+            </div>
+            <div>
+              <p class="mb-3.5 text-sm font-medium text-space">Период создания</p>
+              <DropdownPeriodPicker
+                :model-value="{ from: filters.create.from, to: filters.create.to }"
+                @update:model-value="v => { filters.create.from = v?.from ?? null; filters.create.to = v?.to ?? null }"
+              />
+            </div>
+            <div>
+              <p class="mb-3.5 text-sm font-medium text-space">Период закрытия</p>
+              <DropdownPeriodPicker
+                :model-value="{ from: filters.close.from, to: filters.close.to }"
+                @update:model-value="v => { filters.close.from = v?.from ?? null; filters.close.to = v?.to ?? null }"
               />
             </div>
             <div>
               <p class="mb-3.5 text-sm font-medium text-space">Согласующий</p>
-              <response-input
+              <MultiSelect
+                v-model="filters.responsible"
+                :options="responsiblesOptions"
                 placeholder="Выберите согласующего"
-                :showRoles="false"
-                :responses="responsibles"
-                @update:modelValue="
-                  ($event, index) => (filters.responsible = index)
-                "
+                defaultValue="Выберите согласующих"
+                class="w-full"
               />
             </div>
             <div>
-              <p class="mb-3.5 text-sm font-medium text-space">
-                Дата создания от
-              </p>
-              <p class="flex gap-15px">
-                <DropdownCalendarStatic
-                  :isOpen="isOpenDateFrom"
-                  @update:model-value="filters.create.from = $event"
-                />
-              </p>
+              <p class="mb-3.5 text-sm font-medium text-space">Рекрутер</p>
+              <MultiSelect
+                v-model="filters.executor"
+                :options="recruitersOptions"
+                placeholder="Выберите рекрутера"
+                defaultValue="Выберите рекрутеров"
+                class="w-full"
+              />
             </div>
             <div>
-              <p class="mb-3.5 text-sm font-medium text-space">
-                Дата создания до
-              </p>
-              <p class="flex gap-15px">
-                <DropdownCalendarStatic
-                  :isOpen="isOpenDateTo"
-                  @update:model-value="filters.create.to = $event"
-                />
-              </p>
+              <p class="mb-3.5 text-sm font-medium text-space">Заказчик</p>
+              <MultiSelect
+                v-model="filters.client"
+                :options="clientsOptions"
+                placeholder="Выберите заказчика"
+                defaultValue="Выберите заказчиков"
+                class="w-full"
+              />
             </div>
           </div>
           <!-- <div class="mb-35px">
@@ -537,13 +721,23 @@
                 />
               </div>
             </div> -->
-          <UiButton
-            variant="action"
-            size="semiaction"
-            @click="filteredVacancies"
-          >
-            Применить
-          </UiButton>
+          <div class="flex flex-wrap gap-2">
+            <UiButton
+              variant="action"
+              size="semiaction"
+              @click="filteredVacancies"
+            >
+              Применить
+            </UiButton>
+            <UiButton
+              variant="semiaction"
+              size="semiaction"
+              class="text-space"
+              @click="resetFilters"
+            >
+              Сбросить фильтры
+            </UiButton>
+          </div>
         </div>
       </transition>
       <!-- <transition name="fade">
@@ -603,26 +797,25 @@
     >
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="activeVacancies" class="active-view absolute w-full">
-          <div v-if="loading" class="absolute left-1/2 top-1/2">
-            <UiDotsLoader />
-          </div>
           <div
             class="[&>*:not(:last-child)]:mb-15px"
-            v-else-if="vacancies.length > 0"
+            v-if="vacancies.length > 0"
             :class="totalPages === 1 ? 'pb-52' : 'pb-0'"
           >
             <VacancyCard
               v-for="(vacancy, index) in paginatedVacancies"
               :key="vacancy.id"
               :vacancy="vacancy"
+              current-status="active"
               @vacancy-deleted="handleVacancyDeleted"
+              @vacancy-status-changed="handleVacancyStatusChanged"
               :dropdownItems="VacancyCardDropdown"
               :class="{ 'mb-4': index !== paginatedVacancies.length - 1 }"
             />
             <Pagination
               v-if="totalPages > 1"
-              :currentPage="currentPage"
-              :totalPages="totalPages"
+              :current-page="currentPage"
+              :last-page="totalPages"
               @page-changed="handlePageChange"
             />
           </div>
@@ -649,14 +842,47 @@
               v-for="(vacancy, index) in paginatedDraftVacancies"
               :key="vacancy.id"
               :vacancy="vacancy"
+              current-status="draft"
+              @vacancy-deleted="handleVacancyDeleted"
+              @vacancy-status-changed="handleVacancyStatusChanged"
               :dropdownItems="VacancyCardDraftDropdown"
               :class="{ 'mb-4': index !== paginatedDraftVacancies.length - 1 }"
             />
             <Pagination
               v-if="totalDraftPages > 1"
-              :currentPage="currentDraftPage"
-              :totalPages="totalDraftPages"
+              :current-page="currentDraftPage"
+              :last-page="totalDraftPages"
               @page-changed="handleDraftPageChange"
+            />
+          </div>
+        </div>
+      </transition>
+      <transition name="fade" @after-enter="updateContainerHeight">
+        <div v-if="closedVacancies" class="active-view absolute w-full">
+          <div
+            v-if="vacanciesClosed.length === 0"
+            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
+          >
+            <p class="text-15px font-medium text-slate-custom">
+              Закрытых вакансий пока нет
+            </p>
+          </div>
+          <div v-if="vacanciesClosed.length > 0" class="flex flex-col gap-15px">
+            <VacancyCard
+              v-for="(vacancy, index) in paginatedClosedVacancies"
+              :key="vacancy.id"
+              :vacancy="vacancy"
+              current-status="closed"
+              @vacancy-deleted="handleVacancyDeleted"
+              @vacancy-status-changed="handleVacancyStatusChanged"
+              :dropdownItems="VacancyCardClosedDropdown"
+              :class="{ 'mb-4': index !== paginatedClosedVacancies.length - 1 }"
+            />
+            <Pagination
+              v-if="totalClosedPages > 1"
+              :current-page="currentClosedPage"
+              :last-page="totalClosedPages"
+              @page-changed="handleClosedPageChange"
             />
           </div>
         </div>
@@ -679,6 +905,9 @@
               v-for="(vacancy, index) in paginatedArchiveVacancies"
               :key="vacancy.id"
               :vacancy="vacancy"
+              current-status="archive"
+              @vacancy-deleted="handleVacancyDeleted"
+              @vacancy-status-changed="handleVacancyStatusChanged"
               :dropdownItems="VacancyCardArchiveDropdown"
               :class="{
                 'mb-4': index !== paginatedArchiveVacancies.length - 1,
@@ -686,8 +915,8 @@
             />
             <Pagination
               v-if="totalArchivePages > 1"
-              :currentPage="currentArchivePage"
-              :totalPages="totalArchivePages"
+              :current-page="currentArchivePage"
+              :last-page="totalArchivePages"
               @page-changed="handleArchivePageChange"
             />
           </div>
@@ -738,6 +967,12 @@
 
   .filters-wrapper {
     border-radius: 0 0 15px 15px !important;
+  }
+
+  .sort-dropdown__divider {
+    height: 1px;
+    background-color: #e5e7eb;
+    margin: 4px 0;
   }
 
   @media (max-width: 992px) {

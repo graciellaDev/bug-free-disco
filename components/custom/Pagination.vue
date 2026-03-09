@@ -78,9 +78,9 @@
     <div
       class="mt-25px flex w-fit justify-center rounded-ten bg-white p-2.5 leading-normal"
     >
-      <!-- Кнопка "Назад" -->
+      <!-- Кнопка "Назад" — показываем только если есть предыдущая страница -->
       <button
-        :disabled="currentPage === 1"
+        v-if="currentPage > 1"
         @click="changePage(currentPage - 1)"
         @mouseover="setHoverState('leftArrow', true)"
         @mouseleave="setHoverState('leftArrow', false)"
@@ -146,9 +146,9 @@
         </button>
       </div>
 
-      <!-- Кнопка "Вперед" -->
+      <!-- Кнопка "Вперед" — показываем только если есть следующая страница -->
       <button
-        :disabled="currentPage === lastPage"
+        v-if="currentPage < lastPage"
         @click="changePage(currentPage + 1)"
         @mouseover="setHoverState('rightArrow', true)"
         @mouseleave="setHoverState('rightArrow', false)"

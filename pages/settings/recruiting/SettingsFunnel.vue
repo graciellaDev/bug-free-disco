@@ -384,7 +384,7 @@ onMounted(() => {
             <div class="flex gap-x-2.5 items-center">
               <button
                 type="button"
-                class="text-sm cursor-pointer transition-all w-fit h-fit select-none flex gap-x-2.5 py-2.5 px-5 items-center rounded-ten whitespace-nowrap"
+            class="text-sm cursor-pointer transition-all w-fit h-fit select-none flex gap-x-2.5 py-2.5 px-5 items-center rounded-ten whitespace-nowrap"
                 :class="[
                   funnel.stagesOpen ? 'bg-space text-white' : 'bg-zumthor text-dodger',
                 ]"

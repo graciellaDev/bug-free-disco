@@ -97,6 +97,7 @@
       email: props.candidate.email || '',
       phone: props.candidate.phone || '',
       resume: props.candidate.resume || '',
+      source: props.candidate.source || '',
       messengerMax: normalizeUsername(props.candidate.messengerMax),
       telegram: normalizeUsername(props.candidate.telegram),
       photo: props.candidate.imagePath || null,
@@ -270,6 +271,7 @@
         resume: props.candidate.resume,
         resumePath: props.candidate.resumePath,
         coverPath: props.candidate.coverPath,
+        source: props.candidate.source || null,
         stage_id: 1, // начальный этап для новой вакансии
         // Копирование связей (если нужно)
         skills: props.candidate.skills?.map(s => s.id) || [],

@@ -109,6 +109,17 @@ export const editCandidateFormConfig: FormConfig = {
       },
     },
     {
+      name: 'source',
+      label: 'Источник',
+      type: 'text',
+      placeholder: 'Например, hh.ru, Рекомендация',
+      row: 5,
+      colSpan: 6,
+      validation: {
+        required: false,
+      },
+    },
+    {
       name: 'messengerMax',
       label: 'Max',
       type: 'text',

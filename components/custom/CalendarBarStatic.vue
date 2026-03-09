@@ -45,7 +45,7 @@ const props = withDefaults(
     weekdayFormat: 'short',
   }
 )
-const emits = defineEmits<CalendarRootEmits>()
+const emits = defineEmits<CalendarRootEmits & { dateClick: [date: DateValue] }>()
 
 const delegatedProps = computed(() => {
   const { class: _, placeholder: __, ...delegated } = props
@@ -64,6 +64,10 @@ const formatter = useDateFormatter('ru')
 
 const doublClick = () => {
   (emits as any)('dblclick', placeholder.value)
+}
+
+const onDateCellClick = (date: DateValue) => {
+  emits('dateClick', date)
 }
 </script>
 
@@ -130,7 +134,7 @@ const doublClick = () => {
         <CalendarGridBody class="grid">
           <CalendarGridRow v-for="(weekDates, index) in month.rows" :key="`weekDate-${index}`" class="mt-2 w-full">
             <CalendarCell v-for="weekDate in weekDates" :key="weekDate.toString()" :date="weekDate">
-              <CalendarCellTrigger :day="weekDate" :month="month.value" @ondblclick="doublClick" />
+              <CalendarCellTrigger :day="weekDate" :month="month.value" @click="onDateCellClick(weekDate)" @ondblclick="doublClick" />
             </CalendarCell>
           </CalendarGridRow>
         </CalendarGridBody>

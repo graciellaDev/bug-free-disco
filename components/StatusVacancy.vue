@@ -8,9 +8,9 @@
             <MyDropdown
               trigger-variant="semiaction"
               placeholder="Выберите статус"
-              :options="['В работе', 'Черновик', 'Архив']"
-              :model-value="props.modelValue ?? 'В работе'"
-              @update:model-value="emit('update:modelValue', $event ?? 'В работе')"
+              :options="['Открыта', 'Приостановлена', 'Закрыта', 'Архив']"
+              :model-value="props.modelValue ?? 'Открыта'"
+              @update:model-value="emit('update:modelValue', $event ?? 'Открыта')"
             />
             <UiButton class="font-bold" variant="action" size="action" @click="emit('save-and-continue')">Сохранить и продолжить</UiButton>
           </div>
@@ -101,7 +101,7 @@ const props = defineProps({
   },
   modelValue: {
     type: String,
-    default: 'В работе',
+    default: 'Открыта',
   },
   activeTab: {
     type: String,

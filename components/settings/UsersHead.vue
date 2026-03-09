@@ -3,7 +3,7 @@
         <div>
             <div class="mb-2">
                 <p class="text-xl font-semibold" :class="{ 'page-title-employees': title === 'Сотрудники' }">
-                    {{ title }} 
+                    {{ title }}
                 </p>
             </div>
             <div>
@@ -12,9 +12,9 @@
                 </p>
             </div>
         </div>
-        <div class="flex items-center">
-            <button 
-              class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 bg-dodger text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold"
+        <div v-if="showInviteButton" class="flex items-center">
+            <button
+              class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-dodger text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold"
               @click="isOpenPopupAddClient = true"
             >
                 Пригласить {{ title.replace(/.$/, 'а').toLowerCase() }}
@@ -75,6 +75,10 @@ const props = defineProps({
         default: 'list',
     },
     showTabs: {
+        type: Boolean,
+        default: true,
+    },
+    showInviteButton: {
         type: Boolean,
         default: true,
     },

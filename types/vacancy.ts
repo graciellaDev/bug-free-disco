@@ -48,6 +48,7 @@ export type VacancyStage = {
   position?: number;
   fixed?: boolean;
   max_days?: number | null;
+  count?: number;
 };
 
 export type ApiResponseVacanciesData = {

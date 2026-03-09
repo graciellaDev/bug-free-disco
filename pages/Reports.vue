@@ -1,3 +1,625 @@
+<script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
+import MyDropdown from '~/components/custom/MyDropdown.vue';
+import MultiSelect from '~/components/custom/MultiSelect.vue';
+import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
+import { getVacancies, getVacancyCities } from '~/utils/getVacancies';
+import { clientsList } from '~/utils/clientsList';
+import { getDepartments } from '~/utils/executorsList';
+import { getCandidates } from '@/src/api/candidates';
+
+const segmentOptions = ['Рекрутинг', 'Сотрудники'];
+const metricOptions = [
+  'Воронка статусов по вакансии',
+  'Время закрытия позиций',
+  'Среднее время на этапе',
+  'Возможные источники',
+  'Поток кандидатов',
+  'Воронка найма',
+];
+
+const segment = ref('Рекрутинг');
+const metric = ref('Воронка статусов по вакансии');
+const dateRange = ref<{ from: string | null; to: string | null }>({ from: null, to: null });
+
+const vacancyOptions = ref<{ value: number; name: string }[]>([]);
+const selectedVacancy = ref<number | null>(null);
+const vacancyStages = ref<{ id: number; name: string; count: number }[]>([]);
+const vacancyCandidates = ref<{ stage?: number; source?: string | null }[]>([]);
+
+const participantOptions = ref<{ value: number; name: string }[]>([]);
+const selectedParticipants = ref<number[]>([]);
+
+const isActiveFunnel = ref(false);
+const isHoveredFunnel = ref(false);
+const filtersPanelRef = ref<HTMLElement | null>(null);
+const funnelButtonRef = ref<HTMLElement | null>(null);
+const filterCity = ref<string[]>([]);
+const filterDepartment = ref<number[]>([]);
+const citiesFilterOptions = ref<{ value: string; name: string }[]>([]);
+const departmentsFilterOptions = ref<{ value: number; name: string }[]>([]);
+
+function funnelToggleActive() {
+  isActiveFunnel.value = !isActiveFunnel.value;
+}
+
+function handleFiltersClickOutside(event: MouseEvent) {
+  if (!isActiveFunnel.value) return;
+  const path = event.composedPath?.() ? event.composedPath() : [];
+  for (const el of path) {
+    if (el instanceof HTMLElement) {
+      if (filtersPanelRef.value?.contains(el) || funnelButtonRef.value?.contains(el)) return;
+      if (el.closest?.('.options-wrapper') || el.getAttribute?.('role') === 'listbox' || el.closest?.('.calendar-wrapper')) return;
+    }
+  }
+  isActiveFunnel.value = false;
+}
+
+onMounted(async () => {
+  document.addEventListener('click', handleFiltersClickOutside);
+  try {
+    const [list, { clients: employees }, citiesList, deptsRaw] = await Promise.all([
+      getVacancies('per_page=all'),
+      clientsList('employees'),
+      getVacancyCities(),
+      getDepartments(true).catch(() => null),
+    ]);
+    const items = Array.isArray(list) ? list : [];
+    vacancyOptions.value = items.map((v: { id: number; name?: string; title?: string }) => ({
+      value: v.id,
+      name: (v.name ?? v.title ?? '').trim() || `Вакансия #${v.id}`,
+    }));
+    if (vacancyOptions.value.length > 0 && selectedVacancy.value === null) {
+      selectedVacancy.value = vacancyOptions.value[0].value;
+    }
+    const users = Array.isArray(employees) ? employees : [];
+    participantOptions.value = users.map((u: { id: number; name?: string }) => ({
+      value: u.id,
+      name: (u.name ?? '').trim() || `Участник #${u.id}`,
+    }));
+    if (Array.isArray(citiesList) && citiesList.length) {
+      citiesFilterOptions.value = citiesList.map((name) => ({ value: name, name }));
+    }
+    if (deptsRaw && Array.isArray(deptsRaw)) {
+      departmentsFilterOptions.value = deptsRaw.map((d: { id: number; name?: string }) => ({ value: d.id, name: d.name || '' }));
+    }
+  } catch (e) {
+    console.warn('Ошибка загрузки данных для фильтров:', e);
+  }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleFiltersClickOutside);
+});
+
+const SOURCE_COLORS: Record<string, string> = {
+  'hh.ru': '#f59e0b',
+  'avito.ru': '#ef4444',
+  'rabota.ru': '#a855f7',
+  'Рекомендация': '#38bdf8',
+  'Другое': '#22c55e',
+};
+const FALLBACK_COLORS = ['#f59e0b', '#ef4444', '#a855f7', '#38bdf8', '#22c55e', '#ec4899', '#8b5cf6'];
+
+function buildCandidateFilters() {
+  const filters: Record<string, string> = {};
+  if (dateRange.value?.from && dateRange.value?.to) {
+    filters['filters[created_at_from]'] = dateRange.value.from;
+    filters['filters[created_at_to]'] = dateRange.value.to;
+  }
+  return filters;
+}
+
+watch(
+  [selectedVacancy, dateRange],
+  async ([vacancyId]) => {
+    if (vacancyId) {
+      try {
+        const candidateFilters = {
+          vacancy_id: vacancyId,
+          per_page: 'all',
+          ...buildCandidateFilters(),
+        };
+        const [list, candidatesRes] = await Promise.all([
+          getVacancies(`filters[id]=${vacancyId}`),
+          getCandidates(1, candidateFilters),
+        ]);
+      const items = Array.isArray(list) ? list : [];
+      const vacancy = items.find((v: { id?: number }) => v.id === vacancyId) ?? items[0];
+      const footerStages = vacancy?.footerData?.stages;
+      if (Array.isArray(footerStages) && footerStages.length > 0) {
+        vacancyStages.value = footerStages
+          .filter((s: { id?: number }) => s.id != null)
+          .map((s: { id: number; name: string; count?: number }) => ({
+            id: s.id,
+            name: s.name,
+            count: typeof s.count === 'number' ? s.count : 0,
+          }));
+      } else {
+        vacancyStages.value = [];
+      }
+      vacancyCandidates.value = candidatesRes?.candidates ?? [];
+    } catch {
+      vacancyStages.value = [];
+      vacancyCandidates.value = [];
+    }
+  } else {
+    vacancyStages.value = [];
+    vacancyCandidates.value = [];
+  }
+},
+  { deep: true }
+);
+
+const chartData = [
+  { value: '5000', label: 'просмотры' },
+  { value: '832', label: 'отклики' },
+  { value: '384', label: 'воронка' },
+  { value: '141', label: 'отказы' },
+];
+
+const tableColumns = [
+  { key: 'source', label: 'Источник' },
+  { key: 'views', label: 'Просмотры' },
+  { key: 'responses', label: 'Отклики' },
+  { key: 'funnel', label: 'Движение по воронке' },
+  { key: 'rejections', label: 'Отказы' },
+];
+
+const tableData = [
+  { source: 'Платные доски объявлений', sourceIcon: true, views: 5000, responses: 700, funnel: 300, rejections: 100 },
+  { source: 'hh.ru', views: 2320, responses: 321, funnel: 121, rejections: 43 },
+  { source: 'superjob.ru', views: 1023, responses: 99, funnel: 41, rejections: 14 },
+];
+
+const activeSortColumn = ref('views');
+
+// Данные для отчёта «Воронка статусов по вакансии»: источники и сегменты из реальных кандидатов
+/** Разбивка по этапам и источникам: stageId -> { sourceName -> count } */
+const stageSourceBreakdown = computed(() => {
+  const breakdown: Record<number, Record<string, number>> = {};
+  for (const c of vacancyCandidates.value) {
+    const stageId = c.stage ?? 0;
+    const source = c.source?.trim() || 'Не указан';
+    if (!breakdown[stageId]) breakdown[stageId] = {};
+    breakdown[stageId][source] = (breakdown[stageId][source] ?? 0) + 1;
+  }
+  return breakdown;
+});
+
+/** Уникальные источники с цветами и общим количеством (для легенды справа) */
+const stagesLegendSources = computed(() => {
+  const totals: Record<string, number> = {};
+  for (const c of vacancyCandidates.value) {
+    const source = c.source?.trim() || 'Не указан';
+    totals[source] = (totals[source] ?? 0) + 1;
+  }
+  const order = ['hh.ru', 'avito.ru', 'rabota.ru', 'Рекомендация', 'Другое', 'Не указан'];
+  const sorted = [...new Set([...order.filter(s => totals[s] > 0), ...Object.keys(totals).filter(s => !order.includes(s))])];
+  let colorIndex = 0;
+  return sorted.map(name => ({
+    name,
+    count: totals[name] ?? 0,
+    color: SOURCE_COLORS[name] ?? FALLBACK_COLORS[colorIndex++ % FALLBACK_COLORS.length],
+  })).filter(s => s.count > 0);
+});
+
+/** Сегменты полосы для конкретного этапа (по stage.id) */
+function getStageSegments(stageId: number): { color: string; share: number; count: number }[] {
+  const bySource = stageSourceBreakdown.value[stageId] ?? {};
+  const total = Object.values(bySource).reduce((a, b) => a + b, 0);
+  if (total === 0) return [];
+  const sources = stagesLegendSources.value;
+  return sources
+    .filter(s => (bySource[s.name] ?? 0) > 0)
+    .map(s => ({
+      color: s.color,
+      share: (bySource[s.name] ?? 0) / total,
+      count: bySource[s.name] ?? 0,
+    }));
+}
+
+const mockRejectionValues = [15, 8, 4, 3];
+const rejectionsLegend = [
+  { color: '#4b5563', name: 'Несоответствующая квалификация', count: 27 },
+  { color: '#9ca3af', name: 'Неудобно добираться до работы', count: 3 },
+];
+const rejectionsLegendTotal = 30;
+
+/** Количество кандидатов на каждом этапе (из отфильтрованных кандидатов, учитывая дату создания). */
+const funnelBarTotals = computed(() => {
+  const byStage: Record<number, number> = {};
+  for (const c of vacancyCandidates.value) {
+    const sid = c.stage ?? 0;
+    byStage[sid] = (byStage[sid] ?? 0) + 1;
+  }
+  return vacancyStages.value.map((s) => byStage[s.id] ?? 0);
+});
+const rejectionBarValues = computed(() => {
+  const n = vacancyStages.value.length;
+  if (!n) return [];
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(mockRejectionValues[i % mockRejectionValues.length] ?? mockRejectionValues[0]);
+  return out;
+});
+const maxFunnelTotal = computed(() => Math.max(...funnelBarTotals.value, 1));
+const maxRejectionValue = computed(() => Math.max(...rejectionBarValues.value, 1));
+
+/** Всего кандидатов в воронке выбранной вакансии. */
+const stagesLegendTotal = computed(() => funnelBarTotals.value.reduce((a, b) => a + b, 0));
+
+/** Процент: нарастающий итог (или фактическое кол-во для закрытых этапов) от общего количества. */
+const stagePercentOfTotal = computed(() => {
+  const stages = vacancyStages.value;
+  const passedThrough = stagePassedThroughCounts.value;
+  const totals = funnelBarTotals.value;
+  const total = stagesLegendTotal.value;
+  if (total === 0) return [];
+  return stages.map((s, i) => {
+    const val = CLOSED_STAGE_NAMES.includes(s.name) ? (totals[i] ?? 0) : (passedThrough[i] ?? 0);
+    return Math.round((val / total) * 100);
+  });
+});
+
+const CLOSED_STAGE_NAMES = ['Нанят на работу', 'Отказ'];
+
+/** Накопительный подсчёт: количество кандидатов, прошедших через этап (сумма текущего этапа и всех следующих). */
+const stagePassedThroughCounts = computed(() => {
+  const totals = funnelBarTotals.value;
+  if (!totals.length) return [];
+  const out: number[] = [];
+  for (let i = 0; i < totals.length; i++) {
+    out.push(totals.slice(i).reduce((a, b) => a + b, 0));
+  }
+  return out;
+});
+
+/** Для отображения: закрытые этапы — фактическое количество, остальные — нарастающий итог. */
+const stageDisplayCounts = computed(() => {
+  const stages = vacancyStages.value;
+  const passedThrough = stagePassedThroughCounts.value;
+  return stages.map((s, i) =>
+    CLOSED_STAGE_NAMES.includes(s.name) ? s.count : (passedThrough[i] ?? 0)
+  );
+});
+
+const maxPassedThrough = computed(() => {
+  const p = stageDisplayCounts.value;
+  return p.length ? Math.max(...p, 1) : 1;
+});
+
+function barStyle(rowIndex: number) {
+  const passedThrough = stageDisplayCounts.value[rowIndex] ?? 0;
+  const max = maxPassedThrough.value;
+  const widthPct = max > 0 ? (passedThrough / max) * 100 : 0;
+  return {
+    width: `${widthPct}%`,
+    minWidth: passedThrough > 0 ? '24px' : '4px',
+    backgroundColor: passedThrough > 0 ? 'transparent' : '#e5e7eb',
+  };
+}
+
+</script>
+
 <template>
-    <h1 class="text-3xl font-bold">Отчеты</h1>
+  <div class="container pb-28px pt-35px">
+    <!-- Карточка 1: Фильтры и селекты (relative z-10 чтобы выпадающие списки были поверх блоков ниже) -->
+    <div class="relative z-10 mb-15px rounded-ten bg-white p-25px shadow-sm">
+      <div class="mb-5 grid grid-cols-1 gap-5 md:grid-cols-3 md:items-end">
+        <div>
+          <label class="mb-2 block text-sm font-medium text-space">Сегмент</label>
+          <MyDropdown
+            v-model="segment"
+            :options="segmentOptions"
+            placeholder="Выберите сегмент"
+            trigger-variant="semiaction"
+            class="w-full"
+          />
+        </div>
+        <div>
+          <label class="mb-2 block text-sm font-medium text-space">Отчет</label>
+          <MyDropdown
+            v-model="metric"
+            :options="metricOptions"
+            placeholder="Выберите отчет"
+            trigger-variant="semiaction"
+            class="w-full"
+          />
+        </div>
+        <div class="flex justify-end">
+          <UiButton
+            variant="semiaction"
+            size="semiaction"
+            class="bg-space text-white hover:bg-space/90"
+          >
+            Экспорт CSV
+          </UiButton>
+        </div>
+      </div>
+
+      <div class="my-5 border-b border-athens" role="separator" aria-hidden="true" />
+
+      <!-- Поля и кнопки: Вакансия (один выбор), Кандидаты за период, Участники, кнопка фильтров, Применить -->
+      <div class="flex flex-wrap items-end gap-4">
+        <div class="min-w-0 flex-1 basis-40">
+          <label class="mb-2 block text-sm font-medium text-space">Вакансия</label>
+          <MyDropdown
+            v-model="selectedVacancy"
+            :options="vacancyOptions"
+            placeholder="Выберите вакансию"
+            clearable
+            searchable
+            search-placeholder="Поиск вакансий"
+            class="w-full"
+          />
+        </div>
+        <div class="min-w-0 flex-1 basis-40">
+          <label class="mb-2 block text-sm font-medium text-space">Кандидаты за период</label>
+          <DropdownPeriodPicker
+            v-model="dateRange"
+            class="w-full"
+          />
+        </div>
+        <div class="min-w-0 flex-1 basis-40">
+          <label class="mb-2 block text-sm font-medium text-space">Участники</label>
+          <MultiSelect
+            v-model="selectedParticipants"
+            :options="participantOptions"
+            default-value="Участники"
+            searchable
+            search-placeholder="Поиск участников"
+            class="w-full"
+          />
+        </div>
+        <div class="flex-shrink-0">
+          <button
+            ref="funnelButtonRef"
+            type="button"
+            class="flex h-10 w-10 items-center justify-center rounded-ten border border-zumthor bg-zumthor text-dodger transition-colors hover:bg-zumthor/90"
+            :class="
+              isHoveredFunnel || (filterCity.length > 0 || filterDepartment.length > 0)
+                ? 'border-dodger bg-zumthor text-dodger'
+                : ''
+            "
+            @mouseover="isHoveredFunnel = true"
+            @mouseleave="isHoveredFunnel = false"
+            @click="funnelToggleActive"
+          >
+            <svg-icon name="funnel" width="20" height="20" />
+          </button>
+        </div>
+        <div class="flex-shrink-0">
+          <UiButton variant="action" size="semiaction">
+            Применить
+          </UiButton>
+        </div>
+      </div>
+
+      <transition name="fade">
+        <div
+          v-if="isActiveFunnel"
+          ref="filtersPanelRef"
+          class="filters-wrapper relative left-0 top-[10px] z-20 w-full rounded-b-ten bg-white pb-25px pt-15px"
+        >
+          <p class="mb-4 text-lg font-medium leading-normal text-space">
+            Дополнительные фильтры
+          </p>
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <p class="mb-2 text-sm font-medium text-space">Город</p>
+              <MultiSelect
+                v-model="filterCity"
+                :options="citiesFilterOptions"
+                default-value="Выберите города"
+                searchable
+                search-placeholder="Поиск городов"
+                class="w-full"
+              />
+            </div>
+            <div>
+              <p class="mb-2 text-sm font-medium text-space">Отдел</p>
+              <MultiSelect
+                v-model="filterDepartment"
+                :options="departmentsFilterOptions"
+                default-value="Выберите отделы"
+                class="w-full"
+              />
+            </div>
+          </div>
+        </div>
+      </transition>
+    </div>
+
+    <!-- Контент зависит от выбранного отчёта -->
+    <template v-if="metric === 'Воронка статусов по вакансии'">
+      <!-- Отчёт «Воронка статусов по вакансии»: этапы и полосы по выбранной вакансии -->
+      <div class="rounded-ten bg-white p-25px shadow-sm">
+        <template v-if="!selectedVacancy">
+          <p class="py-8 text-center text-slate-custom">Выберите вакансию, чтобы отобразить этапы и воронку кандидатов.</p>
+        </template>
+        <template v-else-if="vacancyStages.length === 0">
+          <p class="py-8 text-center text-slate-custom">Загрузка этапов вакансии…</p>
+        </template>
+        <div v-else class="flex gap-8">
+          <!-- Воронка кандидатов: название этапа напротив полосы, в скобках — накопительное количество (прошло через этап) -->
+          <div class="min-w-0 flex-1">
+            <p class="mb-3 text-sm font-bold text-space">Воронка кандидатов</p>
+            <div class="flex flex-col gap-4">
+              <div
+                v-for="(stage, rowIndex) in vacancyStages"
+                :key="'funnel-' + stage.id"
+                class="flex h-[40px] items-center gap-4"
+              >
+                <div class="flex w-48 min-w-0 flex-shrink-0 items-center gap-1 text-sm font-medium text-space">
+                  <span class="min-w-0 truncate" :title="stage.name">{{ stage.name }}</span>
+                  <span class="flex-shrink-0">({{ stageDisplayCounts[rowIndex] ?? 0 }})</span>
+                </div>
+                <div class="flex h-[40px] min-w-0 flex-1 overflow-hidden rounded-[10px] bg-athens-gray/40">
+                  <div
+                    class="flex h-[40px] overflow-hidden rounded-[10px]"
+                    :style="barStyle(rowIndex)"
+                  >
+                    <template v-if="(stageDisplayCounts[rowIndex] ?? 0) > 0">
+                      <div
+                        v-for="(seg, segIndex) in getStageSegments(stage.id)"
+                        :key="segIndex"
+                        class="transition-colors"
+                        :style="{
+                          width: `${seg.share * 100}%`,
+                          backgroundColor: seg.color,
+                          minWidth: seg.count > 0 ? '2px' : '0',
+                        }"
+                      />
+                    </template>
+                  </div>
+                </div>
+                <span class="flex-shrink-0 text-sm text-slate-custom">
+                  {{ stagePercentOfTotal[rowIndex] ?? 0 }}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Правая колонка: источники кандидатов с цветами и количеством -->
+          <div class="w-56 flex-shrink-0">
+            <p class="mb-2 text-sm font-bold text-space">Источники кандидатов</p>
+            <p class="mb-3 text-lg font-bold text-dodger">{{ stagesLegendTotal }}</p>
+            <ul class="space-y-1.5 text-sm text-slate-custom">
+              <li
+                v-for="item in stagesLegendSources"
+                :key="item.name"
+                class="flex items-center gap-2"
+              >
+                <span
+                  class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  :style="{ backgroundColor: item.color }"
+                />
+                <span class="min-w-0 truncate">{{ item.name }}</span>
+                <span class="flex-shrink-0">{{ item.count }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Один контейнер в одну линию: «Отказы после этапов» + полосы и «Отказы» + счётчик и список -->
+        <div v-if="selectedVacancy && vacancyStages.length > 0" class="mt-6 flex flex-wrap items-start gap-8 border-t border-athens pt-6">
+          <div class="min-w-0 flex-1">
+            <p class="mb-3 text-sm font-bold text-space">Отказы после этапов</p>
+            <div class="flex flex-col gap-4">
+              <div
+                v-for="(stage, rowIndex) in vacancyStages"
+                :key="'rej-' + stage.id"
+                class="flex h-10 items-center gap-4"
+              >
+                <div class="flex w-48 min-w-0 flex-shrink-0 items-center text-sm font-medium text-space">
+                  <span class="min-w-0 truncate" :title="stage.name">{{ stage.name }}</span>
+                </div>
+                <div class="flex min-w-0 flex-1 items-center">
+                  <div
+                    class="h-6 rounded-full bg-gray-300"
+                    :style="{
+                      width: `${(rejectionBarValues[rowIndex] / maxRejectionValue) * 100}%`,
+                      minWidth: rejectionBarValues[rowIndex] > 0 ? '8px' : '0',
+                    }"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="w-56 flex-shrink-0">
+            <p class="mb-2 text-sm font-bold text-space">Отказы</p>
+            <p class="mb-3 text-lg font-bold text-dodger">{{ rejectionsLegendTotal }}</p>
+            <ul class="space-y-1.5 text-sm text-slate-custom">
+              <li
+                v-for="item in rejectionsLegend"
+                :key="item.name"
+                class="flex items-center gap-2"
+              >
+                <span
+                  class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  :style="{ backgroundColor: item.color }"
+                />
+                <span class="min-w-0 flex-1">{{ item.name }}</span>
+                <span class="flex-shrink-0">{{ item.count }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
+      <!-- Контент для остальных отчётов: донат-графики и таблица -->
+      <div class="mb-15px flex flex-wrap justify-between gap-6 rounded-ten bg-white p-25px shadow-sm">
+        <div
+          v-for="(item, index) in chartData"
+          :key="index"
+          class="relative flex h-36 w-36 flex-col items-center justify-center"
+        >
+          <div
+            class="absolute inset-0 rounded-full"
+            style="
+              background: conic-gradient(
+                #f59e0b 0deg 300deg,
+                #ec4899 300deg 330deg,
+                #a855f7 330deg 360deg
+              );
+            "
+          />
+          <div class="absolute flex h-28 w-28 items-center justify-center rounded-full bg-white" />
+          <div class="relative z-10 text-center">
+            <span class="block text-xl font-bold text-space">{{ item.value }}</span>
+            <span class="block text-xs font-normal text-slate-custom">{{ item.label }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-ten bg-white p-25px shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[600px] text-left text-sm">
+            <thead>
+              <tr class="border-b border-athens">
+                <th class="pb-3 pr-4 font-medium text-space">
+                  {{ tableColumns[0].label }}
+                </th>
+                <th
+                  v-for="col in tableColumns.slice(1)"
+                  :key="col.key"
+                  class="cursor-pointer pb-3 pr-4 font-medium text-space hover:text-dodger"
+                  :class="{ 'border-b-2 border-dodger': activeSortColumn === col.key }"
+                  @click="activeSortColumn = col.key"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    {{ col.label }}
+                    <svg-icon name="dropdown-arrow" width="16" height="16" class="rotate-90 text-slate-custom" />
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(row, idx) in tableData"
+                :key="idx"
+                class="border-b border-athens last:border-0"
+              >
+                <td class="py-3 pr-4">
+                  <span class="inline-flex items-center gap-2">
+                    <span
+                      v-if="row.sourceIcon"
+                      class="h-3 w-3 rounded-full bg-amber-400"
+                    />
+                    {{ row.source }}
+                  </span>
+                </td>
+                <td class="py-3 pr-4 text-slate-custom">{{ row.views }}</td>
+                <td class="py-3 pr-4 text-slate-custom">{{ row.responses }}</td>
+                <td class="py-3 pr-4 text-slate-custom">{{ row.funnel }}</td>
+                <td class="py-3 pr-4 text-slate-custom">{{ row.rejections }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+  </div>
 </template>

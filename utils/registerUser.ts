@@ -117,9 +117,7 @@ export async function updateEmployee(id: number, payload: Record<string, unknown
                     : 'Ошибка обновления');
         return { data: null, error: true, message };
     }
-}
-
-/** Удалить сотрудника из списка (убирает связь с текущим админом). */
+}/** Удалить сотрудника из списка (убирает связь с текущим админом). */
 export async function deleteEmployee(id: number) {
     const config = useRuntimeConfig();
     const authToken = useCookie('auth_token').value;

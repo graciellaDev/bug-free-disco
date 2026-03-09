@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-  import { ref, onMounted, computed, watch } from 'vue';
+  import { ref, onMounted, computed, watch, nextTick } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import CandidateList from '@/components/custom/page-parts/vacancy/CandidateList.vue';
   import BlockCandidateInfo from '@/components/custom/page-parts/candidate/BlockCandidateInfo.vue';
@@ -45,6 +45,11 @@
 
     if (vacancy.value?.id) {
       filter.vacancy_id = vacancy.value.id;
+    }
+
+    // Фильтр по этапу — запрашиваем с сервера только кандидатов выбранного этапа
+    if (selectedStageId.value !== null) {
+      filter['filters[stage_id]'] = selectedStageId.value;
     }
 
     return filter;
@@ -151,6 +156,8 @@
     },
   });
 
+  const candidatesTotal = computed(() => (vacancy.value as { candidatesTotal?: number })?.candidatesTotal ?? candidatesList.value?.length ?? 0);
+
   const candidatesCountByStage = computed(() => {
     const counts: Record<number, number> = {};
 
@@ -179,18 +186,9 @@
       }));
   });
 
+  // Список уже отфильтрован на сервере по выбранному этапу (candidateFilter)
   const filteredCandidatesList = computed(() => {
-    if (!candidatesList.value) {
-      return [];
-    }
-
-    if (selectedStageId.value === null) {
-      return candidatesList.value;
-    }
-
-    return candidatesList.value.filter(
-      candidate => candidate.stage === selectedStageId.value
-    );
+    return candidatesList.value ?? [];
   });
 
   const isInitialLoading = computed(
@@ -477,6 +475,15 @@
     await loadVacancy(vacancyId);
     await loadVacancies();
 
+    const stageIdParam = route.query.stage;
+    if (stageIdParam != null && stageIdParam !== '') {
+      const stageId = Number(stageIdParam);
+      if (Number.isInteger(stageId) && stages.value.some(s => s.id === stageId)) {
+        selectedStageId.value = stageId;
+        isActiveAll.value = false;
+      }
+    }
+
     await nextTick();
 
     if (isInitialLoad.value && vacancy.value?.id) {
@@ -571,7 +578,7 @@
       >
         <p>Все</p>
         <span class="text-sm font-medium text-slate-custom">
-          {{ candidatesList?.length }}
+          {{ candidatesTotal }}
         </span>
       </button>
       <button
@@ -591,7 +598,7 @@
       >
         <p>{{ stage.name }}</p>
         <span class="text-sm font-medium text-slate-custom">
-          {{ candidatesCountByStage[stage.id] || 0 }}
+          {{ (stage as { count?: number }).count ?? candidatesCountByStage[stage.id] ?? 0 }}
         </span>
       </button>
     </div>
