@@ -488,6 +488,13 @@
 
     if (isInitialLoad.value && vacancy.value?.id) {
       await refreshCandidates();
+      const candidateIdParam = route.query.candidate;
+      if (candidateIdParam != null && candidateIdParam !== '') {
+        const candidateId = Number(candidateIdParam);
+        if (Number.isInteger(candidateId) && candidateId > 0) {
+          await loadCandidate(candidateId);
+        }
+      }
     }
 
     isInitialLoad.value = false;
@@ -496,16 +503,36 @@
   watch(
     () => filteredCandidatesList.value,
     async newCandidates => {
+      if (!newCandidates?.length) return;
+      const candidateIdParam = route.query.candidate;
+      if (candidateIdParam != null && candidateIdParam !== '') {
+        const candidateId = Number(candidateIdParam);
+        if (Number.isInteger(candidateId) && candidateId > 0) {
+          await loadCandidate(candidateId);
+          return;
+        }
+      }
       if (
-        newCandidates &&
-        newCandidates.length > 0 &&
-        (!selectedCandidate.value ||
-          !newCandidates.some(c => c.id === selectedCandidate.value?.id))
+        !selectedCandidate.value ||
+        !newCandidates.some(c => c.id === selectedCandidate.value?.id)
       ) {
         await loadCandidate(newCandidates[0].id);
       }
     },
     { immediate: false }
+  );
+
+  // При переходе по ссылке с ?candidate= (клик по вакансии из карточки кандидата)
+  // список не меняется, поэтому загружаем кандидата по query
+  watch(
+    () => route.query.candidate,
+    async (candidateParam) => {
+      if (candidateParam == null || candidateParam === '') return;
+      const id = Number(candidateParam);
+      if (!Number.isInteger(id) || id <= 0) return;
+      await loadCandidate(id);
+    },
+    { immediate: true }
   );
 </script>
 
@@ -623,6 +650,26 @@
           <UiDotsLoader />
         </div>
         <div v-else-if="selectedCandidate" class="w-full">
+          <BlockCandidateInfo
+            :candidate="selectedCandidate"
+            :stages="stages"
+            :isFunnel="true"
+            :vacancy="vacancy"
+            @candidate-updated="handleCandidateUpdated"
+            @candidate-moved="handleCandidateMoved"
+            @candidate-deleted="handleCandidateDeleted"
+          />
+          <BlockCandidateTabsInfo :candidate="selectedCandidate" />
+        </div>
+      </div>
+      <div
+        v-else-if="selectedCandidate && route.query.candidate"
+        class="w-full"
+      >
+        <div v-if="isLoadingCandidate">
+          <UiDotsLoader />
+        </div>
+        <div v-else>
           <BlockCandidateInfo
             :candidate="selectedCandidate"
             :stages="stages"

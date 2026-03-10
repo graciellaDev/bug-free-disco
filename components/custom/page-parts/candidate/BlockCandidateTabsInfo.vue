@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
+  import { ref, watch } from 'vue';
   import BtnTab from '~/components/custom/BtnTab.vue';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
   import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
@@ -9,8 +9,10 @@
   import Timeline from '~/components/timeline/index.vue';
   import ChatInput from '~/components/chat/ChatInput.vue';
   import { useForms } from '~/stores/forms';
+  import { getCandidateConsiderations } from '@/src/api/candidates';
 
   import type { Candidate } from '@/types/candidates';
+  import type { CandidateConsideration } from '@/types/candidates';
   // import type { TimelineGroup }
 
   const newName = ref('');
@@ -36,9 +38,9 @@
 
   const tabs = [
     { label: 'Резюме', value: 'resume' },
-    // { label: 'Поля', value: 'fields' },
+    { label: 'Поля', value: 'fields' },
     { label: 'Общение', value: 'chat', notification: '+1' },
-    // { label: 'Рассмотрения', value: 'review' },
+    { label: 'Рассмотрения', value: 'review' },
   ];
 
   const positions = [
@@ -275,6 +277,39 @@
     return messageData;
     // TODO: Implement message sending logic
   };
+
+  const considerations = ref<CandidateConsideration[]>([]);
+  const considerationsLoading = ref(false);
+
+  /** Состояние «Развернуть» по индексу записи опыта */
+  const expandedExperience = ref<Record<number, boolean>>({});
+  const toggleExperience = (idx: number) => {
+    expandedExperience.value = {
+      ...expandedExperience.value,
+      [idx]: !expandedExperience.value[idx],
+    };
+  };
+
+  const loadConsiderations = async () => {
+    if (!props.candidate?.id) return;
+    considerationsLoading.value = true;
+    try {
+      considerations.value = await getCandidateConsiderations(props.candidate.id);
+    } catch (e) {
+      console.error('Ошибка загрузки рассмотрений:', e);
+      considerations.value = [];
+    } finally {
+      considerationsLoading.value = false;
+    }
+  };
+
+  watch(
+    () => [activeTab.value, props.candidate?.id, props.candidate],
+    ([tab, id]) => {
+      if (tab === 'review' && id) loadConsiderations();
+    },
+    { immediate: true }
+  );
 </script>
 
 <template>
@@ -286,6 +321,94 @@
       <div v-if="activeTab === 'resume'">
         <div class="mb-px bg-white p-25px pt-[27px]">
           <p class="mb-15px text-15px font-medium text-space">
+            Сопроводительное письмо
+          </p>
+          <p class="text-sm leading-150 text-slate-custom">
+            {{ candidate.coverLetter || 'Сопроводительное письмо не указано' }}
+          </p>
+        </div>
+        <div class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Должность</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.quickInfo || '—' }}
+          </p>
+          <p class="mb-2 text-sm leading-150">
+            <span class="text-slate-custom">Специализации: </span>
+            <span class="text-space">{{ candidate.specializations || '—' }}</span>
+          </p>
+          <p class="mb-2 text-sm leading-150">
+            <span class="text-slate-custom">Тип занятости: </span>
+            <span class="text-space">{{ candidate.employment || '—' }}</span>
+          </p>
+          <p class="text-sm leading-150">
+            <span class="text-slate-custom">Формат работы: </span>
+            <span class="text-space">{{ candidate.workFormat || candidate.work_format || '—' }}</span>
+          </p>
+        </div>
+        <div class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">
+            Опыт работы: {{ candidate.experience || '—' }}
+          </p>
+          <div
+            v-for="(exp, idx) in candidate.experiences"
+            :key="exp.id ?? idx"
+            class="experience-entry border-b border-athens pb-5 pt-4 first:pt-0 last:border-b-0 last:pb-0"
+          >
+            <div class="flex gap-4">
+              <div class="experience-entry-dates w-[120px] shrink-0">
+                <p class="text-sm font-normal text-slate-custom">
+                  {{ exp.dates || [exp.start_date, exp.end_date].filter(Boolean).join(' – ') || '—' }}
+                </p>
+                <p v-if="exp.duration" class="mt-0.5 text-xs font-normal text-slate-custom">
+                  {{ exp.duration }}
+                </p>
+              </div>
+              <div class="experience-entry-details min-w-0 flex-1">
+                <p class="text-sm font-semibold text-space">
+                  {{ exp.company || '—' }}
+                </p>
+                <p v-if="exp.location" class="mt-0.5 text-sm font-normal text-space">
+                  {{ exp.location }}
+                </p>
+                <div v-if="exp.industry || exp.description" class="mt-0.5 flex items-center justify-between gap-2">
+                  <p v-if="exp.industry" class="text-sm font-normal text-space">
+                    {{ exp.industry }}
+                  </p>
+                  <button
+                    v-if="exp.description"
+                    type="button"
+                    class="experience-toggle shrink-0 text-sm font-normal text-dodger hover:underline"
+                    :class="{ 'ml-auto': !exp.industry }"
+                    @click="toggleExperience(idx)"
+                  >
+                    {{ expandedExperience[idx] ? 'Свернуть' : 'Развернуть' }}
+                  </button>
+                </div>
+                <p v-if="exp.job_title" class="mt-1.5 text-sm font-semibold text-space">
+                  {{ exp.job_title }}
+                </p>
+                <p v-if="exp.role_dates" class="mt-0.5 text-sm font-normal text-space">
+                  {{ exp.role_dates }}
+                </p>
+                <div
+                  v-if="exp.description"
+                  class="mt-1.5 text-sm font-normal leading-150 text-space"
+                  :class="{ 'line-clamp-2': !expandedExperience[idx] }"
+                >
+                  {{ exp.description }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <p
+            v-if="(!candidate.experiences || candidate.experiences.length === 0) && candidate.experience"
+            class="text-sm leading-150 text-slate-custom"
+          >
+            {{ candidate.experience }}
+          </p>
+        </div>
+        <div class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">
             Краткие сведения
           </p>
           <p class="text-sm leading-150 text-slate-custom">
@@ -293,359 +416,338 @@
           </p>
         </div>
         <div class="mb-px bg-white p-25px">
-          <p class="mb-4 text-15px font-medium text-space">Образование</p>
-          <p class="mb-8 text-sm text-slate-custom">
-            {{ candidate.education }}
+          <p class="mb-15px text-15px font-medium text-space">Образование</p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Уровень</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.educationLevel || candidate.education || '—' }}
           </p>
-          <!-- <ul v-if="candidate?.education?.primary && candidate?.education?.primary?.length > 0">
-                <li
-                  v-for="(item, index) in candidate.education.primary"
-                  :key="index"
-                  class="mb-4 text-sm text-slate-custom"
-                >
-                  {{ item.name }}
-                  <p class="text-xs">
-                    <span v-if="item.university_acronym">
-                      {{ item.university_acronym }},
-                    </span>
-                    <span v-if="item.organization">
-                      {{ item.organization }},
-                    </span>
-                    <span v-if="item.result">{{ item.result }},</span>
-                    <span v-if="item.year">{{ item.year }}</span>
-                  </p>
-                </li>
-              </ul> -->
+          <p class="mb-1 text-sm font-normal text-slate-custom">Название заведения</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.educationInstitution || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Факультет</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.educationFaculty || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Специализация</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.educationSpecialization || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Год окончания</p>
+          <p class="text-sm font-normal leading-150 text-space">
+            {{ candidate.educationYear || '—' }}
+          </p>
         </div>
         <div class="mb-px bg-white p-25px">
-          <p class="mb-4 text-15px font-medium text-space">
+          <p class="mb-15px text-15px font-medium text-space">
             Курсы повышения квалификации
           </p>
-          <!-- <p class="mb-8 text-sm text-slate-custom">
-                {{ candidate.education.additional.name }}
-              </p> -->
-          <!-- <ul v-if="candidate.education.additional.length > 0">
-                <li
-                  v-for="(item, index) in candidate.education.additional"
-                  :key="index"
-                  class="mb-4 text-sm text-slate-custom"
-                >
-                  {{ item.name }}
-                  <p class="text-xs">
-                    <span v-if="item.organization">
-                      {{ item.organization }},
-                    </span>
-                    <span v-if="item.result">{{ item.result }},</span>
-                    <span v-if="item.year">{{ item.year }}</span>
-                  </p>
-                </li>
-              </ul> -->
+          <p class="mb-1 text-sm font-normal text-slate-custom">Название</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.courseName || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Проводившая организация</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.courseOrganization || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Специализация</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.courseSpecialization || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Год окончания</p>
+          <p class="text-sm font-normal leading-150 text-space">
+            {{ candidate.courseYear || '—' }}
+          </p>
         </div>
         <div class="mb-px bg-white p-25px">
-          <p class="mb-3.5 text-15px font-medium text-space">Навыки</p>
-          <div>
-            <div v-if="candidate?.skills && candidate?.skills?.length === 0">
-              <p class="text-sm font-normal text-slate-custom">
-                Кандидат не указал навыки
-              </p>
-            </div>
-            <div v-else class="flex flex-wrap gap-5px">
-              <span
-                v-for="(skill, index) in candidate?.skills"
-                :key="index"
-                class="max-h-[27px] whitespace-nowrap rounded-plus bg-athens-gray px-[10.56px] py-5px text-13px font-normal text-space"
-              >
-                {{ skill }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="mb-px bg-white p-25px pb-[23px] pt-27px">
-          <p class="mb-15px text-15px font-medium text-space">
-            Прикрепленные файлы
-          </p>
-          <div
-            v-if="
-              candidate?.attachments && candidate?.attachments?.length === 0
-            "
-          >
+          <p class="mb-15px text-15px font-medium text-space">Навыки</p>
+          <div v-if="!candidate?.skills || candidate.skills.length === 0">
             <p class="text-sm font-normal text-slate-custom">
-              Кандидат не прикрепил файлы
+              Кандидат не указал навыки
             </p>
           </div>
-          <div v-else class="flex gap-25px">
-            <div
-              v-for="file in candidate?.attachments"
-              :key="file.id"
-              class="max-w-[100px]"
+          <div v-else class="flex flex-wrap gap-2">
+            <span
+              v-for="(skill, index) in candidate.skills"
+              :key="(typeof skill === 'object' && skill?.id) ?? index"
+              class="inline-flex items-center justify-center rounded-lg bg-athens-gray px-3 py-1.5 text-sm font-normal text-space"
             >
-              <a :href="file.link" target="_blank">
-                <span
-                  class="mb-9px flex h-[100px] w-[100px] items-center justify-center rounded-b-fifteen rounded-tl-fifteen rounded-tr-[35px] bg-zumthor text-sm font-medium uppercase text-dodger"
-                >
-                  {{ 'file.type' }}
-                </span>
-                <div class="flex">
-                  <span class="truncate text-sm font-medium text-dodger">
-                    {{ 'file.name' }}
-                  </span>
-                  <span class="text-sm font-medium text-dodger">
-                    .{{ 'file.type' }}
-                  </span>
-                </div>
-              </a>
-            </div>
+              {{ typeof skill === 'object' && skill && 'name' in skill ? skill.name : skill }}
+            </span>
           </div>
         </div>
-        <div class="rounded-b-fifteen bg-white p-25px">
-          <p class="mb-4 text-15px font-medium text-space">Ссылки</p>
-          <div>
-            <p class="text-sm font-normal text-slate-custom">
-              {{
-                candidate.link
-                  ? candidate.link
-                  : 'Кандидат не поделился ссылками'
-              }}
-            </p>
-          </div>
+        <div class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Языки</p>
+          <p class="mb-2 text-sm leading-150">
+            <span class="text-slate-custom">Родной: </span>
+            <span class="text-space">{{ candidate.nativeLanguage || '—' }}</span>
+          </p>
+          <p class="text-sm leading-150">
+            <span class="text-slate-custom">Другие языки: </span>
+            <span class="text-space">{{ candidate.otherLanguages || '—' }}</span>
+          </p>
+        </div>
+        <div class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">
+            Обо мне
+          </p>
+          <p class="text-sm leading-150 text-slate-custom">
+            {{ candidate.aboutMe || 'Не указано' }}
+          </p>
+        </div>
+        <div class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Дополнительно</p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Желательное время в пути до работы</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.commuteTime || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Командировки</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.businessTrips || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Гражданство</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.citizenship || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Разрешение на работу</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.workPermit || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Наличие машины</p>
+          <p class="mb-3 text-sm font-normal leading-150 text-space">
+            {{ candidate.hasCar || '—' }}
+          </p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Наличие прав</p>
+          <p class="text-sm font-normal leading-150 text-space">
+            {{ candidate.hasDriverLicense || '—' }}
+          </p>
         </div>
       </div>
       <div v-if="activeTab === 'fields'">
-        <div class="mb-px bg-white p-25px pb-[37px] pl-30px">
+        <div class="fields-tab-block mb-px bg-white p-25px pb-[37px] pl-30px">
           <div class="mb-22px flex items-center">
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
               Форма отклика
             </p>
             <span
-              class="h-fit rounded-fifteen bg-feta px-2.5 py-[3.5px] text-xs font-normal"
+              class="rounded-fifteen bg-feta px-2.5 py-[3.5px] text-xs font-normal text-white"
             >
               Заполнено
             </span>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Фамилия Имя Отчество
             </p>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ candidate.surname }} {{ candidate.firstname }}
-              {{ candidate.patronymic || '' }}
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ [candidate.surname, candidate.firstname, candidate.patronymic].filter(Boolean).join(' ') || '—' }}
             </p>
           </div>
-          <div v-if="candidate.age" class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">Возраст</p>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ candidate.age }}
-              {{
-                [0, 5, 6, 7, 8, 9].includes(candidate.age % 10) ? 'лет' : 'года'
-              }}
-            </p>
-          </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Электронная почта
             </p>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ candidate.email }}
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.email || '—' }}
             </p>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">Телефон</p>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ candidate.phone }}
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Телефон
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.phone || '—' }}
             </p>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Заголовок
             </p>
-            <p class="text-sm font-normal leading-150 text-space">
-              <!-- {{ candidate.header }} -->
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.quickInfo || candidate.resume || '—' }}
             </p>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Адрес проживания
             </p>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ candidate.location }}
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.location ? `г. ${candidate.location}` : '—' }}
             </p>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Образование
             </p>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ candidate.education }}
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.education || '—' }}
             </p>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Опыт работы
             </p>
-            <!-- <ul
-                  v-if="candidate.experience && candidate.experience?.length > 0"
-                  class="text-sm font-normal leading-150 text-space"
-                >
-                  <li
-                    class="mb-5"
-                    v-for="(exp, index) in candidate.experience"
-                    :key="index"
-                  >
-                    <div
-                      class="mb-7px text-13px font-normal leading-normal text-slate-custom"
-                    >
-                      <p
-                        class="mb-7px text-13px font-normal leading-normal text-slate-custom"
-                      >
-                        {{ exp?.start ? dateStringToDots(exp?.start) : '' }} -
-                        {{
-                          exp?.end
-                            ? dateStringToDots(exp?.start)
-                            : 'по настоящее время'
-                        }}
-                      </p>
-                      <p
-                        v-if="exp.employer !== null"
-                        class="flex items-center gap-2"
-                      >
-                        <img
-                          v-if="exp.employer?.logo_urls"
-                          :src="exp.employer.logo_urls[90]"
-                          width="40"
-                        />
-                        <a
-                          v-if="exp.employer?.alternate_url"
-                          class="text-dodger"
-                          :href="exp.employer.alternate_url"
-                          target="_blank"
-                        >
-                          {{ exp?.employer.name }}
-                        </a>
-                      </p>
-                    </div>
-                    <p
-                      class="mb-2 text-sm font-medium leading-normal text-space underline"
-                    >
-                      {{ exp?.position }}
-                    </p>
-                    <template v-if="exp?.description.split('\n').length > 0">
-                      <p
-                        v-for="(description, index) in exp?.description.split(
-                          '\n'
-                        )"
-                        :key="index"
-                        class="text-sm font-normal text-space"
-                      >
-                        {{ description }}
-                      </p>
-                    </template>
-                  </li>
-                </ul> -->
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.experience || '—' }}
+            </p>
           </div>
-          <div class="mb-5 flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Фото
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              <a
+                v-if="candidate.imagePath"
+                :href="candidate.imagePath"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-dodger underline hover:no-underline"
+              >
+                {{ candidate.imagePath.split('/').pop() || 'Файл' }}
+              </a>
+              <template v-else-if="candidate.attachments?.length">
+                <a
+                  v-for="att in candidate.attachments"
+                  :key="att.id"
+                  :href="att.link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-dodger underline hover:no-underline"
+                >
+                  {{ att.link?.split('/').pop() || 'Файл' }}
+                </a>
+              </template>
+              <span v-else>—</span>
+            </p>
+          </div>
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Загрузка резюме
             </p>
-            <!-- <a
-                  :href="candidate.resumeDownload"
-                  target="_blank"
-                  class="text-sm font-normal text-dodger"
-                >
-                  {{
-                    candidate.resumeDownload?.split('/').pop() ??
-                    'Резюме не загружено'
-                  }}
-                </a> -->
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              <a
+                v-if="candidate.resumePath"
+                :href="candidate.resumePath"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-dodger underline hover:no-underline"
+              >
+                {{ candidate.resume || candidate.resumePath?.split('/').pop() || 'Резюме' }}
+              </a>
+              <span v-else>—</span>
+            </p>
           </div>
-          <div class="flex gap-2.5">
-            <p class="min-w-[250px] text-sm font-normal text-space">
+          <div class="fields-row flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Сопроводительное письмо
             </p>
-            <!-- <a
-                  :href="candidate.coverLetter"
-                  target="_blank"
-                  class="text-sm font-normal text-dodger"
-                >
-                  {{
-                    candidate.coverLetter?.split('/').pop() ??
-                    'Файл не загружен'
-                  }}
-                </a> -->
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              <a
+                v-if="candidate.coverPath"
+                :href="candidate.coverPath"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-dodger underline hover:no-underline"
+              >
+                {{ candidate.coverPath?.split('/').pop() || 'Файл' }}
+              </a>
+              <span v-else>—</span>
+            </p>
           </div>
         </div>
-        <div class="mb-px bg-white p-25px pl-30px">
-          <div class="mb-2.5 flex items-center">
+        <div class="fields-tab-block mb-px rounded-b-fifteen bg-white p-25px pl-30px">
+          <div class="mb-22px flex items-center">
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
               Анкета
             </p>
             <span
-              class="h-fit rounded-fifteen bg-serenade px-2.5 py-[3.5px] text-xs font-normal"
+              class="rounded-fifteen bg-serenade px-2.5 py-[3.5px] text-xs font-normal text-white"
             >
               Отправлено, ожидает заполнения
             </span>
           </div>
-          <div class="mb-0.5 flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Фамилия Имя Отчество
             </p>
-            <MyInputSecond v-model="newName" />
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="mb-0.5 flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Электронная почта
             </p>
-            <MyInputSecond v-model="newEmail" type="email" />
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">Телефон</p>
-            <PhoneInputSecond v-model="newPhone" />
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Телефон
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Заголовок
             </p>
-            <MyInputSecond v-model="newHeader" />
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="mb-0.5 flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Адрес проживания
             </p>
-            <MyInputSecond v-model="newLocation" />
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="mb-0.5 flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Образование
             </p>
-            <MyInputSecond v-model="newEducation" />
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="flex items-center gap-2.5">
-            <p class="min-w-[235px] text-sm font-normal text-space">
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
               Опыт работы
             </p>
-            <MyInputSecond v-model="newExperience" />
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div class="mb-0.5">
-            <FileUpload
-              label="Фото"
-              inputId="photo"
-              @update:file="uploadPhoto = $event"
-            />
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Фото
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div>
-            <FileUpload
-              label="Загрузка резюме"
-              inputId="resume"
-              @update:file="uploadResume = $event"
-            />
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Загрузка резюме
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
-          <div>
-            <FileUpload
-              label="Сопроводительное письмо"
-              inputId="letter"
-              @update:file="uploadLetter = $event"
-            />
+          <div class="fields-row flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Сопроводительное письмо
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
+              ...
+            </p>
           </div>
         </div>
+        <!-- Секция "Пользовательские поля" скрыта по макету
         <div class="bg-white p-25px pl-30px">
           <div class="mb-26px flex items-center">
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
@@ -673,7 +775,7 @@
             <p class="min-w-[240px] text-sm font-normal text-space">Три</p>
             <MyInputSecond v-model="newCustomThird" />
           </div>
-          <!-- <div
+          <div
                 v-for="(q, idx) in questions"
                 :key="q.id"
                 class="flex items-center gap-2.5"
@@ -781,7 +883,7 @@
                     />
                   </div>
                 </div>
-              </div> -->
+              </div>
           <button class="mt-25px flex items-center gap-x-5px">
             <MoreQuestions
               v-model:modelValue="questions"
@@ -797,6 +899,7 @@
             <UiButton variant="back" size="back">Отмена</UiButton>
           </div>
         </div>
+        -->
       </div>
       <div v-if="activeTab === 'chat'">
         <div>
@@ -807,7 +910,112 @@
           />
         </div>
       </div>
-      <div v-if="activeTab === 'review'">Рассмотрения</div>
+      <div v-if="activeTab === 'review'" class="considerations-block mb-px bg-white">
+        <div class="considerations-table-wrap">
+          <div class="considerations-table-header">
+            <div class="cell-inner">Вакансия и отв. рекрутеры</div>
+            <div class="cell-inner">Статус кандидата и обновление</div>
+            <div class="cell-inner">Заказчик</div>
+          </div>
+          <div v-if="considerationsLoading" class="considerations-loading">
+            <p class="text-sm text-slate-custom">Загрузка...</p>
+          </div>
+          <template v-else-if="considerations.length">
+            <div
+              v-for="(row, idx) in considerations"
+              :key="row.vacancy_id"
+              class="considerations-table-row"
+              :class="{ 'considerations-table-row-last': idx === considerations.length - 1 }"
+            >
+              <div class="cell-inner flex flex-col gap-0.5">
+                <NuxtLink
+                  :to="{
+                    path: `/vacancies/${row.vacancy_id}`,
+                    query: {
+                      candidate: String(candidate.id),
+                      ...(row.stage_id != null ? { stage: String(row.stage_id) } : {}),
+                    },
+                  }"
+                  class="text-sm font-medium text-dodger hover:underline"
+                >
+                  {{ row.vacancy_name }}
+                </NuxtLink>
+                <p v-if="row.recruiters?.length" class="text-xs text-bali">
+                  {{ row.recruiters.join(', ') }}
+                </p>
+              </div>
+              <div class="cell-inner flex flex-col gap-0.5">
+                <span class="text-sm font-medium text-space">{{ row.stage_name || '—' }}</span>
+                <span v-if="row.updated_at" class="text-xs text-bali">{{ row.updated_at }}</span>
+              </div>
+              <div class="cell-inner flex flex-col gap-0.5">
+                <span class="text-sm font-medium text-space">
+                  {{ row.customers?.[0] || '—' }}
+                </span>
+                <p
+                  v-if="row.customers && row.customers.length > 1"
+                  class="text-xs text-bali"
+                >
+                  {{ row.customers.slice(1).join(', ') }}
+                </p>
+              </div>
+            </div>
+          </template>
+          <div v-else class="considerations-empty">
+            <p class="text-sm text-slate-custom">Нет рассмотрений по вакансиям.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Как на вкладке «Резюме»: полоса над таблицей — тот же 1px за счёт mb-px у табов, без отдельного border */
+.considerations-block {
+  border-radius: 0 0 15px 15px;
+  overflow: hidden;
+}
+.considerations-table-wrap {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+}
+.considerations-table-header,
+.considerations-table-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 15px;
+  padding: 20px 25px;
+  align-items: center;
+  border-bottom: 1px solid #e8eaef;
+}
+.considerations-table-header {
+  background-color: #ffffff;
+  font-weight: 500;
+  font-size: 14px;
+  color: #79869a;
+  text-align: left;
+}
+.considerations-table-row {
+  background-color: #ffffff;
+}
+.considerations-table-row-last {
+  border-radius: 0 0 15px 15px;
+  border-bottom: none;
+}
+.considerations-loading,
+.considerations-empty {
+  padding: 20px 25px;
+  background-color: #ffffff;
+  border-radius: 0 0 15px 15px;
+  border-bottom: 1px solid #e8eaef;
+}
+.considerations-empty {
+  border-bottom: none;
+}
+.text-bali {
+  color: #79869a;
+}
+</style>

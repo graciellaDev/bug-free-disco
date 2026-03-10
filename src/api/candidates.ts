@@ -11,6 +11,7 @@ import type {
   CustomFieldCandidate,
   CandidateUpdateRequest,
   CandidateUpdateResponse,
+  CandidateConsideration,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -157,6 +158,25 @@ export async function uploadCandidatePhoto(
 
     throw new Error(error.message || 'Ошибка при загрузке фото');
   }
+}
+
+export async function getCandidateConsiderations(
+  candidateId: number
+): Promise<CandidateConsideration[]> {
+  const response = await apiGet<CandidateConsideration[]>(
+    `/candidates/${candidateId}/considerations`
+  );
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+/** Прикрепить кандидата к ещё одной вакансии (кандидат остаётся в текущей). */
+export async function attachCandidateToVacancy(
+  candidateId: number,
+  vacancyId: number
+): Promise<void> {
+  await apiPost<null>(`/candidates/${candidateId}/attach-vacancy`, {
+    vacancy_id: vacancyId,
+  });
 }
 
 export async function getCandidatesByVacancy(vacancyId: number, page = 1) {

@@ -11,9 +11,10 @@
   import CandidateTransferToVacancyPopup from './popups/CandidateTransferToVacancyPopup.vue';
   import CandidateRemoveFromVacancyPopup from './popups/CandidateRemoveFromVacancyPopup.vue';
   import CandidateRefusePopup from './popups/CandidateRefusePopup.vue';
+  import AttachToVacancyDropdown from './AttachToVacancyDropdown.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import { createCandidate, updateCandidate } from '@/src/api/candidates';
+  import { createCandidate, updateCandidate, attachCandidateToVacancy } from '@/src/api/candidates';
 
   import type {
     Candidate,
@@ -248,6 +249,15 @@
     }
   };
 
+  const handleAttachToVacancy = async (vacancyId: number) => {
+    try {
+      await attachCandidateToVacancy(props.candidate.id, vacancyId);
+      emit('candidate-updated', props.candidate);
+    } catch (err) {
+      console.error('[handleAttachToVacancy] Ошибка:', err);
+    }
+  };
+
   const handleConfirmCopy = async (vacancyId: number) => {
     // console.log('Обработчик копирования кандидата');
     try {
@@ -479,7 +489,14 @@
       @refuse="candidateActionsUI.handleClickRefuse"
       @update:selectedLabel="emit('update:selectedLabel', $event)"
       @confirm-transfer="handleConfirmTransfer"
-    />
+    >
+      <template v-if="!isFunnel" #left>
+        <AttachToVacancyDropdown
+          :candidate="candidate"
+          @attach="handleAttachToVacancy"
+        />
+      </template>
+    </CandidateInfoHeader>
     <div class="absolute left-0 top-[70px] h-[1px] w-full bg-athens-gray"></div>
     <CandidateInfoContent
       :candidate="candidate"
