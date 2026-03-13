@@ -33,9 +33,11 @@
 
   const emit = defineEmits<{
     'candidate-updated': [candidate: Candidate];
-    'candidate-moved': [candidate: Candidate];
+    'candidate-moved': [candidate: Candidate, newStageId?: number];
     'candidate-deleted': [id: number];
     'update:selectedLabel': [label: string];
+    'add-comment': [];
+    'add-task': [];
   }>();
 
   const vacancyName = ref<string>('');
@@ -86,6 +88,14 @@
 
   const handleDeleteCandidate = () => {
     popups.deleteCandidate.open();
+  };
+
+  const handleAddCommentClick = () => {
+    emit('add-comment');
+  };
+
+  const handleNewTaskClick = () => {
+    emit('add-task');
   };
 
   //  Открытие попапа редактирования
@@ -334,16 +344,19 @@
     }
 
     try {
-      const updateData: CandidateUpdateRequest = {
+      const updateData: CandidateUpdateRequest & { context_vacancy_id?: number } = {
         id: props.candidate.id,
         firstname: props.candidate.firstname,
         email: props.candidate.email,
         phone: props.candidate.phone,
         stage: targetStage.id,
       };
+      if (props.vacancy?.id) {
+        updateData.context_vacancy_id = props.vacancy.id;
+      }
 
       const updated = await updateCandidate(updateData);
-      emit('candidate-moved', updated.data);
+      emit('candidate-moved', updated.data, targetStage.id);
     } catch (err) {
       console.error(
         '[handleConfirmTransfer] Ошибка при переносе кандидата на другой этап: ',
@@ -483,8 +496,8 @@
       :selectedLabel="selectedLabel"
       :dropdownOptions="dropdownOptions"
       @select-item="candidateActionsUI.handleSelectItem"
-      @add-comment="candidateActionsUI.handleClickAddComment"
-      @new-task="candidateActionsUI.handleClickNewTask"
+      @add-comment="handleAddCommentClick"
+      @new-task="handleNewTaskClick"
       @email="candidateActionsUI.handleClickEmail"
       @refuse="candidateActionsUI.handleClickRefuse"
       @update:selectedLabel="emit('update:selectedLabel', $event)"

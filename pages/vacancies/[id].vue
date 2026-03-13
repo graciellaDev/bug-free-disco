@@ -34,6 +34,37 @@
   const isActiveAll = ref(true);
   const stages = ref<VacancyStage[]>([]);
   const userRole = ref<UserRole>('admin');
+  const logRefreshKey = ref(0);
+  const refreshCandidateLog = () => {
+    logRefreshKey.value++;
+  };
+  const tabsInfoRef = ref<InstanceType<typeof BlockCandidateTabsInfo> | null>(null);
+
+  const handleAddCommentFromHeader = () => {
+    tabsInfoRef.value?.openCommentAndFocus?.();
+    nextTick(() => {
+      nextTick(() => {
+        const el = tabsInfoRef.value?.eventFeedRef;
+        const node = el?.value ?? el;
+        if (node && typeof node.scrollIntoView === 'function') {
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  };
+
+  const handleAddTaskFromHeader = () => {
+    tabsInfoRef.value?.openTaskAndFocus?.();
+    nextTick(() => {
+      nextTick(() => {
+        const el = tabsInfoRef.value?.eventFeedRef;
+        const node = el?.value ?? el;
+        if (node && typeof node.scrollIntoView === 'function') {
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  };
 
   // const vacancyFilter = computed(() => {
   //   if (!vacancy.value?.id) return {};
@@ -259,7 +290,14 @@
     isLoadingCandidate.value = true;
     try {
       const result = await getCandidateById(id);
-      selectedCandidate.value = result.candidateData;
+      const data = result.candidateData;
+      selectedCandidate.value = data;
+      const stageId = data.stage ?? (data as { stage_id?: number }).stage_id ?? null;
+      if (stageId != null) {
+        selectedStageId.value = stageId;
+        isActiveAll.value = false;
+        await refreshCandidates();
+      }
     } catch (error: unknown) {
       console.error('Ошибка при загрузке кандидата:', error);
       throw error;
@@ -340,7 +378,13 @@
     await handleFormSubmitBase(formDataWithVacancy, addCandidatePopup.isOpen);
   };
 
-  const handleCandidateClick = (candidate: Candidate) => {
+  const handleCandidateClick = async (candidate: Candidate) => {
+    const stageId = candidate.stage ?? (candidate as { stage_id?: number }).stage_id ?? null;
+    if (stageId != null) {
+      selectedStageId.value = stageId;
+      isActiveAll.value = false;
+      await refreshCandidates();
+    }
     selectedCandidate.value = candidate;
   };
 
@@ -397,13 +441,17 @@
       try {
         const result = await getCandidateById(updatedCandidate.id);
         selectedCandidate.value = result.candidateData;
+        logRefreshKey.value++;
       } catch (error) {
         console.error('Ошибка при обновлении кандидата:', error);
       }
     }
   };
 
-  const handleCandidateMoved = async (movedCandidate: Candidate) => {
+  const handleCandidateMoved = async (
+    movedCandidate: Candidate,
+    newStageId?: number
+  ) => {
     if (!movedCandidate || !movedCandidate.id) {
       console.error(
         '[handleCandidateMoved] Получен некорректный кандидат:',
@@ -425,6 +473,14 @@
     const movedCandidateId = movedCandidate.id;
     const wasMovedToAnotherVacancy =
       movedCandidate.vacancy_id !== vacancy.value?.id;
+    const stageToSelect =
+      newStageId ?? movedCandidate.stage ?? movedCandidate.stage_id ?? null;
+
+    // Переключаем воронку на этап, на который перенесли кандидата
+    if (stageToSelect != null) {
+      selectedStageId.value = stageToSelect;
+      isActiveAll.value = false;
+    }
 
     await refreshCandidates();
 
@@ -434,9 +490,18 @@
       }
     }
 
-    // Переключаемся на следующего кандидата
+    // Обновляем воронку: перезагружаем вакансию, чтобы цифры по этапам обновились
+    await loadVacancy(getVacancyId());
+
+    // Остаёмся в карточке: обновляем данные текущего кандидата
     if (selectedCandidate.value?.id === movedCandidateId) {
-      await switchToNextCandidate(movedCandidateId);
+      try {
+        const result = await getCandidateById(movedCandidateId);
+        selectedCandidate.value = result.candidateData;
+        logRefreshKey.value++;
+      } catch (error) {
+        console.error('Ошибка при обновлении карточки кандидата:', error);
+      }
     }
   };
 
@@ -475,26 +540,20 @@
     await loadVacancy(vacancyId);
     await loadVacancies();
 
-    const stageIdParam = route.query.stage;
-    if (stageIdParam != null && stageIdParam !== '') {
-      const stageId = Number(stageIdParam);
-      if (Number.isInteger(stageId) && stages.value.some(s => s.id === stageId)) {
-        selectedStageId.value = stageId;
-        isActiveAll.value = false;
-      }
-    }
-
     await nextTick();
 
     if (isInitialLoad.value && vacancy.value?.id) {
-      await refreshCandidates();
-      const candidateIdParam = route.query.candidate;
-      if (candidateIdParam != null && candidateIdParam !== '') {
-        const candidateId = Number(candidateIdParam);
-        if (Number.isInteger(candidateId) && candidateId > 0) {
-          await loadCandidate(candidateId);
+      // Сначала выставляем этап из URL, чтобы refreshCandidates и watch не переключали вкладку
+      const stageIdParam = route.query.stage;
+      if (stageIdParam != null && stageIdParam !== '') {
+        const stageId = Number(stageIdParam);
+        if (Number.isInteger(stageId) && stages.value.some(s => s.id === stageId)) {
+          selectedStageId.value = stageId;
+          isActiveAll.value = false;
         }
       }
+
+      await refreshCandidates();
     }
 
     isInitialLoad.value = false;
@@ -504,14 +563,6 @@
     () => filteredCandidatesList.value,
     async newCandidates => {
       if (!newCandidates?.length) return;
-      const candidateIdParam = route.query.candidate;
-      if (candidateIdParam != null && candidateIdParam !== '') {
-        const candidateId = Number(candidateIdParam);
-        if (Number.isInteger(candidateId) && candidateId > 0) {
-          await loadCandidate(candidateId);
-          return;
-        }
-      }
       if (
         !selectedCandidate.value ||
         !newCandidates.some(c => c.id === selectedCandidate.value?.id)
@@ -521,23 +572,10 @@
     },
     { immediate: false }
   );
-
-  // При переходе по ссылке с ?candidate= (клик по вакансии из карточки кандидата)
-  // список не меняется, поэтому загружаем кандидата по query
-  watch(
-    () => route.query.candidate,
-    async (candidateParam) => {
-      if (candidateParam == null || candidateParam === '') return;
-      const id = Number(candidateParam);
-      if (!Number.isInteger(id) || id <= 0) return;
-      await loadCandidate(id);
-    },
-    { immediate: true }
-  );
 </script>
 
 <template>
-  <div class="container pt-35px">
+  <div class="container pt-35px pb-5">
     <div class="relative rounded-t-fifteen bg-white p-25px">
       <div class="flex items-center justify-between">
         <div class="flex flex-col gap-2.5">
@@ -633,8 +671,15 @@
       <UiDotsLoader />
     </div>
     <div v-else>
-      <div v-if="filteredCandidatesList.length > 0" class="flex gap-x-15px">
-        <div class="w-[375px] rounded-sixteen bg-white">
+      <!-- Один контейнер для списка + карточки: карточка не пересоздаётся при смене списка (избегаем сброса вкладок) -->
+      <div
+        class="flex gap-x-15px"
+        :class="{ 'flex-row': filteredCandidatesList.length > 0 }"
+      >
+        <div
+          v-if="filteredCandidatesList.length > 0"
+          class="w-[375px] shrink-0 rounded-sixteen bg-white"
+        >
           <CandidateList
             :candidates="filteredCandidatesList || []"
             :selected="selected"
@@ -646,43 +691,41 @@
             @select-all="handleSelectAll"
           />
         </div>
-        <div v-if="isLoadingCandidate">
-          <UiDotsLoader />
-        </div>
-        <div v-else-if="selectedCandidate" class="w-full">
-          <BlockCandidateInfo
-            :candidate="selectedCandidate"
-            :stages="stages"
-            :isFunnel="true"
-            :vacancy="vacancy"
-            @candidate-updated="handleCandidateUpdated"
-            @candidate-moved="handleCandidateMoved"
-            @candidate-deleted="handleCandidateDeleted"
-          />
-          <BlockCandidateTabsInfo :candidate="selectedCandidate" />
+        <div v-if="selectedCandidate" class="min-w-0 flex-1">
+          <div v-if="isLoadingCandidate">
+            <UiDotsLoader />
+          </div>
+          <template v-else>
+            <BlockCandidateInfo
+              :candidate="selectedCandidate"
+              :stages="stages"
+              :isFunnel="true"
+              :vacancy="vacancy"
+              @candidate-updated="handleCandidateUpdated"
+              @candidate-moved="handleCandidateMoved"
+              @candidate-deleted="handleCandidateDeleted"
+              @add-comment="handleAddCommentFromHeader"
+              @add-task="handleAddTaskFromHeader"
+            />
+            <BlockCandidateTabsInfo
+              ref="tabsInfoRef"
+              :candidate="selectedCandidate"
+              :log-refresh-trigger="logRefreshKey"
+              :vacancy-id="vacancy?.id"
+              @comment-added="refreshCandidateLog"
+            />
+          </template>
         </div>
       </div>
       <div
-        v-else-if="selectedCandidate && route.query.candidate"
-        class="w-full"
+        v-if="
+          !selectedCandidate &&
+          vacancy &&
+          !loadingCandidates &&
+          filteredCandidatesList.length === 0
+        "
+        class="text-center"
       >
-        <div v-if="isLoadingCandidate">
-          <UiDotsLoader />
-        </div>
-        <div v-else>
-          <BlockCandidateInfo
-            :candidate="selectedCandidate"
-            :stages="stages"
-            :isFunnel="true"
-            :vacancy="vacancy"
-            @candidate-updated="handleCandidateUpdated"
-            @candidate-moved="handleCandidateMoved"
-            @candidate-deleted="handleCandidateDeleted"
-          />
-          <BlockCandidateTabsInfo :candidate="selectedCandidate" />
-        </div>
-      </div>
-      <div v-else-if="vacancy && !loadingCandidates" class="text-center">
         Кандидаты в вакансии
         <strong>{{ vacancy?.name }}</strong>
         <span v-if="selectedStage && selectedStage.name !== 'Все'">

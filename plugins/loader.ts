@@ -21,22 +21,26 @@ export default defineNuxtPlugin((nuxtApp) => {
     isLoading: computed(() => loading.value)
   }
 
-  // Перехват useFetch
-  const originalUseFetch = nuxtApp.vueApp.config.globalProperties.$fetch
-  nuxtApp.vueApp.config.globalProperties.$fetch = async (...args: any[]) => {
-    const options = args[1] || {}
-    const skipLoader = options.skipLoader || false
+  // Перехват $fetch только на клиенте; на сервере globalProperties.$fetch может быть недоступен и вызывал 503 при SSR
+  if (import.meta.client) {
+    const originalUseFetch = nuxtApp.vueApp.config.globalProperties.$fetch
+    if (typeof originalUseFetch === 'function') {
+      nuxtApp.vueApp.config.globalProperties.$fetch = async (...args: any[]) => {
+        const options = args[1] || {}
+        const skipLoader = options.skipLoader || false
 
-    if (!skipLoader) {
-      loader.show()
-    }
+        if (!skipLoader) {
+          loader.show()
+        }
 
-    try {
-      const result = await originalUseFetch(...args)
-      return result
-    } finally {
-      if (!skipLoader) {
-        loader.hide()
+        try {
+          const result = await originalUseFetch(...args)
+          return result
+        } finally {
+          if (!skipLoader) {
+            loader.hide()
+          }
+        }
       }
     }
   }

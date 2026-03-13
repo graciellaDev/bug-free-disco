@@ -254,3 +254,17 @@ export interface CandidateConsideration {
   recruiters: string[];
   customers: string[];
 }
+
+/** Событие в логе кандидата (создание резюме, смена этапа, изменение полей и т.д.). */
+export interface CandidateEvent {
+  id: number;
+  type: string;
+  occurred_at: string;
+  author_name?: string | null;
+  direction?: string | null;
+  channel?: string | null;
+  payload?: {
+    content?: string;
+    [key: string]: unknown;
+  };
+}

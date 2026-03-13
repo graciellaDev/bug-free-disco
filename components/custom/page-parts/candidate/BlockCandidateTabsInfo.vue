@@ -1,15 +1,26 @@
 <script setup lang="ts">
-  import { ref, watch } from 'vue';
+  import { ref, watch, nextTick } from 'vue';
   import BtnTab from '~/components/custom/BtnTab.vue';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
   import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
   import FileUpload from '~/components/custom/FileUpload.vue';
   import MinDropdownSecond from '~/components/custom/MinDropdownSecond.vue';
   import MoreQuestions from '~/components/custom/MoreQuestions.vue';
-  import Timeline from '~/components/timeline/index.vue';
+  import CandidateLog from '~/components/custom/page-parts/candidate/CandidateLog.vue';
   import ChatInput from '~/components/chat/ChatInput.vue';
+  import CommentDeleteConfirmPopup from '~/components/custom/page-parts/candidate/popups/CommentDeleteConfirmPopup.vue';
   import { useForms } from '~/stores/forms';
-  import { getCandidateConsiderations } from '@/src/api/candidates';
+  import { useChatStore } from '@/stores/chat';
+  import {
+    getCandidateConsiderations,
+    createCandidateComment,
+    createCandidateTask,
+    completeCandidateTask,
+    deleteCandidateComment,
+    deleteCandidateTask,
+    updateCandidateComment,
+    updateCandidateTask,
+  } from '@/src/api/candidates';
 
   import type { Candidate } from '@/types/candidates';
   import type { CandidateConsideration } from '@/types/candidates';
@@ -34,12 +45,15 @@
 
   const formsStore = useForms();
 
-  const activeTab = ref('resume'); // Начальный таб
+  const TAB_VALUES = ['resume', 'fields', 'chat', 'review'] as const;
+  const STORAGE_KEY = 'candidate-card-tab';
+
+  const activeTab = ref('resume'); // Начальный таб; восстанавливается из sessionStorage при монтировании
 
   const tabs = [
     { label: 'Резюме', value: 'resume' },
     { label: 'Поля', value: 'fields' },
-    { label: 'Общение', value: 'chat', notification: '+1' },
+    { label: 'Лента событий', value: 'chat', notification: '+1' },
     { label: 'Рассмотрения', value: 'review' },
   ];
 
@@ -67,145 +81,6 @@
   ];
 
   const dropdownOptions = ['Опция 1', 'Опция 2', 'Опция 3'];
-
-  // const timelineGroups = ref<TimelineGroup[]>([]);
-  // const timelineGroups = ref([]);
-
-  const timelineGroups = ref([
-    {
-      date: '13/12/2025',
-      events: [
-        {
-          id: 1,
-          type: 'system',
-          time: '18.01.2024 15:04',
-          content: 'создан кандидат Анатольев Дмитрий Корсаров',
-        },
-        {
-          id: 2,
-          type: 'system',
-          time: '18.01.2024 15:04',
-          content:
-            'кандидат Анатольев Дмитрий Корсаров откликнулся на вакансию Консультант продавцов',
-        },
-        {
-          id: 3,
-          type: 'system',
-          time: '18.01.2024 15:04',
-          content:
-            'Перемещение на этап Подумать пользователем Анатолий Семенов',
-        },
-      ],
-    },
-    {
-      date: 'Сегодня',
-      events: [
-        {
-          id: 4,
-          type: 'call',
-          calls: [
-            {
-              time: '18.01.2024 15:04',
-              candidateName: 'Марго Роби',
-            },
-            {
-              time: '18.01.2024 15:04',
-              candidateName: 'Марго Роби',
-            },
-          ],
-        },
-        {
-          id: 5,
-          type: 'note',
-          time: '18.01.2024 15:04',
-          author: 'Анатолий Семенов',
-          content:
-            'Кандидат утверждает что у него есть знакомые которые работали в компании и отзываются не очень хорошо, но самому ему все нравится. Ему нужно время подумать.',
-        },
-        {
-          id: 6,
-          type: 'task',
-          time: '18.01.2024 15:04',
-          user: 'Анатолий Семенов',
-          title: 'Интервью с кандидатом',
-          scheduled: '13/02/2024 в 13:30',
-        },
-        {
-          id: 7,
-          type: 'email',
-          emails: [
-            {
-              time: '18.01.2024 15:04',
-              direction: 'входящее',
-              from: 'Анатолий Семенов',
-              to: 'Марго Роби',
-              subject: 'Реквизиты компании',
-              content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
-            },
-            {
-              time: '18.01.2024 15:04',
-              direction: 'входящее',
-              from: 'Марго Роби',
-              to: 'Анатолий Семенов',
-              status: 'Доставлено',
-              subject: 'Реквизиты компании',
-              content: `Благодарю за обращение. Вот реквизиты нашей компании: Название организации: [Название] ИНН: [Ваш ИНН] КПП: [Ваш КПП] Расчётный счёт: [Ваш счёт] Банк: [Название банка] БИК: [Ваш БИК] Корреспондентский счёт: [Ваш корр. счёт] Если потребуется дополнительная информация, пожалуйста, дайте знать. С уважением, [Имя клиента] [Должность, если есть] [Контактные данные] [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
-            },
-          ],
-        },
-        {
-          id: 8,
-          type: 'email',
-          emails: [
-            {
-              time: '18.01.2024 15:04',
-              direction: 'входящее',
-              from: 'Марго Роби',
-              to: 'Анатолий Семенов',
-              subject: 'Другая тема письма',
-              content: `Здравствуйте, [Имя клиента]! Для завершения оформления документов нам необходимо уточнить ваши реквизиты. Пожалуйста, отправьте следующую информацию: [Запрашиваемые данные, например: название организации, ИНН, расчётный счёт и т.д.] Если у вас возникнут вопросы, буду рад помочь! Спасибо за оперативность. С уважением, [Ваше имя] [Ваша должность] [Контактные данные]`,
-            },
-          ],
-        },
-        {
-          id: 9,
-          type: 'hh_chat',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          company: 'ООО КОМПАНИЯ',
-          content: 'Здравствуйте! Посмотрите пожалуйста мой отклик',
-          initials: 'СК',
-        },
-        {
-          id: 10,
-          type: 'telegram',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          content:
-            'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
-          initials: 'МР',
-        },
-        {
-          id: 11,
-          type: 'whatsapp',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          content:
-            'Здравствуйте, как думаете, с моими скиллами какие у меня есть шансы попасть к вам на работу?',
-          initials: 'МР',
-        },
-        {
-          id: 12,
-          type: 'comment',
-          time: '18.01.2024 15:04',
-          author: 'Марго Роби',
-          content:
-            'Коллеги, кандидат не плохой, давайте рассмотрим его под микроскопом?',
-          initials: 'АС',
-        },
-      ],
-    },
-  ]);
 
   // function sanitazeCandidate(data) {
   //   if (!data) return null;
@@ -263,6 +138,10 @@
 
   const props = defineProps<{
     candidate: Candidate;
+    /** Увеличивается при обновлении/перемещении кандидата — лог перезапрашивается */
+    logRefreshTrigger?: number;
+    /** ID вакансии для запроса событий в контексте вакансии (смена этапа и т.д.) */
+    vacancyId?: number | null;
   }>();
 
   interface ChatMessage {
@@ -272,10 +151,175 @@
     recipient: string;
   }
 
-  const handleChatSend = (messageData: ChatMessage) => {
-    console.log('Получены данные в родительском компоненте:', messageData);
-    return messageData;
-    // TODO: Implement message sending logic
+  const chatStore = useChatStore();
+  const emit = defineEmits<{
+    'comment-added': [];
+  }>();
+
+  const commentToDeleteEventId = ref<number | null>(null);
+  const isCommentDeletePopupOpen = ref(false);
+  const taskToDeleteEventId = ref<number | null>(null);
+  const editingCommentId = ref<number | null>(null);
+  const editingCommentText = ref('');
+  const editingTaskId = ref<number | null>(null);
+  const editingTaskText = ref('');
+  const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
+  const eventFeedRef = ref<HTMLElement | null>(null);
+
+  const handleDeleteCommentRequest = (eventId: number) => {
+    commentToDeleteEventId.value = eventId;
+    isCommentDeletePopupOpen.value = true;
+  };
+
+  const handleCommentDeleteConfirm = async () => {
+    if (props.candidate?.id && commentToDeleteEventId.value != null) {
+      try {
+        await deleteCandidateComment(props.candidate.id, commentToDeleteEventId.value);
+        emit('comment-added');
+      } catch (e) {
+        console.error('Ошибка удаления комментария:', e);
+      }
+    }
+    isCommentDeletePopupOpen.value = false;
+    commentToDeleteEventId.value = null;
+  };
+
+  const handleCommentDeleteClose = () => {
+    isCommentDeletePopupOpen.value = false;
+    commentToDeleteEventId.value = null;
+  };
+
+  const handleEditComment = (eventId: number, content: string) => {
+    editingCommentId.value = eventId;
+    editingCommentText.value = content;
+    chatStore.setCurrentFormat('comment');
+  };
+
+  const handleCancelEditComment = () => {
+    editingCommentId.value = null;
+    editingCommentText.value = '';
+  };
+
+  const handleDeleteTaskRequest = (eventId: number) => {
+    taskToDeleteEventId.value = eventId;
+  };
+
+  const handleTaskDeleteConfirm = async () => {
+    if (props.candidate?.id && taskToDeleteEventId.value != null) {
+      try {
+        await deleteCandidateTask(props.candidate.id, taskToDeleteEventId.value);
+        emit('comment-added');
+      } catch (e) {
+        console.error('Ошибка удаления задачи:', e);
+      }
+    }
+    taskToDeleteEventId.value = null;
+  };
+
+  const handleTaskDeleteClose = () => {
+    taskToDeleteEventId.value = null;
+  };
+
+  const handleEditTask = (eventId: number, content: string) => {
+    editingTaskId.value = eventId;
+    editingTaskText.value = content;
+    activeTab.value = 'chat';
+    chatStore.setCurrentFormat('task');
+  };
+
+  const handleCancelEditTask = () => {
+    editingTaskId.value = null;
+    editingTaskText.value = '';
+  };
+
+  const handleCompleteTask = async (eventId: number) => {
+    if (!props.candidate?.id) return;
+    try {
+      await completeCandidateTask(props.candidate.id, eventId);
+      emit('comment-added');
+    } catch (e) {
+      console.error('Ошибка отметки задачи как выполненной:', e);
+    }
+  };
+
+  const openCommentAndFocus = () => {
+    activeTab.value = 'chat';
+    chatStore.setCurrentFormat('comment');
+    nextTick(() => {
+      chatInputRef.value?.focusInput?.();
+    });
+  };
+
+  const openTaskAndFocus = () => {
+    activeTab.value = 'chat';
+    chatStore.setCurrentFormat('task');
+    nextTick(() => {
+      nextTick(() => {
+        chatInputRef.value?.focusTaskForm?.();
+      });
+    });
+  };
+
+  defineExpose({ openCommentAndFocus, openTaskAndFocus, eventFeedRef });
+
+  const handleChatSend = async (
+    messageData: ChatMessage & {
+      editCommentId?: number;
+      taskDate?: string;
+      taskTime?: string;
+      taskManagerName?: string;
+    }
+  ) => {
+    if (!props.candidate?.id) return;
+
+    if (messageData.format === 'task') {
+      if (!messageData.message.trim()) return;
+      try {
+        const taskDate = messageData.taskDate ?? '';
+        const taskTime = messageData.taskTime ?? '';
+        const scheduledAt =
+          taskDate && taskTime ? `${taskDate}T${taskTime}:00` : undefined;
+        if (messageData.editTaskId != null) {
+          await updateCandidateTask(props.candidate.id, messageData.editTaskId, {
+            content: messageData.message,
+            assignee_name: messageData.taskManagerName ?? null,
+            scheduled_at: scheduledAt ?? null,
+          });
+          editingTaskId.value = null;
+          editingTaskText.value = '';
+        } else {
+          await createCandidateTask(props.candidate.id, {
+            content: messageData.message,
+            assignee_name: messageData.taskManagerName ?? null,
+            scheduled_at: scheduledAt ?? null,
+          });
+        }
+        emit('comment-added');
+      } catch (e) {
+        console.error('Ошибка создания/обновления задачи:', e);
+      }
+      return;
+    }
+
+    if (messageData.format !== 'comment' || !messageData.message.trim()) {
+      return;
+    }
+    try {
+      if (messageData.editCommentId != null) {
+        await updateCandidateComment(
+          props.candidate.id,
+          messageData.editCommentId,
+          messageData.message
+        );
+        editingCommentId.value = null;
+        editingCommentText.value = '';
+      } else {
+        await createCandidateComment(props.candidate.id, messageData.message);
+      }
+      emit('comment-added');
+    } catch (e) {
+      console.error('Ошибка сохранения комментария:', e);
+    }
   };
 
   const considerations = ref<CandidateConsideration[]>([]);
@@ -303,6 +347,37 @@
     }
   };
 
+  // Восстановление вкладки из sessionStorage при появлении candidate.id (в т.ч. после обновления страницы)
+  watch(
+    () => props.candidate?.id,
+    (id) => {
+      if (id == null) return;
+      try {
+        const saved = sessionStorage.getItem(`${STORAGE_KEY}-${id}`);
+        if (saved && TAB_VALUES.includes(saved as (typeof TAB_VALUES)[number])) {
+          activeTab.value = saved;
+        }
+      } catch {
+        // ignore
+      }
+    },
+    { immediate: true }
+  );
+
+  // Сохранение выбранной вкладки, чтобы не сбрасывалась при обновлении
+  watch(
+    () => [activeTab.value, props.candidate?.id],
+    ([tab, id]) => {
+      if (id != null && tab && TAB_VALUES.includes(tab as (typeof TAB_VALUES)[number])) {
+        try {
+          sessionStorage.setItem(`${STORAGE_KEY}-${id}`, tab as string);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  );
+
   watch(
     () => [activeTab.value, props.candidate?.id, props.candidate],
     ([tab, id]) => {
@@ -313,11 +388,11 @@
 </script>
 
 <template>
-  <div>
-    <div class="mb-px rounded-t-fifteen bg-catskill px-25px py-15px">
+  <div class="flex h-full flex-col">
+    <div class="mb-px shrink-0 rounded-t-fifteen bg-catskill px-25px py-15px">
       <BtnTab :tabs="tabs" v-model="activeTab" />
     </div>
-    <div>
+    <div class="min-h-0 flex-1 flex flex-col">
       <div v-if="activeTab === 'resume'">
         <div class="mb-px bg-white p-25px pt-[27px]">
           <p class="mb-15px text-15px font-medium text-space">
@@ -901,14 +976,30 @@
         </div>
         -->
       </div>
-      <div v-if="activeTab === 'chat'">
-        <div>
-          <Timeline :timeline-groups="timelineGroups" />
-          <ChatInput
-            :initial-recipient="`${candidate.firstname} ${candidate.surname}`"
-            @send="handleChatSend"
+      <div v-if="activeTab === 'chat'" ref="eventFeedRef" class="flex flex-col">
+        <div class="h-[500px] overflow-hidden border border-athens-gray bg-athens-gray">
+          <CandidateLog
+            :candidate-id="candidate?.id"
+            :refresh-trigger="props.logRefreshTrigger"
+            :vacancy-id="props.vacancyId"
+            @delete-request="handleDeleteCommentRequest"
+            @edit-comment="handleEditComment"
+            @delete-task-request="handleDeleteTaskRequest"
+            @edit-task="handleEditTask"
+            @complete-task="handleCompleteTask"
           />
         </div>
+        <ChatInput
+          ref="chatInputRef"
+          :initial-recipient="`${candidate.firstname} ${candidate.surname}`"
+          :initial-edit-text="editingCommentText"
+          :edit-comment-id="editingCommentId"
+          :initial-edit-task-text="editingTaskText"
+          :edit-task-id="editingTaskId"
+          @send="handleChatSend"
+          @cancel-edit="handleCancelEditComment"
+          @cancel-edit-task="handleCancelEditTask"
+        />
       </div>
       <div v-if="activeTab === 'review'" class="considerations-block mb-px bg-white">
         <div class="considerations-table-wrap">
@@ -967,6 +1058,17 @@
         </div>
       </div>
     </div>
+    <CommentDeleteConfirmPopup
+      :is-open="isCommentDeletePopupOpen"
+      @close="handleCommentDeleteClose"
+      @confirm="handleCommentDeleteConfirm"
+    />
+    <CommentDeleteConfirmPopup
+      :is-open="taskToDeleteEventId != null"
+      description="Задача будет удалена без возможности восстановления."
+      @close="handleTaskDeleteClose"
+      @confirm="handleTaskDeleteConfirm"
+    />
   </div>
 </template>
 
