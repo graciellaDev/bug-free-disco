@@ -62,14 +62,16 @@ export interface UpdateVacancyData {
   base_id?: number | null;
   vacancy_platform_id?: number | null;
   status?: string | null;
-  /** Навыки (фразы): массив названий — бэкенд при обновлении поддерживает создание/привязку по названиям */
-  phrases?: string[] | null;
+  /** Навыки: массив названий — передаём через поле skills при создании/обновлении вакансии */
+  skills?: string[] | null;
   /** Водительские права: массив { id: <id категории прав в нашей БД> } (id из справочника vacancy-fields) */
   drivers?: Array<{ id: string | number }> | null;
   /** Готовы рассмотреть (SuperJob candidat — требования к кандидату). Для формы «Кто и как может откликаться» при платформе SuperJob. */
   candidat?: string | null;
   /** Чекбоксы «Готовы рассмотреть» SuperJob (массив id: accept_short_resume, accept_students и т.д.). */
   superjob_ready_to_consider?: string[] | null;
+  /** Условия занятости SuperJob (множественный выбор): массив id из SUPERJOB_EMPLOYMENT_CONDITIONS. Сохраняется в нашей БД. */
+  superjob_employment_conditions?: string[] | null;
 }
 
 /**
@@ -327,10 +329,10 @@ export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacan
     updateData.status = String(formData.status);
   }
 
-  // Навыки (phrases): бэкенд принимает массив названий — находим/создаём фразы по имени
+  // Навыки: передаём через поле skills — массив названий
   const phraseNames = toPhraseNamesArray(formData.key_skills ?? formData.phrases);
   if (phraseNames.length > 0) {
-    updateData.phrases = phraseNames;
+    updateData.skills = phraseNames;
   }
 
   // Водительские права: массив { id: <id категории прав в нашей БД> } (из формы — id из справочника)
@@ -346,6 +348,11 @@ export function mapVacancyToUpdateFormat(formData: VacancyFormData): UpdateVacan
   // Чекбоксы «Готовы рассмотреть» SuperJob (сохраняем в нашей БД для повторного открытия формы)
   if (Array.isArray(formData.superjob_ready_to_consider) && formData.superjob_ready_to_consider.length > 0) {
     updateData.superjob_ready_to_consider = formData.superjob_ready_to_consider;
+  }
+  // Условия занятости SuperJob (теги: type_of_work, place_of_work + доп. условия). Сохраняем массив id в нашей БД.
+  const conditions = formData.superjob_employment_conditions;
+  if (Array.isArray(conditions) && conditions.length > 0) {
+    updateData.superjob_employment_conditions = conditions.map((id) => (id != null ? String(id) : '')).filter(Boolean);
   }
 
   return updateData;

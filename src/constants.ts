@@ -282,6 +282,25 @@ export const SUPERJOB_READY_TO_CONSIDER = [
   { id: 'accept_volunteers', name: 'Волонтеров', superjobKey: 'accept_volunteers' },
 ];
 
+/** Условия занятости для формы публикации SuperJob (множественный выбор, теги как на скрине). */
+export const SUPERJOB_EMPLOYMENT_CONDITIONS = [
+  { id: '6', name: 'Полная занятость' },
+  { id: '10', name: 'Частичная занятость' },
+  { id: '7', name: 'Возможно временное оформление' },
+  { id: '9', name: 'Вахта' },
+  { id: '12', name: 'Сменный график' },
+  { id: '13', name: 'Частичная занятость + Совместительство' },
+  { id: '14', name: 'Гибрид' },
+  { id: '1', name: 'В офисе/На объекте' },
+  { id: '2', name: 'Удалённая работа' },
+  { id: '3', name: 'Разъездная' },
+  { id: 'from_4h_day', name: 'Работа от 4-х часов в день' },
+  { id: 'weekends', name: 'Работа по выходным' },
+  { id: 'evening', name: 'Работа по вечерам' },
+  { id: 'one_time', name: 'Разовое задание' },
+  { id: 'side_job', name: 'Подработка' },
+];
+
 export const HH_BILLING_TYPES = [
         {
             "id": "free",

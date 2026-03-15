@@ -981,7 +981,7 @@ const vacancyData = computed(() => {
     has_evening_night_shifts: newVacancy.value.hasEveningNightShifts || false,
     experience: getExperienceText(newVacancy.value.experience),
     education: getEducationText(newVacancy.value.education),
-    phrases: getPhrasesArray(newVacancy.value.phrases),
+    skills: getPhrasesArray(newVacancy.value.phrases),
     languages: (() => {
       const arr = newVacancy.value.languages || []
       return arr

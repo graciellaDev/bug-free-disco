@@ -165,8 +165,7 @@ export function mapVacancyToSuperjobPayload(
   const firmNameStr = typeof firmNameRaw === 'string' ? firmNameRaw.trim() : String(firmNameRaw ?? '').trim();
   payload.firm_name = (firmNameStr || 'Компания').substring(0, 255);
 
-  // Название вакансии: обязательно для бэкенда и для API SuperJob (profession).
-  // Бэкенд может валидировать «Название вакансии» по ключу name; SuperJob принимает profession.
+  // profession — название вакансии (обязательно для API SuperJob). Формат: "Python разработчик".
   const formName = toStr(formData.name) ?? toStr((formData as any).title) ?? toStr(formData.professional_roles?.[0]);
   const professionFromExisting =
     existing?.profession != null
@@ -176,7 +175,7 @@ export function mapVacancyToSuperjobPayload(
   payload.profession = profession;
   payload.name = profession;
 
-  // Описание вакансии — всегда передаём (во всех вариантах имён полей API SuperJob), иначе на платформе не обновится
+  // Описание и candidat при обновлении отправляем как есть (без добавления/удаления «Требования»).
   const descriptionFromForm = formData.description != null && formData.description !== '' ? String(formData.description) : '';
   const descriptionToSend =
     descriptionFromForm.trim() ||
@@ -187,9 +186,8 @@ export function mapVacancyToSuperjobPayload(
   payload.vacancy_rich_text = descriptionToSend;
   payload.description = descriptionToSend;
 
-  // Готовы рассмотреть: текст candidat (обязательное поле в API) + флаги чекбоксов (accept_short_resume, accept_students и т.д.)
-  const candidatText = (formData as any).candidat ?? existing?.candidat ?? '';
-  payload.candidat = typeof candidatText === 'string' && candidatText.trim() ? candidatText.trim().substring(0, 2000) : (existing?.candidat ?? 'Требования не указаны');
+  // candidat — при редактировании отправляем строку как есть (то же значение, что и description)
+  payload.candidat = descriptionToSend || (existing?.candidat ?? 'Требования не указаны');
   const selectedIds = Array.isArray((formData as any).superjob_ready_to_consider) ? (formData as any).superjob_ready_to_consider : [];
   for (const opt of SUPERJOB_READY_TO_CONSIDER) {
     payload[opt.superjobKey] = selectedIds.includes(opt.id);
@@ -220,10 +218,15 @@ export function mapVacancyToSuperjobPayload(
     payload.currency = currencyCode;
   }
 
-  // typeOfWork — тип занятости: API требует id (число) из справочника SuperJob
-  const typeOfWorkId = existing?.type_of_work?.id;
-  if (typeOfWorkId !== undefined && typeOfWorkId !== null && !isNaN(Number(typeOfWorkId))) {
-    payload.typeOfWork = Number(typeOfWorkId);
+  // typeOfWork — тип занятости: из формы (Условия занятости) или из текущей вакансии SuperJob
+  const TYPE_OF_WORK_IDS = new Set(['6', '7', '9', '10', '12', '13', '14']);
+  const conditions = (formData as any).superjob_employment_conditions as string[] | undefined;
+  const firstTypeId = Array.isArray(conditions)
+    ? conditions.map((id) => (id != null ? String(id) : '')).find((id) => TYPE_OF_WORK_IDS.has(id))
+    : undefined;
+  const typeOfWorkId = firstTypeId != null ? Number(firstTypeId) : (existing?.type_of_work?.id != null ? Number(existing.type_of_work.id) : undefined);
+  if (typeOfWorkId !== undefined && typeOfWorkId !== null && !isNaN(typeOfWorkId)) {
+    payload.typeOfWork = typeOfWorkId;
   }
 
   // experience — опыт: приоритет у значения из формы (маппим наш id в id SuperJob), иначе из текущей вакансии SuperJob
@@ -249,16 +252,20 @@ export function mapVacancyToSuperjobPayload(
     payload.schedule = Number(scheduleId);
   }
 
-  // place_of_work — место работы: id из текущей вакансии (офис/удалёнка/гибрид)
-  const placeOfWorkId = existing?.place_of_work?.id;
-  if (placeOfWorkId !== undefined && placeOfWorkId !== null && !isNaN(Number(placeOfWorkId))) {
-    payload.place_of_work = Number(placeOfWorkId);
-  } else {
+  // place_of_work — место работы: из формы (Условия занятости) или из текущей вакансии / workSpace
+  const PLACE_OF_WORK_IDS = new Set(['1', '2', '3']);
+  const firstPlaceId = Array.isArray(conditions)
+    ? conditions.map((id) => (id != null ? String(id) : '')).find((id) => PLACE_OF_WORK_IDS.has(id))
+    : undefined;
+  let placeOfWorkId = firstPlaceId != null ? Number(firstPlaceId) : (existing?.place_of_work?.id != null ? Number(existing.place_of_work.id) : undefined);
+  if (placeOfWorkId === undefined || placeOfWorkId === null || isNaN(placeOfWorkId)) {
     const place = formData.workSpace ?? (formData as any).place;
     const placeOfWork = mapPlaceOfWork(place);
-    if (placeOfWork) {
-      payload.place_of_work = placeOfWork;
-    }
+    if (placeOfWork?.id != null) placeOfWorkId = Number(placeOfWork.id);
+    else if (placeOfWork) placeOfWorkId = (placeOfWork as { id?: number }).id;
+  }
+  if (placeOfWorkId !== undefined && placeOfWorkId !== null && !isNaN(placeOfWorkId)) {
+    payload.place_of_work = Number(placeOfWorkId);
   }
 
   // town — город: API требует строго число (id из справочника SuperJob); обязательно при обновлении
@@ -310,19 +317,46 @@ export function mapVacancyToSuperjobPayload(
     payload.resumesubscription_keys = keys;
   }
 
-  // catalogues — профессиональная сфера SuperJob (обязательно передавать при обновлении, иначе не обновится).
-  // Приоритет: id из формы (superjob_catalogue_id), если форма в режиме SuperJob и пользователь выбрал категорию каталога; иначе — из текущей вакансии SuperJob.
+  // catalogues — профессиональная сфера SuperJob: отрасль (id, title, key) + специализация в positions[] (id, title, key).
+  // У нас: отрасль = industry, специализация = professional_roles[0]. Собираем полную структуру как в API SuperJob.
+  const industry = formData.industry;
+  const positionRole = formData.professional_roles?.[0];
   const superjobCatalogueId = formData.superjob_catalogue_id;
-  if (superjobCatalogueId !== undefined && superjobCatalogueId !== null && superjobCatalogueId !== '') {
+  const industryId = industry && (industry.id != null || (industry as any).key != null)
+    ? Number(industry.id ?? (industry as any).key)
+    : NaN;
+  const industryTitle = industry ? String(industry.name ?? (industry as any).title ?? '').trim() : '';
+  const positionId = positionRole && (positionRole.id != null || (positionRole as any).key != null)
+    ? Number(positionRole.id ?? (positionRole as any).key)
+    : (superjobCatalogueId != null && superjobCatalogueId !== '' ? Number(superjobCatalogueId) : NaN);
+  const positionTitle = positionRole ? String(positionRole.name ?? (positionRole as any).title ?? '').trim() : '';
+  if (!isNaN(industryId) && !isNaN(positionId)) {
+    payload.catalogues = [
+      {
+        id: industryId,
+        title: industryTitle || undefined,
+        key: industryId,
+        positions: [{ id: positionId, title: positionTitle || undefined, key: positionId }],
+      },
+    ];
+  } else if (superjobCatalogueId !== undefined && superjobCatalogueId !== null && superjobCatalogueId !== '') {
     const numId = Number(superjobCatalogueId);
     if (!isNaN(numId)) {
-      payload.catalogues = [{ id: numId }];
+      payload.catalogues = [{ id: numId, key: numId, positions: [{ id: numId, key: numId }] }];
     }
   }
   if ((!payload.catalogues || payload.catalogues.length === 0) && existing?.catalogues && Array.isArray(existing.catalogues) && existing.catalogues.length > 0) {
-    payload.catalogues = existing.catalogues.map((c: any) =>
-      typeof c === 'object' && c !== null && c.id != null ? { id: Number(c.id) } : c
-    );
+    payload.catalogues = existing.catalogues.map((c: any) => {
+      if (c == null || typeof c !== 'object') return c;
+      const id = c.id != null ? Number(c.id) : (c.key != null ? Number(c.key) : null);
+      if (id == null) return c;
+      const positions = Array.isArray(c.positions) ? c.positions.map((p: any) => {
+        if (p == null || typeof p !== 'object') return p;
+        const pid = p.id != null ? Number(p.id) : (p.key != null ? Number(p.key) : null);
+        return pid != null ? { id: pid, title: p.title ?? p.title_rus, key: pid } : p;
+      }) : [];
+      return { id, title: c.title ?? c.title_rus, key: id, positions: positions.length ? positions : [{ id, key: id }] };
+    });
   }
 
   // Водительские права на платформу SuperJob: массив с id = название категории (A, B, BE и т.д.). API SuperJob — driving_licence: ['A','B',...].

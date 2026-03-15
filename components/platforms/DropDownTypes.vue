@@ -86,7 +86,19 @@ const props = defineProps({
 const dropDown = ref(null);
 const isDropDownVisible = ref(false);
 const emit = defineEmits(['update:modelValue']);
-const selectedOption = ref(props.selected); // Устанавливаем начальное значение
+
+// Выбранное значение: берём из пропсов и при необходимости подставляем полный объект из options для отображения (родитель может хранить только { id })
+const selectedOption = computed(() => {
+  const raw = props.modelValue ?? props.selected;
+  if (!raw) return null;
+  if (raw.name !== undefined && raw.name !== null && String(raw.name).trim() !== '') return raw;
+  const id = raw.id ?? raw.value;
+  if (id === undefined || id === null) return raw;
+  const found = props.options?.find(
+    (o) => String(o.id) === String(id) || (o.value !== undefined && String(o.value) === String(id))
+  );
+  return found ?? raw;
+});
 
 const isSelected = computed(() => props.variant === 'selected');
 // Открытие/закрытие выпадающего списка
@@ -96,7 +108,6 @@ const toggleDropDown = () => {
 
 // Выбор значения
 const toggleOptionSelect = (option) => {
-    selectedOption.value = option || null;
     emit('update:modelValue', option || null);
     isDropDownVisible.value = false;
 };

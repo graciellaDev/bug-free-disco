@@ -263,7 +263,7 @@ export function mapHhPublicationToVacancy(
     place: mapWorkSpaceFromHh(publication.work_space),
     location: mapLocationFromHh(publication.area, publication.areas)?.substring(0, 255),
     specializations: mapSpecializationsFromHh(publication.professional_roles)?.substring(0, 255),
-    phrases: phrasesFormatted,
+    skills: phrasesFormatted,
     status: 'draft', // По умолчанию черновик для импортированных вакансий
   };
 
@@ -335,7 +335,7 @@ export function mapAvitoPublicationToVacancy(
     place: place,
     location: location?.substring(0, 255),
     specializations: mapSpecializationsFromAvito(publication.category, publication.professional_roles)?.substring(0, 255),
-    phrases: phrasesFormatted,
+    skills: phrasesFormatted,
     status: 'draft', // По умолчанию черновик для импортированных вакансий
   };
 
@@ -612,11 +612,19 @@ export function mapRabotaPublicationToVacancy(
     place: place,
     location: location?.substring(0, 255),
     specializations: specializations?.substring(0, 255),
-    phrases: phrasesFormatted,
+    skills: phrasesFormatted,
     status: 'draft', // По умолчанию черновик для импортированных вакансий
   };
 
   return vacancyData;
+}
+
+/**
+ * Удаляет с начала строки подпись «Требования» (при импорте с SuperJob заголовок не сохраняем).
+ */
+function stripLeadingRequirementsLine(s: string): string {
+  if (typeof s !== 'string' || !s) return s;
+  return s.replace(/^Требования:?\s*\n?/i, '').trimStart();
 }
 
 /**
@@ -637,14 +645,17 @@ export function mapSuperjobPublicationToVacancy(
     : (publication.profession?.title ?? publication.profession?.name ?? publication.name ?? publication.title ?? '');
   const name = professionName.substring(0, 255);
 
+  // Описание: переносы строк не очищаем. При импорте убираем заголовок «Требования» в начале строки.
   let description = publication.vacancyRichText ?? publication.description ?? '';
   if (publication.candidat || publication.work) {
     const parts: string[] = [];
     if (publication.work) parts.push(`Обязанности:\n${publication.work}`);
-    if (publication.candidat) parts.push(`Требования:\n${publication.candidat}`);
+    if (publication.candidat) parts.push(stripLeadingRequirementsLine(publication.candidat));
     if (parts.length > 0) {
       description = parts.join('\n\n');
     }
+  } else if (description) {
+    description = stripLeadingRequirementsLine(description);
   }
   if (!description || description.trim().length < 3) {
     description = publication.firm_activity ?? '';
@@ -757,7 +768,7 @@ export function mapSuperjobPublicationToVacancy(
     status: 'draft',
   };
 
-  if (phrasesFormatted) vacancyData.phrases = phrasesFormatted;
+  if (phrasesFormatted) vacancyData.skills = phrasesFormatted;
 
   // Всегда записываем отрасль и специализацию в vacancyData, чтобы они сохранялись в БД при импорте
   if (industry) vacancyData.industry = industry;
@@ -767,9 +778,10 @@ export function mapSuperjobPublicationToVacancy(
   if (dateEnd) vacancyData.dateEnd = dateEnd;
   if (publication.code != null && publication.code !== '') vacancyData.code = String(publication.code).substring(0, 255);
 
-  // Готовы рассмотреть (SuperJob: candidat — «Требования к кандидату»). Сохраняем отдельно для формы «Кто и как может откликаться».
+  // Готовы рассмотреть (SuperJob: candidat — «Требования к кандидату»). Сохраняем без заголовка «Требования», переносы не удаляем.
   if (publication.candidat && typeof publication.candidat === 'string' && publication.candidat.trim()) {
-    vacancyData.candidat = publication.candidat.trim().substring(0, 2000);
+    const candidatStripped = stripLeadingRequirementsLine(publication.candidat);
+    if (candidatStripped) vacancyData.candidat = candidatStripped.substring(0, 2000);
   }
   // Чекбоксы «Готовы рассмотреть» (accept_short_resume, accept_students и т.д.) → массив id для формы
   const readyIds: string[] = [];

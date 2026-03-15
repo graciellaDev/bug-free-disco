@@ -1756,9 +1756,9 @@ async function importPublication(publication) {
             vacancyData.platform_id = platformId;
         }
 
-        // Навыки (phrases): бэкенд принимает массив названий — создание/привязка по имени на бэке
-        if (vacancyData.phrases && typeof vacancyData.phrases === 'string' && vacancyData.phrases.trim()) {
-            vacancyData.phrases = vacancyData.phrases
+        // Навыки: передаём через поле skills (массив названий)
+        if (vacancyData.skills && typeof vacancyData.skills === 'string' && vacancyData.skills.trim()) {
+            vacancyData.skills = vacancyData.skills
                 .split(',')
                 .map((s) => s.trim())
                 .filter(Boolean)
@@ -1808,7 +1808,7 @@ async function importPublication(publication) {
                 education: vacancyData.education,
                 place: vacancyData.place,
                 specializations: vacancyData.specializations,
-                phrases: vacancyData.phrases
+                skills: vacancyData.skills
             });
         }
         
