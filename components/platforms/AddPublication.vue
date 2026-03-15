@@ -32,7 +32,32 @@
             />
           </div>
         </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
+        <!-- SuperJob: одно поле «Профессиональная сфера» (как в форме редактирования вакансии в БД), маппинг с catalogues сохранён -->
+        <div v-if="isSuperjobPlatform" id="professional_roles" class="w-full mb-6 anchor">
+          <div class="flex items-center gap-1 mb-3.5">
+            <p
+              class="text-sm font-medium leading-normal"
+              :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'"
+            >
+              <span class="text-red-custom">*</span>
+              Профессиональная сфера
+            </p>
+          </div>
+          <ClientOnly>
+            <SpecializationSelector
+              :options="professionsOptions"
+              :full-catalog="superjobCatalogForSelector"
+              :model-value="data.professional_roles?.[0] ?? null"
+              placeholder="Выберите из списка"
+              :error="validFields.professional_roles.status === false"
+              @update:model-value="handleSuperjobProfessionalSphereUpdate"
+            />
+            <template #fallback>
+              <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
+            </template>
+          </ClientOnly>
+        </div>
+        <div v-else class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
               <span class="text-red-custom">*</span>
@@ -61,115 +86,161 @@
         </div>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full anchor">
-              <p 
-                class="text-sm font-medium mb-4 leading-normal"
-                :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'"
-              >
-                <span class="text-red-custom">*</span>
-                Опыт работы
-              </p>
+              <div class="flex items-center gap-1 mb-4">
+                <p 
+                  class="text-sm font-medium leading-normal"
+                  :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'"
+                >
+                  <span class="text-red-custom">*</span>
+                  Опыт работы
+                </p>
+                <span v-if="hideScheduleBlockForSuperjob" class="inline-flex items-center cursor-help">
+                  <svg-icon name="question" width="16" height="16" />
+                  <MyTooltip text="Для кандидатов с опытом до года подходит вариант «Нет опыта»" />
+                </span>
+              </div>
+              <template v-if="hideScheduleBlockForSuperjob">
+                <div class="flex w-full gap-2">
+                  <button
+                    v-for="opt in experienceOptions"
+                    :key="opt.id"
+                    type="button"
+                    class="flex-1 px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                    :class="isExperienceSelectedForSuperjob(opt)
+                      ? 'bg-zumthor border-dodger text-dodger font-normal'
+                      : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                    @click="handleIdUpdate('experience', opt)"
+                  >
+                    {{ getExperienceButtonLabel(opt) }}
+                  </button>
+                </div>
+              </template>
               <DropDownTypes 
-              :options=experienceOptions
-              :selected="findValue(experienceOptions, globCurrentVacancy?.experience)"
-              v-model="data.experience"
-              @update:model-value="($event) => handleIdUpdate('experience', $event)"
+                v-else
+                :options=experienceOptions
+                :selected="findValue(experienceOptions, globCurrentVacancy?.experience)"
+                v-model="data.experience"
+                @update:model-value="($event) => handleIdUpdate('experience', $event)"
               ></DropDownTypes>
           </div>
-          <div class="w-full"></div>
         </div>
         <div class="mb-25px mt-25px border-t"></div>
-        <p class="text-space text-xl font-semibold mb-8">
-          Условия работы
-        </p>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div id="employment_form" class="w-full anchor">
-            <p 
-              class="text-sm font-medium mb-4 leading-normal"
-              :class="validFields.employment_form.status === false ? 'text-red-custom' : 'text-space'"
+        <template v-if="hideScheduleBlockForSuperjob">
+          <p class="text-space text-xl font-semibold mb-8">
+            Условия занятости
+          </p>
+          <div id="superjob_employment_conditions" class="w-full anchor flex flex-wrap gap-2">
+            <button
+              v-for="opt in SUPERJOB_EMPLOYMENT_CONDITIONS"
+              :key="opt.id"
+              type="button"
+              class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+              :class="(data.superjob_employment_conditions || []).includes(opt.id)
+                ? 'bg-dodger border-dodger text-white font-normal'
+                : 'bg-athens-gray border-athens text-bali font-normal hover:bg-zumthor hover:border-dodger hover:text-dodger'"
+              @click="toggleSuperjobEmploymentCondition(opt.id)"
             >
-              <span class="text-red-custom">*</span>
-              Тип занятости
-            </p>
-            <DropDownTypes 
-            :options=employmentTypesOptions
-            :selected="findValue(employmentTypesOptions, globCurrentVacancy?.employment) || employmentTypesOptions[0]"
-            v-model="data.employment_form"
-            @update:model-value="($event) => handleIdUpdate('employment_form', $event)"
-            ></DropDownTypes>
+              {{ opt.name }}
+            </button>
           </div>
-          <div class="w-full">
-            <template v-if="data.employment_form?.id === 'FLY_IN_FLY_OUT'">
+          <div class="mb-25px mt-25px border-t"></div>
+        </template>
+        <template v-else>
+          <p class="text-space text-xl font-semibold mb-8">
+            Условия работы
+          </p>
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div id="employment_form" class="w-full anchor">
+              <p 
+                class="text-sm font-medium mb-4 leading-normal"
+                :class="validFields.employment_form.status === false ? 'text-red-custom' : 'text-space'"
+              >
+                <span class="text-red-custom">*</span>
+                Тип занятости
+              </p>
+              <DropDownTypes 
+              :options=employmentTypesOptions
+              :selected="findValue(employmentTypesOptions, globCurrentVacancy?.employment) || employmentTypesOptions[0]"
+              v-model="data.employment_form"
+              @update:model-value="($event) => handleIdUpdate('employment_form', $event)"
+              ></DropDownTypes>
+            </div>
+            <div class="w-full">
+              <template v-if="data.employment_form?.id === 'FLY_IN_FLY_OUT'">
+                <p class="text-sm font-medium mb-4 leading-normal text-space">
+                  Количество смен
+                </p>
+                <MultiSelect 
+                :options="experienceDaysOptions"
+                :withId="true"
+                v-model="data.fly_in_fly_out_duration"
+                defaultValue="Выберите количество смен"
+                ></MultiSelect>
+              </template>
+            </div>
+          </div>
+          <div class="w-full justify-between flex gap-25px mb-6">
+             <div class="w-full">
               <p class="text-sm font-medium mb-4 leading-normal text-space">
-                Количество смен
+                Формат работы
               </p>
               <MultiSelect 
-              :options="experienceDaysOptions"
+                :options="workFormatOptions"
+                v-model="data.work_format"
+                defaultValue="Выберите формат работы"
+                :withId="true"
+              />
+             </div>
+          </div>
+        </template>
+        <template v-if="!hideScheduleBlockForSuperjob">
+          <div class="mb-25px mt-25px border-t"></div>
+          <p class="text-space text-xl font-semibold mb-8">
+            График и часы работы
+          </p>
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div id="work_schedule_by_days" class="w-full anchor">
+              <p 
+                class="text-sm font-medium mb-4 leading-normal"
+                :class="validFields.work_schedule_by_days.status === false ? 'text-red-custom' : 'text-space'"
+              >
+                <span class="text-red-custom">*</span>
+                График работы
+              </p>
+              <MultiSelect 
+              :options="workScheduleOptions"
+              v-model="data.work_schedule_by_days"
+              defaultValue="Выберите график работы"
               :withId="true"
-              v-model="data.fly_in_fly_out_duration"
-              defaultValue="Выберите количество смен"
               ></MultiSelect>
-            </template>
-          </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-           <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Формат работы
-            </p>
-            <MultiSelect 
-              :options="workFormatOptions"
-              v-model="data.work_format"
-              defaultValue="Выберите формат работы"
+            </div>
+            <div id="working_hours" class="w-full anchor">
+              <p 
+                class="text-sm font-medium mb-4 leading-normal"
+                :class="validFields.working_hours.status === false ? 'text-red-custom' : 'text-space'"
+              >
+                <span class="text-red-custom">*</span>
+                Рабочие часы в день
+              </p>
+              <MultiSelect 
+              :options="workingHoursOptions"
+              v-model="data.working_hours"
+              defaultValue="Выберите рабочие часы"
               :withId="true"
-            />
-           </div>
-        </div>
-        <div class="mb-25px mt-25px border-t"></div>
-        <p class="text-space text-xl font-semibold mb-8">
-          График и часы работы
-        </p>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div id="work_schedule_by_days" class="w-full anchor">
-            <p 
-              class="text-sm font-medium mb-4 leading-normal"
-              :class="validFields.work_schedule_by_days.status === false ? 'text-red-custom' : 'text-space'"
-            >
-              <span class="text-red-custom">*</span>
-              График работы
-            </p>
-            <MultiSelect 
-            :options="workScheduleOptions"
-            v-model="data.work_schedule_by_days"
-            defaultValue="Выберите график работы"
-            :withId="true"
-            ></MultiSelect>
+              ></MultiSelect>
+            </div>
           </div>
-          <div id="working_hours" class="w-full anchor">
-            <p 
-              class="text-sm font-medium mb-4 leading-normal"
-              :class="validFields.working_hours.status === false ? 'text-red-custom' : 'text-space'"
-            >
-              <span class="text-red-custom">*</span>
-              Рабочие часы в день
-            </p>
-            <MultiSelect 
-            :options="workingHoursOptions"
-            v-model="data.working_hours"
-            defaultValue="Выберите рабочие часы"
-            :withId="true"
-            ></MultiSelect>
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div class="w-full">
+               <MyCheckbox 
+                  :id="'evening-night-shifts'" 
+                  :label="'Есть вечерние или ночные смены'" 
+                  v-model="data.has_evening_night_shifts" 
+               />
+            </div>
           </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-             <MyCheckbox 
-                :id="'evening-night-shifts'" 
-                :label="'Есть вечерние или ночные смены'" 
-                v-model="data.has_evening_night_shifts" 
-             />
-          </div>
-        </div>
-        <div class="mb-25px mt-25px border-t"></div>
+          <div class="mb-25px mt-25px border-t"></div>
+        </template>
         <p class="text-space text-xl font-semibold mb-8">
           Город публикации и адрес работы
         </p>
@@ -357,7 +428,7 @@
             Кто и как может откликаться
           </p>
           <!-- SuperJob: чекбоксы «Готовы рассмотреть» (как на платформе SuperJob) -->
-          <template v-if="currentPlatform === 'superjob'">
+          <template v-if="isSuperjobPlatform">
             <div class="flex flex-col gap-3">
               <label
                 v-for="opt in SUPERJOB_READY_TO_CONSIDER"
@@ -518,6 +589,8 @@ import GenerateButton from '../custom/GenerateButton.vue';
 import TagSelect from '~/components/custom/TagSelect.vue'
 import MultiSelect from '~/components/custom/MultiSelect.vue'
 import CityAutocomplete from '~/components/custom/CityAutocomplete.vue'
+import SpecializationSelector from '~/components/custom/SpecializationSelector.vue'
+import MyTooltip from '~/components/custom/MyTooltip.vue'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getPhrases } from '@/utils/getVacancies'
@@ -536,6 +609,7 @@ import {
   HH_DRIVER_LICENSE_TYPES,
   HH_ADDITIONAL_CONDITIONS,
   SUPERJOB_READY_TO_CONSIDER,
+  SUPERJOB_EMPLOYMENT_CONDITIONS,
   HH_BILLING_TYPES,
 } from '@/src/constants'
 import experience from '~/src/data/experience.json'
@@ -553,7 +627,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['saved', 'cancel'])
-
 const isEditingMode = computed(() => props.editingVacancy != null)
 
 import { 
@@ -705,6 +778,29 @@ const findValueByIdOrName = (array, value) => {
   return array.find((item) => String(item.id) === String(v) || item.name == v) || array.find((item) => item.name == v) || null
 }
 
+// Подписи кнопок опыта для формы SuperJob (как в InfoTab)
+const experienceButtonLabels = { noExperience: 'Нет опыта', between1And3: '1-3 года', between3And6: '3-6 лет', moreThan6: 'От 6 лет' }
+function getExperienceButtonLabel(opt) {
+  return experienceButtonLabels[opt?.id] ?? opt?.name ?? ''
+}
+function isExperienceSelectedForSuperjob(opt) {
+  const v = data.value.experience
+  if (!v && opt?.id === 'noExperience') return true
+  if (!v) return false
+  if (typeof v === 'object') {
+    return String(opt?.id) === String(v?.id) || opt?.value === v?.value
+  }
+  return String(opt?.id) === String(v) || opt?.value === v || opt?.name === v || String(opt?.value) === String(v)
+}
+
+function toggleSuperjobEmploymentCondition(id) {
+  const arr = [...(data.value.superjob_employment_conditions || [])]
+  const idx = arr.indexOf(id)
+  if (idx >= 0) arr.splice(idx, 1)
+  else arr.push(id)
+  data.value.superjob_employment_conditions = arr
+}
+
 const handleIdUpdate = (property, value) => {
   if (property === 'address' || property === 'area') {
     if (value) {
@@ -747,16 +843,46 @@ const handleIdUpdate = (property, value) => {
         data.value.professional_roles = [value]
       }
       // Синхронизация с SuperJob: id выбранной специализации уходит в catalogues при обновлении
-      if (currentPlatform.value === 'superjob' && (value?.id != null || value?.key != null)) {
+      if (isSuperjobPlatform.value && (value?.id != null || value?.key != null)) {
         data.value.superjob_catalogue_id = Number(value?.id ?? value?.key) || (value?.id ?? value?.key)
       }
     } else {
       data.value.professional_roles = [null]
-      if (currentPlatform.value === 'superjob') data.value.superjob_catalogue_id = null
+      if (isSuperjobPlatform.value) data.value.superjob_catalogue_id = null
     }
   } else {
     data.value[property] = value ? { id: value.id } : null
   }
+}
+
+// SuperJob: выбор профессиональной сферы (отрасль + специализация в одном поле), маппинг в superjob_catalogue_id сохраняется
+function handleSuperjobProfessionalSphereUpdate(value) {
+  if (!value) {
+    data.value.industry = null
+    data.value.professional_roles = [null]
+    data.value.superjob_catalogue_id = null
+    updateValidField('professional_roles', false)
+    return
+  }
+  const catalog = currectRole.value
+  if (Array.isArray(catalog)) {
+    const industry = catalog.find((cat) => {
+      const roles = cat?.roles && Array.isArray(cat.roles) ? cat.roles : []
+      return roles.some(
+        (r) =>
+          (value.id != null && r.id != null && String(r.id) === String(value.id)) ||
+          (value.key != null && r.key != null && String(r.key) === String(value.key)) ||
+          (value.name && r.name && r.name === value.name)
+      )
+    })
+    if (industry) {
+      data.value.industry = { ...industry }
+    }
+  }
+  data.value.professional_roles = [value]
+  const rawId = value?.id ?? value?.key
+  data.value.superjob_catalogue_id = rawId != null ? (Number(rawId) || rawId) : null
+  updateValidField('professional_roles', true)
 }
 
 // Обработчик изменения отрасли
@@ -831,12 +957,12 @@ const handleIndustryChange = async (industry) => {
   if (selectedIndustry && selectedIndustry.roles && Array.isArray(selectedIndustry.roles) && selectedIndustry.roles.length > 0) {
     // Всегда выбираем первую специализацию из списка при изменении отрасли
     data.value.professional_roles = [selectedIndustry.roles[0]]
-    if (currentPlatform.value === 'superjob') {
+    if (isSuperjobPlatform.value) {
       data.value.superjob_catalogue_id = selectedIndustry.roles[0]?.id ?? selectedIndustry.roles[0]?.key ?? null
     }
   } else {
     data.value.professional_roles = [null]
-    if (currentPlatform.value === 'superjob') data.value.superjob_catalogue_id = null
+    if (isSuperjobPlatform.value) data.value.superjob_catalogue_id = null
   }
 }
 
@@ -887,6 +1013,7 @@ data.value.salary_range = {
 data.value.salary_type = HH_SALARY_TYPE[0]
 data.value.key_skills = []
 data.value.additional_conditions = []
+data.value.superjob_employment_conditions = []
 data.value.response_letter_required = false
 data.value.billing_types = HH_BILLING_TYPES[0]
 data.value.contacts = null
@@ -905,9 +1032,15 @@ const citiesOptions = computed(() => {
 })
 
 // Computed свойства для выбора справочников в зависимости от платформы
-const currentPlatform = computed(() => {
-  return data.value.platform?.platform || 'hh'
-})
+const currentPlatform = ref(props.editingVacancy.platforms_data[0]?.name || 'hh');
+// SuperJob может приходить как 'superjob' или 'superjob.ru' — единый UI (одно поле «Профессиональная сфера»)
+const isSuperjobPlatform = ref(currentPlatform.value === 'superjob' || currentPlatform.value === 'superjob.ru');
+console.log('platform', data.value);
+// Скрывать блок «График и часы работы» для SuperJob: по выбранной платформе или по редактируемой вакансии (data.platform может обновиться позже)
+const hideScheduleBlockForSuperjob = ref(isSuperjobPlatform.value ? true : props.editingVacancy?.platforms_data?.[0]?.id === 4);
+
+// Каталог SuperJob для SpecializationSelector (отрасли с roles = positions)
+const superjobCatalogForSelector = ref(Array.isArray(currectRole.value) ? currectRole.value : []);
 
 const professionsOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaProfessions.value.length > 0) {
@@ -1314,8 +1447,57 @@ async function fillFormFromCurrentVacancy() {
   if (vacancy.education) {
     data.value.education_level = HH_EDUCATION_LAVEL.find((item) => item.name == vacancy.education)
   }
-  if (vacancy.phrases) data.value.phrases = vacancy.phrases
-  if (vacancy.drivers) data.value.driver_license_types = vacancy.drivers
+  // Навыки: бэкенд может вернуть skills или phrases. В форме отображаются в key_skills как массив { name: string }.
+  const skillsRaw = vacancy.skills ?? vacancy.phrases
+  if (skillsRaw != null) {
+    data.value.phrases = Array.isArray(skillsRaw) ? skillsRaw : skillsRaw
+    const arr = Array.isArray(skillsRaw)
+      ? skillsRaw.map((s) => (typeof s === 'object' && s != null && 'name' in s ? { name: String(s.name ?? '').trim() } : { name: String(s ?? '').trim() })).filter((o) => o.name)
+      : (typeof skillsRaw === 'string' && skillsRaw.trim()
+          ? skillsRaw.split(',').map((s) => ({ name: s.trim() })).filter((o) => o.name)
+          : [])
+    data.value.key_skills = arr
+  }
+  // Водительские права: для вакансий с SuperJob наша БД может вернуть driving_licence: ["A", "B", "C"]; иначе — drivers: [{ id: 1 }, ...] (числовые id нашей БД).
+  // В форме опции MultiSelect — HH_DRIVER_LICENSE_TYPES с id "A", "B", "C"… Поэтому при drivers с числовыми id преобразуем в названия через справочник.
+  if (vacancy.driving_licence && Array.isArray(vacancy.driving_licence) && vacancy.driving_licence.length > 0) {
+    const cats = vacancy.driving_licence.map((cat) => {
+      const name = typeof cat === 'object' && cat != null ? (cat.title ?? cat.name ?? cat.id ?? '') : String(cat ?? '')
+      const id = String(name).trim().toUpperCase()
+      return /^[A-E]$/.test(id) ? { id } : null
+    }).filter(Boolean)
+    data.value.driver_license_types = cats
+  } else if (vacancy.drivers && Array.isArray(vacancy.drivers) && vacancy.drivers.length > 0) {
+    const hasNumericIds = vacancy.drivers.some((d) => typeof d?.id === 'number' || (typeof d?.id === 'string' && /^\d+$/.test(String(d.id))))
+    if (hasNumericIds) {
+      try {
+        const fields = await getVacancyFields()
+        const idToName = buildDriverDbIdToNameMap(fields?.data?.drivers)
+        // Нормализуем название до одной буквы A–E, чтобы совпало с HH_DRIVER_LICENSE_TYPES в форме
+        const toCategoryId = (name) => {
+          if (!name || typeof name !== 'string') return null
+          const s = String(name).trim().toUpperCase()
+          if (/^[A-E]$/.test(s)) return s
+          const m = s.match(/\b([A-E])\b/)
+          return m ? m[1] : null
+        }
+        const mapped = vacancy.drivers
+          .map((d) => {
+            const numId = Number(d?.id ?? 0)
+            const name = idToName.get(numId) ?? (typeof d?.id === 'string' && /^[A-E]$/i.test(d.id) ? String(d.id).toUpperCase() : null)
+            const categoryId = name != null ? toCategoryId(name) : (typeof d?.id === 'string' ? toCategoryId(d.id) : null)
+            return categoryId != null ? { id: categoryId } : null
+          })
+          .filter(Boolean)
+        if (mapped.length > 0) data.value.driver_license_types = mapped
+      } catch (e) {
+        console.warn('Маппинг водительских прав (drivers → категории):', e)
+        data.value.driver_license_types = vacancy.drivers
+      }
+    } else {
+      data.value.driver_license_types = vacancy.drivers.map((d) => ({ id: String(d?.id ?? '').trim().toUpperCase() })).filter((d) => /^[A-E]$/.test(d.id))
+    }
+  }
   if (vacancy.location) data.value.location = vacancy.location
 
   // График работы: API может вернуть один id/name или несколько через запятую (например "FOUR_ON_FOUR_OFF, FOUR_ON_THREE_OFF")
@@ -1350,6 +1532,11 @@ async function fillFormFromCurrentVacancy() {
   if (vacancy.place != null && vacancy.place !== '') {
     data.value.workSpace = String(vacancy.place)
   }
+  // Условия занятости SuperJob (теги): сохраняются в нашей БД, при открытии формы подставляем из вакансии
+  const conditionsRaw = vacancy.superjob_employment_conditions
+  if (Array.isArray(conditionsRaw) && conditionsRaw.length > 0) {
+    data.value.superjob_employment_conditions = conditionsRaw.map((id) => (id != null ? String(id) : '')).filter(Boolean)
+  }
 
   updateComputedValues()
   await applyComputedValues()
@@ -1368,7 +1555,10 @@ async function loadInitialFormData() {
     const platformData = props.editingVacancy.platforms_data?.[0];
     if (platformData) {
       const platformName = platformIdToName[platformData.id];
-      const platformKey = platforms.value?.find(p => p.platform === platformName) || platforms.value?.[0];
+      // Для SuperJob (id 4) ищем по 'superjob' или 'superjob.ru'
+      const platformKey = platforms.value?.find(
+        (p) => p.platform === platformName || (platformData.id === 4 && (p.platform === 'superjob' || p.platform === 'superjob.ru'))
+      ) ?? platforms.value?.[0];
       if (platformKey) {
         data.value.platform = platformKey;
       }
@@ -1376,14 +1566,18 @@ async function loadInitialFormData() {
       if (platformData.id === 4) {
         await loadDictionaries('superjob');
         const { data: sjVacancy } = await getSuperjobVacancy(platformData.platform_id);
+        // SuperJob: catalogues[0] = отрасль (id/key), catalogues[0].positions[0] = специализация (id/key)
         if (sjVacancy?.catalogues?.length && currectRole.value?.length) {
-          const cid = sjVacancy.catalogues[0].id ?? sjVacancy.catalogues[0].key;
+          const cat = sjVacancy.catalogues[0];
+          const industryId = cat.id ?? cat.key;
+          const positionId = cat.positions?.[0]?.id ?? cat.positions?.[0]?.key ?? industryId;
           for (const ind of currectRole.value) {
-            const role = ind.roles?.find(r => String(r.id) === String(cid));
+            if (String(ind.id ?? ind.key) !== String(industryId)) continue;
+            const role = ind.roles?.find(r => String(r.id ?? r.key) === String(positionId));
             if (role) {
               data.value.industry = { ...ind };
               data.value.professional_roles = [role];
-              data.value.superjob_catalogue_id = Number(cid) || cid;
+              data.value.superjob_catalogue_id = Number(positionId) || positionId;
               break;
             }
           }
@@ -1398,6 +1592,28 @@ async function loadInitialFormData() {
           if (sjVacancy?.[opt.superjobKey] === true) readyIds.push(opt.id)
         }
         if (readyIds.length > 0) data.value.superjob_ready_to_consider = readyIds
+        // Опыт работы: SuperJob возвращает experience { id, title } (id 1–4) или experience_id/experience_title. Маппим на наш справочник experience.json
+        const superjobToOurId = { 1: 'noExperience', 2: 'between1And3', 3: 'between3And6', 4: 'moreThan6' }
+        const mapSjExperienceToOur = (sjId, sjTitle) => {
+          const id = sjId != null ? Number(sjId) : NaN
+          const title = (sjTitle ?? '').toString().toLowerCase()
+          if (!isNaN(id) && superjobToOurId[id]) return superjobToOurId[id]
+          if (title.includes('без опыта')) return 'noExperience'
+          if (title.includes('от 1 года') || title.includes('1 до 3')) return 'between1And3'
+          if (title.includes('от 3 лет') || title.includes('3 до 6')) return 'between3And6'
+          if (title.includes('от 6 лет') || title.includes('более 6')) return 'moreThan6'
+          return null
+        }
+        const sjExp = sjVacancy?.experience
+        const sjExpId = sjExp?.id ?? sjVacancy?.experience_id
+        const sjExpTitle = sjExp?.title ?? sjExp?.title_rus ?? sjExp?.name ?? sjVacancy?.experience_title ?? (typeof sjVacancy?.experience === 'string' ? sjVacancy.experience : '')
+        const ourId = mapSjExperienceToOur(sjExpId, sjExpTitle) || (typeof sjExp === 'string' ? mapSjExperienceToOur(null, sjExp) : null)
+        if (ourId) {
+          const expOption = experience.find((opt) => opt.id === ourId)
+          if (expOption) {
+            data.value.experience = { id: expOption.id, name: expOption.name, value: expOption.value }
+          }
+        }
       }
     }
   }
@@ -1416,6 +1632,8 @@ async function loadInitialFormData() {
       updateComputedValues();
       await fillFormFromCurrentVacancy();
       vacancyIdFields.forEach((field) => {
+        // Опыт для SuperJob уже подставлен из sjVacancy в loadInitialFormData — не перезаписываем
+        if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
         const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
         const values = mappingFieldsHH[field].values
         const found = field === 'employment_form'
@@ -1442,6 +1660,7 @@ phrases.value = await getPhrasesVacancy()
 
 // Дефолты для experience/employment_form, если вакансия не загружалась (форма «добавить»)
 vacancyIdFields.forEach((field) => {
+  if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
   const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
   const values = mappingFieldsHH[field].values
   const found = field === 'employment_form'
@@ -1626,11 +1845,27 @@ function toggleSuperjobReadyConsider(id, checked) {
   data.value.superjob_ready_to_consider = arr
 }
 
-// Преобразование HH_DRIVER_LICENSE_TYPES для MultiSelect (id -> value)
-const driverLicenseOptions = HH_DRIVER_LICENSE_TYPES.map(license => ({
+// Категории водительских прав для SuperJob (на платформе только A–E). Используется в выпадающем списке при редактировании вакансии SuperJob.
+const SUPERJOB_DRIVER_LICENSE_CATEGORIES = ['A', 'B', 'C', 'D', 'E']
+
+/** Нужно ли показывать только категории A–E: платформа SuperJob или редактирование вакансии, привязанной к SuperJob (id 4). */
+const useSuperjobDriverCategories = computed(() => {
+  if (isSuperjobPlatform.value) return true
+  const platformId = props.editingVacancy?.platforms_data?.[0]?.id
+  return platformId === 4
+})
+
+// Преобразование для MultiSelect. Для SuperJob — только массив ['A','B','C','D','E'], иначе полный справочник.
+const driverLicenseOptionsBase = HH_DRIVER_LICENSE_TYPES.map((license) => ({
   ...license,
-  value: license.id
+  value: license.id,
 }))
+const driverLicenseOptions = computed(() => {
+  if (useSuperjobDriverCategories.value) {
+    return SUPERJOB_DRIVER_LICENSE_CATEGORIES.map((id) => ({ id, name: id, value: id }))
+  }
+  return driverLicenseOptionsBase
+})
 
 // Функция для подсчета символов в тексте (без HTML тегов)
 const getTextLength = (htmlString) => {
@@ -1664,6 +1899,16 @@ const updateDescriptionValidation = (value) => {
 const validateFields = () => { 
   let isValid = true;
   for (const key in validFields.value) {
+    // Для SuperJob не проверяем график и часы работы — раздел скрыт в форме
+    if (isSuperjobPlatform.value && (key === 'work_schedule_by_days' || key === 'working_hours')) {
+      validFields.value[key].status = true;
+      continue;
+    }
+    // Для SuperJob вместо «Тип занятости» показываем «Условия занятости» (множественный выбор) — не требуем employment_form
+    if (hideScheduleBlockForSuperjob.value && key === 'employment_form') {
+      validFields.value[key].status = true;
+      continue;
+    }
     // Специальная валидация для description
     if (key === 'description') {
       const length = getTextLength(data.value[key]);
