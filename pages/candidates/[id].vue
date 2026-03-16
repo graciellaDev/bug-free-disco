@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
+  import { ref, nextTick } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import { getCandidateById } from '@/src/api/candidates';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
@@ -97,6 +97,38 @@
     }
   };
 
+  const logRefreshKey = ref(0);
+  const refreshCandidateLog = () => {
+    logRefreshKey.value++;
+  };
+  const tabsInfoRef = ref<InstanceType<typeof BlockCandidateTabsInfo> | null>(null);
+
+  const handleAddCommentFromHeader = () => {
+    tabsInfoRef.value?.openCommentAndFocus?.();
+    nextTick(() => {
+      nextTick(() => {
+        const el = tabsInfoRef.value?.eventFeedRef;
+        const node = el?.value ?? el;
+        if (node && typeof node.scrollIntoView === 'function') {
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  };
+
+  const handleAddTaskFromHeader = () => {
+    tabsInfoRef.value?.openTaskAndFocus?.();
+    nextTick(() => {
+      nextTick(() => {
+        const el = tabsInfoRef.value?.eventFeedRef;
+        const node = el?.value ?? el;
+        if (node && typeof node.scrollIntoView === 'function') {
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  };
+
   const handleCandidateDeleted = () => {
     router.push('/candidates');
   };
@@ -108,7 +140,7 @@
 </script>
 
 <template>
-  <div class="container py-25px">
+  <div class="container pt-25px pb-5">
     <div class="mb-25px flex items-center justify-between">
       <NuxtLink to="/candidates" class="text-blue-500 hover:underline">
         <div class="flex items-center justify-center gap-2.5">
@@ -154,15 +186,29 @@
     <div v-if="loading" class="absolute left-1/2 top-1/2">
       <UiDotsLoader />
     </div>
-    <div class="w-full" v-else-if="candidate">
-      <BlockCandidateInfo
-        :candidate="candidate"
-        :isFunnel="false"
-        :stages="stages"
-        @candidate-updated="handleCandidateUpdated"
-        @candidate-deleted="handleCandidateDeleted"
-      />
-      <BlockCandidateTabsInfo :candidate="candidate" />
+    <div
+      v-else-if="candidate"
+      class="grid w-full min-h-[70vh] grid-rows-[1fr_auto] gap-0"
+    >
+      <div class="min-h-0 overflow-auto">
+        <BlockCandidateInfo
+          :candidate="candidate"
+          :isFunnel="false"
+          :stages="stages"
+          @candidate-updated="handleCandidateUpdated"
+          @candidate-deleted="handleCandidateDeleted"
+          @add-comment="handleAddCommentFromHeader"
+          @add-task="handleAddTaskFromHeader"
+        />
+      </div>
+      <div class="flex min-h-0 flex-col">
+        <BlockCandidateTabsInfo
+          ref="tabsInfoRef"
+          :candidate="candidate"
+          :log-refresh-trigger="logRefreshKey"
+          @comment-added="refreshCandidateLog"
+        />
+      </div>
     </div>
   </div>
 </template>

@@ -25,8 +25,8 @@
 
 <template>
   <div
-    class="mb-[41px] flex"
-    :class="{ 'justify-between': isFunnel, 'justify-end': !isFunnel }"
+    class="mb-[41px] flex items-center"
+    :class="{ 'justify-between': isFunnel || $slots.left, 'justify-end': !isFunnel && !$slots.left }"
   >
     <ButtonSelector
       v-if="isFunnel"
@@ -35,6 +35,7 @@
       @update:modelValue="emit('update:selectedLabel', $event)"
       @confirm-transfer="emit('confirm-transfer', $event)"
     />
+    <slot v-else-if="$slots.left" name="left" />
     <div class="flex gap-x-2.5">
       <BtnIcon
         icon="message20"

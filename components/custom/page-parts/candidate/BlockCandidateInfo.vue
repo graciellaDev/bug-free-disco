@@ -11,9 +11,10 @@
   import CandidateTransferToVacancyPopup from './popups/CandidateTransferToVacancyPopup.vue';
   import CandidateRemoveFromVacancyPopup from './popups/CandidateRemoveFromVacancyPopup.vue';
   import CandidateRefusePopup from './popups/CandidateRefusePopup.vue';
+  import AttachToVacancyDropdown from './AttachToVacancyDropdown.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import { createCandidate, updateCandidate } from '@/src/api/candidates';
+  import { createCandidate, updateCandidate, attachCandidateToVacancy } from '@/src/api/candidates';
 
   import type {
     Candidate,
@@ -32,9 +33,11 @@
 
   const emit = defineEmits<{
     'candidate-updated': [candidate: Candidate];
-    'candidate-moved': [candidate: Candidate];
+    'candidate-moved': [candidate: Candidate, newStageId?: number];
     'candidate-deleted': [id: number];
     'update:selectedLabel': [label: string];
+    'add-comment': [];
+    'add-task': [];
   }>();
 
   const vacancyName = ref<string>('');
@@ -85,6 +88,14 @@
 
   const handleDeleteCandidate = () => {
     popups.deleteCandidate.open();
+  };
+
+  const handleAddCommentClick = () => {
+    emit('add-comment');
+  };
+
+  const handleNewTaskClick = () => {
+    emit('add-task');
   };
 
   //  Открытие попапа редактирования
@@ -248,6 +259,15 @@
     }
   };
 
+  const handleAttachToVacancy = async (vacancyId: number) => {
+    try {
+      await attachCandidateToVacancy(props.candidate.id, vacancyId);
+      emit('candidate-updated', props.candidate);
+    } catch (err) {
+      console.error('[handleAttachToVacancy] Ошибка:', err);
+    }
+  };
+
   const handleConfirmCopy = async (vacancyId: number) => {
     // console.log('Обработчик копирования кандидата');
     try {
@@ -324,16 +344,19 @@
     }
 
     try {
-      const updateData: CandidateUpdateRequest = {
+      const updateData: CandidateUpdateRequest & { context_vacancy_id?: number } = {
         id: props.candidate.id,
         firstname: props.candidate.firstname,
         email: props.candidate.email,
         phone: props.candidate.phone,
         stage: targetStage.id,
       };
+      if (props.vacancy?.id) {
+        updateData.context_vacancy_id = props.vacancy.id;
+      }
 
       const updated = await updateCandidate(updateData);
-      emit('candidate-moved', updated.data);
+      emit('candidate-moved', updated.data, targetStage.id);
     } catch (err) {
       console.error(
         '[handleConfirmTransfer] Ошибка при переносе кандидата на другой этап: ',
@@ -473,13 +496,20 @@
       :selectedLabel="selectedLabel"
       :dropdownOptions="dropdownOptions"
       @select-item="candidateActionsUI.handleSelectItem"
-      @add-comment="candidateActionsUI.handleClickAddComment"
-      @new-task="candidateActionsUI.handleClickNewTask"
+      @add-comment="handleAddCommentClick"
+      @new-task="handleNewTaskClick"
       @email="candidateActionsUI.handleClickEmail"
       @refuse="candidateActionsUI.handleClickRefuse"
       @update:selectedLabel="emit('update:selectedLabel', $event)"
       @confirm-transfer="handleConfirmTransfer"
-    />
+    >
+      <template v-if="!isFunnel" #left>
+        <AttachToVacancyDropdown
+          :candidate="candidate"
+          @attach="handleAttachToVacancy"
+        />
+      </template>
+    </CandidateInfoHeader>
     <div class="absolute left-0 top-[70px] h-[1px] w-full bg-athens-gray"></div>
     <CandidateInfoContent
       :candidate="candidate"

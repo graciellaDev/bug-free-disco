@@ -145,9 +145,7 @@ export async function deleteEmployee(id: number) {
         }
         return { error: true, message };
     }
-}
-
-/** Смена пароля сотрудника (админ или свой админ). */
+}/** Смена пароля сотрудника (админ или свой админ). */
 export async function changeEmployeePassword(
     id: number,
     payload: { password: string; password_confirmation: string }

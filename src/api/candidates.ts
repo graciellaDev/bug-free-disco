@@ -11,6 +11,8 @@ import type {
   CustomFieldCandidate,
   CandidateUpdateRequest,
   CandidateUpdateResponse,
+  CandidateConsideration,
+  CandidateEvent,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -157,6 +159,127 @@ export async function uploadCandidatePhoto(
 
     throw new Error(error.message || 'Ошибка при загрузке фото');
   }
+}
+
+export async function getCandidateConsiderations(
+  candidateId: number
+): Promise<CandidateConsideration[]> {
+  const response = await apiGet<CandidateConsideration[]>(
+    `/candidates/${candidateId}/considerations`
+  );
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+/** События по кандидату (лог: создание резюме, смена этапа, изменение полей и т.д.). При указании vacancyId — события в контексте вакансии. */
+export async function getCandidateEvents(
+  candidateId: number,
+  vacancyId?: number | null
+): Promise<CandidateEvent[]> {
+  const url =
+    vacancyId != null
+      ? `/candidates/${candidateId}/vacancies/${vacancyId}/events`
+      : `/candidates/${candidateId}/events`;
+  const response = await apiGet<CandidateEvent[]>(url);
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+/** Создать комментарий (заметку) по кандидату. */
+export async function createCandidateComment(
+  candidateId: number,
+  content: string
+): Promise<{ event_id: number }> {
+  const response = await apiPost<{ message: string; event_id: number }>(
+    `/candidates/${candidateId}/comments`,
+    { content: content.trim() }
+  );
+  return { event_id: response.data?.event_id ?? 0 };
+}
+
+/** Удалить комментарий по кандидату (eventId — id события типа comment). */
+export async function deleteCandidateComment(
+  candidateId: number,
+  eventId: number
+): Promise<void> {
+  await apiDelete(`/candidates/${candidateId}/comments/${eventId}`);
+}
+
+/** Обновить текст комментария. */
+export async function updateCandidateComment(
+  candidateId: number,
+  eventId: number,
+  content: string
+): Promise<void> {
+  await apiPut<{ message: string; event_id: number }>(
+    `/candidates/${candidateId}/comments/${eventId}`,
+    { content: content.trim() }
+  );
+}
+
+/** Создать задачу по кандидату (отображается в ленте событий). */
+export async function createCandidateTask(
+  candidateId: number,
+  payload: { content: string; assignee_name?: string | null; scheduled_at?: string | null }
+): Promise<{ event_id: number }> {
+  const body: Record<string, string> = { content: payload.content.trim() };
+  if (payload.assignee_name != null && payload.assignee_name !== '') {
+    body.assignee_name = payload.assignee_name;
+  }
+  if (payload.scheduled_at != null && payload.scheduled_at !== '') {
+    body.scheduled_at = payload.scheduled_at;
+  }
+  const response = await apiPost<{ message: string; event_id: number }>(
+    `/candidates/${candidateId}/tasks`,
+    body
+  );
+  return { event_id: response.data?.event_id ?? 0 };
+}
+
+/** Удалить задачу (событие типа task) по кандидату. */
+export async function deleteCandidateTask(
+  candidateId: number,
+  eventId: number
+): Promise<void> {
+  await apiDelete(`/candidates/${candidateId}/tasks/${eventId}`);
+}
+
+/** Обновить задачу по кандидату. */
+export async function updateCandidateTask(
+  candidateId: number,
+  eventId: number,
+  payload: { content: string; assignee_name?: string | null; scheduled_at?: string | null }
+): Promise<void> {
+  const body: Record<string, string> = { content: payload.content.trim() };
+  if (payload.assignee_name != null && payload.assignee_name !== '') {
+    body.assignee_name = payload.assignee_name;
+  }
+  if (payload.scheduled_at != null && payload.scheduled_at !== '') {
+    body.scheduled_at = payload.scheduled_at;
+  }
+  await apiPut<{ message: string; event_id: number }>(
+    `/candidates/${candidateId}/tasks/${eventId}`,
+    body
+  );
+}
+
+/** Отметить задачу как выполненную. */
+export async function completeCandidateTask(
+  candidateId: number,
+  eventId: number
+): Promise<void> {
+  await apiPost<{ message: string; event_id: number }>(
+    `/candidates/${candidateId}/tasks/${eventId}/complete`,
+    {}
+  );
+}
+
+/** Прикрепить кандидата к ещё одной вакансии (кандидат остаётся в текущей). */
+export async function attachCandidateToVacancy(
+  candidateId: number,
+  vacancyId: number
+): Promise<void> {
+  await apiPost<null>(`/candidates/${candidateId}/attach-vacancy`, {
+    vacancy_id: vacancyId,
+  });
 }
 
 export async function getCandidatesByVacancy(vacancyId: number, page = 1) {

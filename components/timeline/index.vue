@@ -1,7 +1,7 @@
 <template>
   <div
     ref="timelineContainer"
-    class="bg-athens-gray p-25px pt-70px pb-2.5 max-h-[calc(100vh-230px)] overflow-y-auto"
+    class="min-h-full bg-athens-gray p-25px pt-70px pb-2.5 overflow-y-auto"
   >
     <template v-for="(group, index) in timelineGroups" :key="index">
       <ChatDivider :text="group.date" />
