@@ -39,6 +39,11 @@
     logRefreshKey.value++;
   };
   const tabsInfoRef = ref<InstanceType<typeof BlockCandidateTabsInfo> | null>(null);
+  const candidateInfoRef = ref<InstanceType<typeof BlockCandidateInfo> | null>(null);
+
+  const openEmailPopupFromFeed = () => {
+    candidateInfoRef.value?.openEmailPopup?.();
+  };
 
   const handleAddCommentFromHeader = () => {
     tabsInfoRef.value?.openCommentAndFocus?.();
@@ -78,7 +83,7 @@
       filter.vacancy_id = vacancy.value.id;
     }
 
-    // Фильтр по этапу — запрашиваем с сервера только кандидатов выбранного этапа
+    // Фильтр по этапу — запрашиваем с сервера только кандидатов выбранного этапа (плоский ключ для корректной сериализации query)
     if (selectedStageId.value !== null) {
       filter['filters[stage_id]'] = selectedStageId.value;
     }
@@ -279,6 +284,7 @@
     }
   };
 
+  /** Загрузить кандидата и открыть в правой панели. Этап и воронка подставляются из данных кандидата в БД. */
   const loadCandidate = async (id: number) => {
     if (!id || isNaN(id)) {
       throw createError({
@@ -292,7 +298,9 @@
       const result = await getCandidateById(id);
       const data = result.candidateData;
       selectedCandidate.value = data;
-      const stageId = data.stage ?? (data as { stage_id?: number }).stage_id ?? null;
+      syncCandidateToUrl(data.id);
+      const stageId =
+        data.stage ?? (data as { stage_id?: number }).stage_id ?? null;
       if (stageId != null) {
         selectedStageId.value = stageId;
         isActiveAll.value = false;
@@ -316,6 +324,7 @@
     // Если список пуст, очищаем выбранного кандидата
     if (currentList.length === 0) {
       selectedCandidate.value = null;
+      syncCandidateToUrl(null);
       return;
     }
 
@@ -378,6 +387,18 @@
     await handleFormSubmitBase(formDataWithVacancy, addCandidatePopup.isOpen);
   };
 
+  /** В ссылке только id кандидата; этап и воронка берутся из данных кандидата в БД. */
+  const syncCandidateToUrl = (candidateId: number | null) => {
+    const query = { ...route.query } as Record<string, string>;
+    if (candidateId != null) {
+      query.candidate = String(candidateId);
+    } else {
+      delete query.candidate;
+    }
+    delete query.stage;
+    router.replace({ path: route.path, query });
+  };
+
   const handleCandidateClick = async (candidate: Candidate) => {
     const stageId = candidate.stage ?? (candidate as { stage_id?: number }).stage_id ?? null;
     if (stageId != null) {
@@ -386,6 +407,7 @@
       await refreshCandidates();
     }
     selectedCandidate.value = candidate;
+    syncCandidateToUrl(candidate.id);
   };
 
   // Обработчик изменения выбора кандидатов
@@ -511,6 +533,7 @@
 
     if (selectedCandidate.value?.id === id) {
       selectedCandidate.value = null;
+      syncCandidateToUrl(null);
     }
   };
 
@@ -521,47 +544,132 @@
     await refreshCandidates();
   };
 
-  const handleStageClick = (stageId: number | null) => {
+  const handleStageClick = async (stageId: number | null) => {
     selectedStageId.value = stageId;
     isActiveAll.value = stageId === null;
 
     if (selectedCandidate.value) {
+      const candStage =
+        selectedCandidate.value.stage ??
+        (selectedCandidate.value as { stage_id?: number }).stage_id;
       const matchesFilter =
-        stageId === null ? true : selectedCandidate.value.stage === stageId;
+        stageId === null ? true : candStage === stageId;
 
       if (!matchesFilter) {
         selectedCandidate.value = null;
+        syncCandidateToUrl(null);
+      }
+    }
+
+    // Обновляем список кандидатов по выбранному этапу
+    await refreshCandidates();
+
+    // При клике на этап открываем первого кандидата этого этапа; этап в воронке подставится из данных кандидата в БД
+    if (stageId !== null) {
+      await nextTick();
+      const list = filteredCandidatesList.value || [];
+      if (list.length > 0) {
+        await loadCandidate(list[0].id);
       }
     }
   };
 
-  onMounted(async () => {
-    const vacancyId = getVacancyId();
-    await loadVacancy(vacancyId);
-    await loadVacancies();
+  /** Флаг: мы сейчас синхронизируем состояние из URL — не реагировать на побочные изменения query. */
+  const _isSyncing = ref(false);
 
+  /** Ждём окончания загрузки списка кандидатов (useDataList.loading). */
+  const waitForCandidatesLoaded = async (timeoutMs = 10000) => {
     await nextTick();
+    await nextTick();
+    const deadline = Date.now() + timeoutMs;
+    while (loadingCandidates.value && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+    await nextTick();
+  };
 
-    if (isInitialLoad.value && vacancy.value?.id) {
-      // Сначала выставляем этап из URL, чтобы refreshCandidates и watch не переключали вкладку
-      const stageIdParam = route.query.stage;
-      if (stageIdParam != null && stageIdParam !== '') {
-        const stageId = Number(stageIdParam);
-        if (Number.isInteger(stageId) && stages.value.some(s => s.id === stageId)) {
-          selectedStageId.value = stageId;
-          isActiveAll.value = false;
+  /** Загрузить вакансию по id из route и применить candidate/stage из query. */
+  const syncRouteToState = async () => {
+    if (_isSyncing.value) return;
+    _isSyncing.value = true;
+    try {
+      const id = route.params.id;
+      const vacancyId = Array.isArray(id) ? id[0] : id;
+      if (!vacancyId) return;
+
+      const needVacancy =
+        !vacancy.value?.id || String(vacancy.value.id) !== String(vacancyId);
+
+      if (needVacancy) {
+        await loadVacancy(vacancyId);
+        await loadVacancies();
+        await nextTick();
+      }
+
+      // 1. ?candidate=ID — открываем кандидата, этап подставится из БД
+      const cidParam = route.query.candidate;
+      if (cidParam != null && cidParam !== '') {
+        const cid = Number(cidParam);
+        if (Number.isInteger(cid) && cid > 0) {
+          if (selectedCandidate.value?.id === cid && vacancy.value?.id === Number(vacancyId)) {
+            return;
+          }
+          await loadCandidate(cid);
+          return;
         }
       }
 
-      await refreshCandidates();
-    }
+      // 2. ?stage=ID — выставляем этап, ждём загрузки списка, открываем первого кандидата
+      const stageParam = route.query.stage;
+      if (stageParam != null && stageParam !== '') {
+        const stageId = Number(stageParam);
+        if (Number.isInteger(stageId) && stageId > 0 && vacancy.value?.id) {
+          selectedStageId.value = stageId;
+          isActiveAll.value = false;
+          // Дожидаемся реальной загрузки списка (useDataList watch + API)
+          await waitForCandidatesLoaded();
+          const list = filteredCandidatesList.value || [];
+          if (list.length > 0) {
+            const result = await getCandidateById(list[0].id);
+            selectedCandidate.value = result.candidateData;
+            // Обновляем URL на ?candidate=ID; stage убираем
+            syncCandidateToUrl(result.candidateData.id);
+          }
+          return;
+        }
+      }
 
+      // 3. Нет ни candidate, ни stage — сброс
+      selectedCandidate.value = null;
+      syncCandidateToUrl(null);
+    } finally {
+      // Держим флаг ещё 2 тика, чтобы watch не сработал на наше же изменение URL
+      await nextTick();
+      await nextTick();
+      _isSyncing.value = false;
+    }
+  };
+
+  onMounted(() => {
     isInitialLoad.value = false;
   });
+
+  // При переходе на страницу вакансии (по ссылке, смена id, candidate или stage) — подгружаем и применяем
+  watch(
+    () => ({ id: route.params.id, candidate: route.query.candidate, stage: route.query.stage }),
+    () => {
+      if (_isSyncing.value) return;
+      const id = route.params.id;
+      if (!route.path?.startsWith?.('/vacancies/') || !id) return;
+      syncRouteToState();
+    },
+    { immediate: true }
+  );
 
   watch(
     () => filteredCandidatesList.value,
     async newCandidates => {
+      if (_isSyncing.value) return;
       if (!newCandidates?.length) return;
       if (
         !selectedCandidate.value ||
@@ -671,25 +779,30 @@
       <UiDotsLoader />
     </div>
     <div v-else>
-      <!-- Один контейнер для списка + карточки: карточка не пересоздаётся при смене списка (избегаем сброса вкладок) -->
-      <div
-        class="flex gap-x-15px"
-        :class="{ 'flex-row': filteredCandidatesList.length > 0 }"
-      >
+      <!-- Один контейнер для списка + карточки: левая колонка всегда видна при загруженной вакансии -->
+      <div class="flex gap-x-15px flex-row">
         <div
-          v-if="filteredCandidatesList.length > 0"
+          v-if="vacancy"
           class="w-[375px] shrink-0 rounded-sixteen bg-white"
         >
           <CandidateList
+            v-if="filteredCandidatesList.length > 0 || loadingCandidates"
             :candidates="filteredCandidatesList || []"
             :selected="selected"
             :show-checkboxes="true"
             :all-selected="allSelected"
             :loading="loadingCandidates"
+            :active-candidate-id="selectedCandidate?.id ?? null"
             @item-click="handleCandidateClick"
             @selection-change="handleSelectionChange"
             @select-all="handleSelectAll"
           />
+          <div
+            v-else
+            class="flex flex-col items-center justify-center py-12 px-4 text-center text-sm text-slate-custom"
+          >
+            <p>Кандидаты по выбранному этапу не найдены.</p>
+          </div>
         </div>
         <div v-if="selectedCandidate" class="min-w-0 flex-1">
           <div v-if="isLoadingCandidate">
@@ -697,6 +810,7 @@
           </div>
           <template v-else>
             <BlockCandidateInfo
+              ref="candidateInfoRef"
               :candidate="selectedCandidate"
               :stages="stages"
               :isFunnel="true"
@@ -706,6 +820,7 @@
               @candidate-deleted="handleCandidateDeleted"
               @add-comment="handleAddCommentFromHeader"
               @add-task="handleAddTaskFromHeader"
+              @email-sent="refreshCandidateLog"
             />
             <BlockCandidateTabsInfo
               ref="tabsInfoRef"
@@ -713,6 +828,7 @@
               :log-refresh-trigger="logRefreshKey"
               :vacancy-id="vacancy?.id"
               @comment-added="refreshCandidateLog"
+              @open-email-popup="openEmailPopupFromFeed"
             />
           </template>
         </div>

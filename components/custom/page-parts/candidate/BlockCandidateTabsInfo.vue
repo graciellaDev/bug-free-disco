@@ -9,6 +9,7 @@
   import CandidateLog from '~/components/custom/page-parts/candidate/CandidateLog.vue';
   import ChatInput from '~/components/chat/ChatInput.vue';
   import CommentDeleteConfirmPopup from '~/components/custom/page-parts/candidate/popups/CommentDeleteConfirmPopup.vue';
+  import CandidateEmailViewPopup from '~/components/custom/page-parts/candidate/popups/CandidateEmailViewPopup.vue';
   import { useForms } from '~/stores/forms';
   import { useChatStore } from '@/stores/chat';
   import {
@@ -22,7 +23,7 @@
     updateCandidateTask,
   } from '@/src/api/candidates';
 
-  import type { Candidate } from '@/types/candidates';
+  import type { Candidate, CandidateEvent } from '@/types/candidates';
   import type { CandidateConsideration } from '@/types/candidates';
   // import type { TimelineGroup }
 
@@ -53,7 +54,7 @@
   const tabs = [
     { label: 'Резюме', value: 'resume' },
     { label: 'Поля', value: 'fields' },
-    { label: 'Лента событий', value: 'chat', notification: '+1' },
+    { label: 'Лента событий', value: 'chat' },
     { label: 'Рассмотрения', value: 'review' },
   ];
 
@@ -154,11 +155,14 @@
   const chatStore = useChatStore();
   const emit = defineEmits<{
     'comment-added': [];
+    'open-email-popup': [];
   }>();
 
   const commentToDeleteEventId = ref<number | null>(null);
   const isCommentDeletePopupOpen = ref(false);
   const taskToDeleteEventId = ref<number | null>(null);
+  const isEmailViewOpen = ref(false);
+  const selectedEmailEvent = ref<CandidateEvent | null>(null);
   const editingCommentId = ref<number | null>(null);
   const editingCommentText = ref('');
   const editingTaskId = ref<number | null>(null);
@@ -242,6 +246,23 @@
     }
   };
 
+  const handleOpenEmailCard = (event: CandidateEvent) => {
+    if (event?.type !== 'email') return;
+    selectedEmailEvent.value = event;
+    isEmailViewOpen.value = true;
+  };
+
+  const handleEmailViewClose = () => {
+    isEmailViewOpen.value = false;
+    selectedEmailEvent.value = null;
+  };
+
+  const handleEmailViewReply = () => {
+    isEmailViewOpen.value = false;
+    selectedEmailEvent.value = null;
+    emit('open-email-popup');
+  };
+
   const openCommentAndFocus = () => {
     activeTab.value = 'chat';
     chatStore.setCurrentFormat('comment');
@@ -257,6 +278,16 @@
       nextTick(() => {
         chatInputRef.value?.focusTaskForm?.();
       });
+    });
+  };
+
+  /** Проскроллить ленту так, чтобы блок ввода (задача/комментарий) был виден */
+  const scrollEventFeedToInput = () => {
+    nextTick(() => {
+      const el = chatInputRef.value?.$el;
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
     });
   };
 
@@ -388,7 +419,7 @@
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex flex-col">
     <div class="mb-px shrink-0 rounded-t-fifteen bg-catskill px-25px py-15px">
       <BtnTab :tabs="tabs" v-model="activeTab" />
     </div>
@@ -987,6 +1018,8 @@
             @delete-task-request="handleDeleteTaskRequest"
             @edit-task="handleEditTask"
             @complete-task="handleCompleteTask"
+            @open-email="emit('open-email-popup')"
+            @open-email-card="handleOpenEmailCard"
           />
         </div>
         <ChatInput
@@ -999,6 +1032,8 @@
           @send="handleChatSend"
           @cancel-edit="handleCancelEditComment"
           @cancel-edit-task="handleCancelEditTask"
+          @email-format-selected="emit('open-email-popup')"
+          @scroll-into-view="scrollEventFeedToInput"
         />
       </div>
       <div v-if="activeTab === 'review'" class="considerations-block mb-px bg-white">
@@ -1058,6 +1093,14 @@
         </div>
       </div>
     </div>
+    <CandidateEmailViewPopup
+      :is-open="isEmailViewOpen"
+      :email-event="selectedEmailEvent"
+      :candidate-name="candidate ? [candidate.firstname, candidate.surname].filter(Boolean).join(' ') : undefined"
+      :candidate-email="candidate?.email"
+      @close="handleEmailViewClose"
+      @reply="handleEmailViewReply"
+    />
     <CommentDeleteConfirmPopup
       :is-open="isCommentDeletePopupOpen"
       @close="handleCommentDeleteClose"

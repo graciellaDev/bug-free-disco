@@ -53,7 +53,7 @@
     <transition name="slide-fade">
       <div
         v-if="isOpen"
-        class="cards absolute right-0 z-10 mt-15px min-w-[226px] rounded-plus bg-white shadow-shadow-droplist"
+        class="cards absolute right-0 z-50 mt-15px min-w-[226px] rounded-plus bg-white shadow-shadow-droplist"
         :class="{ 'min-w-fit': width === 'fit' }"
       >
         <div

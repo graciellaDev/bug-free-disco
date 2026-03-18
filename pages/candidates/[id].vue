@@ -102,6 +102,7 @@
     logRefreshKey.value++;
   };
   const tabsInfoRef = ref<InstanceType<typeof BlockCandidateTabsInfo> | null>(null);
+  const candidateInfoRef = ref<InstanceType<typeof BlockCandidateInfo> | null>(null);
 
   const handleAddCommentFromHeader = () => {
     tabsInfoRef.value?.openCommentAndFocus?.();
@@ -129,6 +130,10 @@
     });
   };
 
+  const openEmailPopupFromFeed = () => {
+    candidateInfoRef.value?.openEmailPopup?.();
+  };
+
   const handleCandidateDeleted = () => {
     router.push('/candidates');
   };
@@ -140,7 +145,7 @@
 </script>
 
 <template>
-  <div class="container pt-25px pb-5">
+  <div class="container pt-25px pb-0">
     <div class="mb-25px flex items-center justify-between">
       <NuxtLink to="/candidates" class="text-blue-500 hover:underline">
         <div class="flex items-center justify-center gap-2.5">
@@ -188,10 +193,11 @@
     </div>
     <div
       v-else-if="candidate"
-      class="grid w-full min-h-[70vh] grid-rows-[1fr_auto] gap-0"
+      class="grid w-full grid-rows-[auto_auto] gap-0"
     >
       <div class="min-h-0 overflow-auto">
         <BlockCandidateInfo
+          ref="candidateInfoRef"
           :candidate="candidate"
           :isFunnel="false"
           :stages="stages"
@@ -199,6 +205,7 @@
           @candidate-deleted="handleCandidateDeleted"
           @add-comment="handleAddCommentFromHeader"
           @add-task="handleAddTaskFromHeader"
+          @email-sent="refreshCandidateLog"
         />
       </div>
       <div class="flex min-h-0 flex-col">
@@ -207,6 +214,7 @@
           :candidate="candidate"
           :log-refresh-trigger="logRefreshKey"
           @comment-added="refreshCandidateLog"
+          @open-email-popup="openEmailPopupFromFeed"
         />
       </div>
     </div>

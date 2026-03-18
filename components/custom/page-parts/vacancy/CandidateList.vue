@@ -8,12 +8,23 @@
 
   import type { Candidate } from '@/types/candidates';
 
+  // Карта логотипов источников (5 основных сайтов).
+  // Файлы логотипов лежат во фронтенде в /public/logos (*.svg).
+  const SOURCE_LOGO_MAP: Record<string, string> = {
+    'hh.ru': '/logos/hh.svg',
+    'superjob.ru': '/logos/superjob.svg',
+    'rabota.ru': '/logos/rabota.svg',
+    'avito.ru': '/logos/avito.svg',
+    'zarplata.ru': '/logos/zarplata.svg',
+  };
+
   interface Props {
     candidates: Candidate[];
     loading?: boolean;
     selected?: Record<number, boolean>;
     showCheckboxes?: boolean;
     allSelected?: boolean;
+    activeCandidateId?: number | null;
   }
 
   const props: Props = defineProps<{
@@ -22,6 +33,8 @@
     selected: Record<number, boolean>;
     showCheckboxes: boolean;
     allSelected: boolean;
+    /** ID кандидата, открытого в правой панели — для подсветки строки */
+    activeCandidateId?: number | null;
   }>();
 
   const emit = defineEmits<{
@@ -62,17 +75,33 @@
   const handlerSelectAll = (isSelected: boolean) => {
     emit('select-all', isSelected);
   };
+
+  const getPositionTitle = (candidate: Candidate): string | null => {
+    const value = candidate.quickInfo?.trim();
+    if (!value) return null;
+    if (value.toLowerCase() === 'не указан') return null;
+    return value;
+  };
+
+  const getSourceLogo = (candidate: Candidate): string | null => {
+    const key = candidate.source?.trim().toLowerCase() || '';
+    return SOURCE_LOGO_MAP[key] ?? null;
+  };
 </script>
 
 <template>
   <div>
-    <!-- Лоадер -->
-    <div v-if="props.loading" class="absolute left-1/2 top-1/2">
+    <!-- Лоадер только при первой загрузке (нет кандидатов) -->
+    <div v-if="props.loading && (!candidates || candidates.length === 0)" class="absolute left-1/2 top-1/2">
       <UiDotsLoader />
     </div>
 
-    <!-- Список кандидатов -->
-    <div v-else class="candidate-list">
+    <!-- Список кандидатов: при обновлении не скрываем, чтобы не пропадала подсветка -->
+    <div
+      v-if="candidates?.length"
+      class="candidate-list relative"
+      :class="{ 'candidate-list--refreshing': props.loading }"
+    >
       <div v-if="showCheckboxes" class="list-header">
         <MyCheckbox
           id="select-all"
@@ -88,6 +117,7 @@
         v-for="(candidate, index) in candidates"
         :key="candidate.id"
         class="candidate-item"
+        :class="{ 'candidate-item--active': props.activeCandidateId != null && candidate.id === props.activeCandidateId }"
       >
         <!-- Чекбокс -->
         <div v-if="showCheckboxes" class="checkbox-cell">
@@ -115,20 +145,34 @@
             <p class="candidate-name">
               {{ getFullName(candidate) }}
             </p>
-            <!-- <p v-if="getCompanyName(candidate)" class="candidate-company">
-              {{ getCompanyName(candidate) }}
-            </p> -->
+            <p
+              v-if="getPositionTitle(candidate)"
+              class="candidate-position"
+              :title="getPositionTitle(candidate) || undefined"
+            >
+              {{ getPositionTitle(candidate) }}
+            </p>
           </div>
         </div>
 
         <div class="candidate-icon">
+          <!-- Лого источника (5 сайтов из /logos) как фоновое изображение -->
           <CardIcon
-            v-if="candidate.icon"
+            v-if="getSourceLogo(candidate)"
+            :icon="false"
+            :isPng="true"
+            :imagePath="getSourceLogo(candidate)!"
+            :width="20"
+            :height="20"
+          />
+          <!-- Если для источника нет логотипа, показываем иконку кандидата как раньше -->
+          <CardIcon
+            v-else-if="candidate.icon"
             :icon="candidate.icon"
             :isPng="candidate.isPng || false"
             :imagePath="candidate.icon"
-            :width="21"
-            :height="21"
+            :width="20"
+            :height="20"
           />
         </div>
       </div>
@@ -160,7 +204,7 @@
 
   .candidate-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     padding: 12px 16px;
     border-bottom: 1px solid #f4f6f8;
@@ -170,6 +214,18 @@
 
   .candidate-item:hover {
     background-color: #f9fafb;
+  }
+
+  .candidate-item--active {
+    background-color: #f9fafc;
+  }
+
+  .candidate-item--active:hover {
+    background-color: #f9fafc;
+  }
+
+  .candidate-list--refreshing {
+    pointer-events: auto;
   }
 
   .candidate-item:last-child {
@@ -203,6 +259,16 @@
     text-overflow: ellipsis;
   }
 
+  .candidate-position {
+    font-size: 12px;
+    font-weight: 400;
+    color: #79869a;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .candidate-company {
     font-size: 12px;
     color: #64748b;
@@ -215,8 +281,9 @@
   .candidate-icon {
     flex-shrink: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    margin-top: 3px; /* визуально выравниваем логотип источника по верхнему отступу строки */
   }
 
   .empty-state {
