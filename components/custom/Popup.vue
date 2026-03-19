@@ -30,6 +30,10 @@
       contentRounded?: boolean;
       /** false = один слой отступа 25px (внутренняя обёртка без padding), иначе два слоя по 25px */
       contentPadding?: boolean;
+      /** true = без затемнённого фона (прозрачный оверлей, без серого) */
+      noBackdrop?: boolean;
+      /** true = без внешнего padding у контейнера окна (отступы только внутри слота) */
+      noOuterPadding?: boolean;
     }>(),
     {
       showCloseButton: false,
@@ -47,6 +51,8 @@
       parentRounded: false,
       contentRounded: true,
       contentPadding: true,
+      noBackdrop: false,
+      noOuterPadding: false,
     }
   );
 
@@ -108,9 +114,10 @@
 <template>
   <div
     v-if="isOpenValue"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+    class="fixed inset-0 z-50 flex items-center justify-center"
     @click.self="closePopup"
     :class="[
+      props.noBackdrop ? 'bg-transparent' : 'bg-black bg-opacity-50',
       isOpenValue ? 'opacity-100' : 'opacity-0',
       overflowContainer
         ? 'overflow-y-auto'
@@ -122,7 +129,8 @@
   >
     <div
       @click.self="closePopup"
-      class="absolute w-full rounded-fifteen bg-white p-25px"
+      class="absolute w-full overflow-hidden rounded-fifteen bg-white"
+      :class="[props.noOuterPadding ? 'p-0' : 'p-25px']"
       :style="{
         maxWidth: width,
         top: lgSize ? '10%' : 'auto',

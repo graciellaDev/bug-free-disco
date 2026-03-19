@@ -206,11 +206,14 @@
     ]
     'cancel-edit': []
     'cancel-edit-task': []
+    'email-format-selected': []
+    /** Эмит при раскрытии блока «Задача» или «Комментарий/Чат» — родитель может проскроллить к полю ввода */
+    'scroll-into-view': []
   }>()
 
   // State
   const message = ref('')
-  const selectedFormat = ref(chatStore.currentFormat)
+  const selectedFormat = ref(chatStore.currentFormat || 'chat')
   const isExpanded = ref(false)
   const isFocused = ref(false)
   const attachments = ref<File[]>([])
@@ -230,6 +233,8 @@
   const taskFormRef = ref<InstanceType<typeof TaskFormPanel> | null>(null)
   const taskManagerDropdownRef = ref<HTMLElement | null>(null)
   const taskManagerOpen = ref(false)
+  /** Флаг сброса: при true watch не раскрывает блок чата/комментария */
+  const isResetting = ref(false)
 
   const selectedTaskManagerName = computed(() => {
     if (taskManagerId.value == null) return 'Выберите'
@@ -247,9 +252,11 @@
     selectedFormat.value === 'comment' ? 'введите комментарий...' : 'введите сообщение...'
   )
 
-  const sendButtonLabel = computed(() =>
-    props.editCommentId != null ? 'Сохранить' : 'Отправить'
-  )
+  const sendButtonLabel = computed(() => {
+    if (props.editCommentId != null) return 'Сохранить'
+    if (selectedFormat.value === 'comment') return 'Добавить'
+    return 'Отправить'
+  })
 
   watch(
     () => props.initialEditText,
@@ -298,11 +305,17 @@
         const n = new Date()
         taskDate.value = n.toISOString().slice(0, 10)
         taskTime.value = String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0')
+        nextTick(() => emit('scroll-into-view'))
       } else if (format === 'comment' || format === 'chat') {
+        // При сбросе не раскрываем блок — остаётся «Чат на сайте» в закрытом виде
+        if (isResetting.value) return
         // Сразу переходим в состояние ввода: показываем блок с полем и фокус
         isFocused.value = true
         isExpanded.value = true
-        nextTick(() => textareaRef.value?.focus())
+        nextTick(() => {
+          textareaRef.value?.focus()
+          emit('scroll-into-view')
+        })
       }
     }
   )
@@ -362,6 +375,8 @@
 
   onMounted(() => {
     document.addEventListener('mousedown', handleClickOutside)
+    // Стартовое состояние: «Чат на сайте», свёрнутое поле ввода
+    resetToInitialState()
   })
 
   onUnmounted(() => {
@@ -375,6 +390,12 @@
   }
 
   const handleFormatSelect = (format: string) => {
+    if (format === 'email') {
+      emit('email-format-selected')
+      // Почта уходит через отдельный попап, поле ввода в ленте возвращаем в дефолт
+      resetToInitialState()
+      return
+    }
     chatStore.setCurrentFormat(format)
     selectedFormat.value = format
   }
@@ -394,20 +415,19 @@
     }
   }
 
-  /** Возврат в исходное состояние: формат «Комментарий», свёрнутый блок ввода */
+  /** Возврат в исходное состояние: формат «Чат на сайте», свёрнутое поле ввода */
   const resetToInitialState = () => {
-    selectedFormat.value = 'comment'
-    chatStore.setCurrentFormat('comment')
+    isResetting.value = true
+    selectedFormat.value = 'chat'
+    chatStore.setCurrentFormat('chat')
     message.value = ''
     attachments.value = []
     taskDescription.value = ''
     textareaHeight.value = 'auto'
     isFocused.value = false
     isExpanded.value = false
-    // После смены формата watch раскрывает блок для comment/chat — в nextTick снова сворачиваем
     nextTick(() => {
-      isFocused.value = false
-      isExpanded.value = false
+      isResetting.value = false
     })
   }
 

@@ -11,6 +11,7 @@ import MultiSelect from '~/components/custom/MultiSelect.vue'
 import UiDotsLoader from '~/components/custom/UiDotsLoader.vue'
 import UiCircleLoader from '~/components/custom/UiCircleLoader.vue'
 import Popup from '~/components/custom/Popup.vue'
+import DeleteConfirmPopup from '~/components/custom/DeleteConfirmPopup.vue'
 import UiDialog from '~/components/ui/dialog/Dialog.vue'
 import UiDialogTrigger from '~/components/ui/dialog/DialogTrigger.vue'
 import UiDialogContent from '~/components/ui/dialog/DialogContent.vue'
@@ -40,6 +41,7 @@ const multiSelectValue = ref<string[]>([])
 const checkbox1 = ref(false)
 const checkbox2 = ref(true)
 const popupOpen = ref(false)
+const deleteConfirmOpen = ref(false)
 const dialogOpen = ref(false)
 const currentPage = ref(1)
 const selectedTab = ref('tab1')
@@ -49,6 +51,17 @@ const dropdownOptions = [
   { name: 'Вариант 2', value: 'v2' },
   { name: 'Вариант 3', value: 'v3' },
 ]
+
+// Иконки из папки icons (Tilda Icons): список генерируется скриптом scripts/extract-icons.cjs
+const iconsList = ref<{ num: number; name: string }[]>([])
+onMounted(async () => {
+  try {
+    const data = await $fetch<{ num: number; name: string }[]>('/icons/list.json')
+    iconsList.value = data
+  } catch (e) {
+    console.error('Не удалось загрузить список иконок:', e)
+  }
+})
 </script>
 
 <template>
@@ -293,6 +306,29 @@ const dropdownOptions = [
       </Popup>
     </section>
 
+    <!-- Подтверждение удаления (DeleteConfirmPopup) -->
+    <section class="mb-12">
+      <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
+        9.1. Подтверждение удаления (DeleteConfirmPopup)
+      </h2>
+      <p class="text-sm text-slate-custom mb-3">
+        Окно подтверждения в едином стиле: те же отступы, что на страницах <strong>Настройки → Сотрудники</strong> и <strong>Настройки → Интеграции → Почта</strong> при удалении.
+      </p>
+      <p class="text-sm text-bali mb-4">
+        <NuxtLink to="/components" class="text-dodger hover:underline">Каталог компонентов</NuxtLink> — эта страница.
+      </p>
+      <UiButton variant="outline" @click="deleteConfirmOpen = true">
+        Открыть подтверждение удаления
+      </UiButton>
+      <DeleteConfirmPopup
+        :isOpen="deleteConfirmOpen"
+        @close="deleteConfirmOpen = false"
+        @confirm="deleteConfirmOpen = false"
+      >
+        Вы уверены, что хотите удалить <strong>элемент</strong>? Это действие нельзя отменить.
+      </DeleteConfirmPopup>
+    </section>
+
     <!-- Dialog (Radix/shadcn) -->
     <section class="mb-12">
       <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
@@ -438,6 +474,35 @@ const dropdownOptions = [
           <UiLabel for="r3">Третий</UiLabel>
         </div>
       </UiRadioGroup>
+    </section>
+
+    <!-- Иконки (Tilda Icons из папки icons) -->
+    <section class="mb-12">
+      <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
+        17. Иконки (Tilda Icons)
+      </h2>
+      <p class="text-slate-custom text-sm mb-4">
+        Иконки из архивов в папке <code class="rounded bg-athens px-1">icons/</code>, без дубликатов. Всего: {{ iconsList.length }}
+      </p>
+      <div v-if="iconsList.length" class="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-3">
+        <div
+          v-for="item in iconsList"
+          :key="item.num"
+          class="flex flex-col items-center justify-center rounded-lg border border-athens bg-[#FBFCFD] p-3 text-center"
+        >
+          <img
+            :src="`/icons/${item.num}.svg`"
+            :alt="item.name"
+            class="h-10 w-10 shrink-0 object-contain"
+            loading="lazy"
+          >
+          <span class="mt-2 text-xs font-medium text-space">{{ item.num }}</span>
+          <span class="mt-0.5 max-w-full truncate text-[10px] text-slate-custom" :title="item.name">{{ item.name }}</span>
+        </div>
+      </div>
+      <p v-else class="text-sm text-slate-custom">
+        Загрузка списка иконок… Запустите <code class="rounded bg-athens px-1">node scripts/extract-icons.cjs</code> из корня проекта, чтобы сгенерировать иконки и список.
+      </p>
     </section>
   </div>
 </template>

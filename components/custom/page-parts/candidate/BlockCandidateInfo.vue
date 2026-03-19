@@ -5,8 +5,8 @@
   import { normalizeUsername } from '@/helpers/messengers';
   import CandidateInfoHeader from './CandidateInfoHeader.vue';
   import CandidateEditPopup from './popups/CandidateEditPopup.vue';
-  import CandidateEmailPopup from './popups/CandidateEmailPopup.vue';
   import CandidateInfoContent from './CandidateInfoContent.vue';
+  import CandidateEmailPopup from './popups/CandidateEmailPopup.vue';
   import CandidateDeletePopup from './popups/CandidateDeletePopup.vue';
   import CandidateTransferToVacancyPopup from './popups/CandidateTransferToVacancyPopup.vue';
   import CandidateRemoveFromVacancyPopup from './popups/CandidateRemoveFromVacancyPopup.vue';
@@ -14,7 +14,7 @@
   import AttachToVacancyDropdown from './AttachToVacancyDropdown.vue';
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
-  import { createCandidate, updateCandidate, attachCandidateToVacancy } from '@/src/api/candidates';
+  import { createCandidate, updateCandidate, attachCandidateToVacancy, sendCandidateEmail } from '@/src/api/candidates';
 
   import type {
     Candidate,
@@ -38,6 +38,7 @@
     'update:selectedLabel': [label: string];
     'add-comment': [];
     'add-task': [];
+    'email-sent': [];
   }>();
 
   const vacancyName = ref<string>('');
@@ -221,10 +222,25 @@
     } catch (error) {}
   };
 
-  //  Отправка письма кандидату
-  const sendEmail = (data: Record<string, any>) => {
-    console.log('send email', data);
-    // TODO: Реализовать отправку письма
+  //  Отправка письма кандидату и добавление карточки в ленту событий
+  const sendEmail = async (data: Record<string, any>) => {
+    const to = data?.to || props.candidate?.email;
+    if (!to || !props.candidate?.id) return;
+    const bodyStr = typeof data?.body === 'string' ? data.body : (data?.body?.value ?? '');
+    try {
+      await sendCandidateEmail(props.candidate.id, {
+        subject: (data?.subject ?? '').trim(),
+        body: bodyStr || '<p></p>',
+        to,
+        from_email: data?.from || undefined,
+      });
+      popups.mailToCandidate.close();
+      emit('email-sent');
+    } catch (e: any) {
+      console.error('Ошибка отправки письма:', e);
+      const msg = e?.data?.message || e?.message || 'Не удалось отправить письмо';
+      alert(msg);
+    }
   };
 
   const candidateActionsUI = useCandidateActionsUI(toRef(props.candidate), {
@@ -487,6 +503,10 @@
       }
     }
   });
+
+  defineExpose({
+    openEmailPopup: () => popups.mailToCandidate.open(),
+  });
 </script>
 <template>
   <div class="relative mb-15px rounded-fifteen bg-white p-25px pt-15px">
@@ -516,10 +536,12 @@
       :vacancyName="vacancyName"
       @telegram="candidateActionsUI.handleClickTelegram"
       @messengerMax="candidateActionsUI.handleClickMessengerMax"
+      @write-email="popups.mailToCandidate.open()"
       @candidate-updated="emit('candidate-updated', $event)"
     />
     <CandidateEmailPopup
       :isOpen="popups.mailToCandidate.isOpen"
+      :candidate="candidate"
       @close="popups.mailToCandidate.close"
       @submit="sendEmail"
     />

@@ -71,6 +71,13 @@
             Приложения
           </NuxtLink>
         </li>
+        <li :class="{
+          active: isActive('/settings/integrations/SettingsEmail'),
+        }">
+          <NuxtLink to="/settings/integrations/SettingsEmail">
+            Почта
+          </NuxtLink>
+        </li>
       </ul>
     </div>
 

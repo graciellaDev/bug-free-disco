@@ -17,6 +17,7 @@
     'telegram-click': [];
     // 'add-tag': [];
     'candidate-updated': [candidate: Candidate];
+    'write-email': [];
   }>();
 
   const isAddingTag = ref(false);
@@ -77,6 +78,11 @@
     editingField.value = field;
     if (field === 'phone') editPhoneValue.value = props.candidate.phone || '';
     else editEmailValue.value = props.candidate.email || '';
+  };
+
+  const handleWriteEmail = () => {
+    openDropdown.value = null;
+    emit('write-email');
   };
 
   const cancelEdit = () => {
@@ -320,7 +326,7 @@
       </div>
 
       <div class="mb-6px text-15px font-medium leading-normal text-space">
-        {{ vacancyName }}
+        {{ candidate.quickInfo || vacancyName }}
       </div>
 
       <div class="mb-6 text-13px text-slate-custom">
@@ -440,6 +446,13 @@
                   @click="startEdit('email')"
                 >
                   Редактировать
+                </button>
+                <button
+                  type="button"
+                  class="w-full px-15px py-2 text-left text-sm text-slate-custom hover:bg-zumthor hover:text-space"
+                  @click="handleWriteEmail"
+                >
+                  Написать письмо
                 </button>
               </div>
             </Transition>

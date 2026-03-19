@@ -1,10 +1,12 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import BtnTab from '~/components/custom/BtnTab.vue'
 import DotsDropdown from '~/components/custom/DotsDropdown.vue'
 import Popup from '~/components/custom/Popup.vue'
 import MyInput from '~/components/custom/MyInput.vue'
 import TiptapEditor from '~/components/TiptapEditor.vue'
+import UiButton from '@/components/ui/button/Button.vue'
+import { getEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate } from '@/src/api/emailTemplates'
 
 const templatesTabs = ref('email')
 
@@ -16,20 +18,9 @@ useHead({
   title: 'Настройки — Шаблоны',
 })
 
-const emailTemplates = ref([
-  {
-    id: 1,
-    name: 'Отказ',
-  },
-  {
-    id: 2,
-    name: 'Приглашение'
-  },
-  {
-    id: 3,
-    name: 'Отказ'
-  }
-])
+/** Шаблоны с сервера: content = body из API для совместимости с формой */
+const emailTemplates = ref([])
+const emailTemplatesLoading = ref(false)
 
 const messengersTemplates = ref([
   {
@@ -90,18 +81,141 @@ const smsTemplates = ref([
     name: 'Отказ'
   }
 ])
-const createTemplatePopup = ref(false)
+const templatePopupOpen = ref(false)
+/** null = создание, иначе редактирование шаблона с этим id */
+const editingTemplateId = ref(null)
 const templateName = ref('')
-const templateTheme = ref('')
-const templateContent = ref('')
+const templateSubject = ref('')
+const templateContent = ref('<p></p>')
 
-function handleOpenCreateTemplate() {
-  createTemplatePopup.value = true
+const isEditMode = () => editingTemplateId.value != null
+const popupTitle = () => (isEditMode() ? 'Редактирование шаблона' : 'Новый шаблон')
+
+const EMAIL_VARIABLES = [
+  { key: '{{contact.name}}', label: 'Имя кандидата' },
+  { key: '{{profile.name}}', label: 'Имя профиля пользователя' },
+  { key: '{{profile.phone}}', label: 'Телефон профиля пользователя' },
+]
+
+function openCreateTemplate() {
+  editingTemplateId.value = null
+  templateName.value = ''
+  templateSubject.value = ''
+  templateContent.value = '<p></p>'
+  templatePopupOpen.value = true
 }
 
-function handleCloseCreateTemplatePopup() {
-  createTemplatePopup.value = false
+function openEditTemplate(template) {
+  editingTemplateId.value = template.id
+  templateName.value = template.name || ''
+  templateSubject.value = template.subject ?? ''
+  const raw = (template.content ?? template.body) && String(template.content ?? template.body).trim() ? (template.content ?? template.body) : '<p></p>'
+  templateContent.value = sanitizeEditorContent(raw)
+  templatePopupOpen.value = true
 }
+
+function closeTemplatePopup() {
+  templatePopupOpen.value = false
+  editingTemplateId.value = null
+}
+
+async function loadEmailTemplates() {
+  emailTemplatesLoading.value = true
+  try {
+    const list = await getEmailTemplates()
+    emailTemplates.value = (list || []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      subject: t.subject,
+      content: t.body ?? '',
+    }))
+  } catch {
+    emailTemplates.value = []
+  } finally {
+    emailTemplatesLoading.value = false
+  }
+}
+
+function handleTemplateAction(template, item) {
+  if (item === 'Настроить') {
+    openEditTemplate(template)
+  }
+  if (item === 'Удалить') {
+    if (confirm('Удалить шаблон «' + template.name + '»?')) {
+      deleteEmailTemplate(template.id)
+        .then(() => loadEmailTemplates())
+        .catch(() => {})
+    }
+  }
+}
+
+/** Разрешённые теги редактора (Bold, Italic, списки, ссылки). Убирает подчёркивания, style, class и прочее. */
+function sanitizeEditorContent(html) {
+  if (typeof html !== 'string' || !html.trim()) return '<p></p>'
+  if (typeof document === 'undefined') return html
+  const allowedTags = new Set(['p', 'br', 'ul', 'ol', 'li', 'strong', 'em', 'b', 'i', 'a'])
+  const allowedAttrs = { a: ['href'] }
+  const div = document.createElement('div')
+  div.innerHTML = html.trim()
+
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.cloneNode(true)
+    if (node.nodeType !== Node.ELEMENT_NODE) return null
+    const tag = node.tagName.toLowerCase()
+    if (!allowedTags.has(tag)) {
+      const frag = document.createDocumentFragment()
+      node.childNodes.forEach((child) => {
+        const c = walk(child)
+        if (c) frag.appendChild(c)
+      })
+      const wrap = document.createElement('p')
+      wrap.appendChild(frag)
+      return wrap
+    }
+    const el = document.createElement(tag)
+    if (tag === 'a' && allowedAttrs.a) {
+      const href = node.getAttribute('href')
+      if (href) el.setAttribute('href', href)
+    }
+    node.childNodes.forEach((child) => {
+      const c = walk(child)
+      if (c) el.appendChild(c)
+    })
+    return el
+  }
+
+  const out = document.createElement('div')
+  div.childNodes.forEach((child) => {
+    const c = walk(child)
+    if (c) out.appendChild(c)
+  })
+  return out.innerHTML || '<p></p>'
+}
+
+async function submitTemplate() {
+  const body = sanitizeEditorContent(templateContent.value)
+  const name = templateName.value.trim()
+  const subject = templateSubject.value
+  if (!name) return
+  try {
+    if (isEditMode()) {
+      await updateEmailTemplate(editingTemplateId.value, { name, subject, body })
+    } else {
+      await createEmailTemplate({ name, subject, body })
+    }
+    await loadEmailTemplates()
+    closeTemplatePopup()
+  } catch {
+    // ошибка уже обработана в api client
+  }
+}
+
+onMounted(() => {
+  loadEmailTemplates()
+})
+watch(templatesTabs, (tab) => {
+  if (tab === 'email') loadEmailTemplates()
+})
 </script>
 
 <template>
@@ -112,7 +226,7 @@ function handleCloseCreateTemplatePopup() {
           <p class="text-xl text-space mb-2.5 font-semibold">Шаблоны писем</p>
           <p class="text-sm text-bali font-normal leading-150">Редактируйте и&nbsp;настраивайте автоотправку писем</p>
         </div>
-        <UiButton variant="action" size="semiaction" class="font-semibold" @click="handleOpenCreateTemplate">Создать
+        <UiButton variant="action" size="semiaction" class="font-semibold" @click="openCreateTemplate">Создать
           шаблон</UiButton>
       </div>
       <div class="bg-catskill w-full px-25px py-15px rounded-b-fifteen">
@@ -132,10 +246,10 @@ function handleCloseCreateTemplatePopup() {
         </div>
         <div
           class="bg-white last:rounded-b-fifteen [&>*:not(:last-child)]:border-b [&>*:not(:last-child)]:border-athens">
-          <div v-for="(template, index) in emailTemplates" :key="index">
+          <div v-for="(template, index) in emailTemplates" :key="template.id">
             <div class="flex justify-between items-center py-[10.5px] px-25px">
               <p class="text-sm font-medium text-space leading-150 pl-2.5">{{ template.name }}</p>
-              <DotsDropdown :width="'fit'" :items="['Настроить', 'Удалить']" />
+              <DotsDropdown :width="'fit'" :items="['Настроить', 'Удалить']" @select-item="(item) => handleTemplateAction(template, item)" />
             </div>
           </div>
         </div>
@@ -221,38 +335,52 @@ function handleCloseCreateTemplatePopup() {
       </div>
     </div>
     <transition name="fade">
-      <Popup :isOpen="createTemplatePopup" @close="handleCloseCreateTemplatePopup" :width="'790px'"
-        :overflowContainer="true" :maxHeight="true" :disableOverflowHidden="true" :lgSize="true">
-        <div>
-          <p class="text-xl font-semibold text-space mb-2.5 leading-130">Новый шаблон</p>
-          <p class="text-sm text-slate-custom leading-150 mb-25px">Короткое описание того что такое шаблон письма</p>
-          <div class="mb-27px">
-            <p class="text-sm font-medium text-space mb-15px">Название шаблона</p>
-            <MyInput :placeholder="'Например: Приглашаем на вакансию'" v-model="templateName" />
+      <Popup
+        :isOpen="templatePopupOpen"
+        @close="closeTemplatePopup"
+        width="790px"
+        :showCloseButton="false"
+        :contentPadding="false"
+        :contentRounded="true"
+        :noOuterPadding="true"
+        :maxHeight="false"
+        maxHeightValue="85vh"
+      >
+        <div class="rounded-fifteen bg-white p-[25px]">
+          <h2 class="text-xl font-semibold leading-130 text-[#2f353d] mb-6">{{ popupTitle() }}</h2>
+
+          <div class="mb-5">
+            <label class="mb-2 block text-sm font-medium text-space">Название шаблона</label>
+            <MyInput v-model="templateName" placeholder="Например: Приглашение на собеседование" class="w-full" />
           </div>
-          <div class="mb-17px">
-            <div class="flex justify-between w-full mb-13px">
-              <p class="text-sm font-medium text-space">Тема письма</p>
-              <button class="flex items-center gap-x-1">
-                <svg-icon name="accordion-plus" width="20" height="20" /><span
-                  class="text-sm font-medium text-dodger">Добавить переменную</span>
-              </button>
+
+          <div class="mb-5">
+            <label class="mb-2 block text-sm font-medium text-space">Тема письма</label>
+            <MyInput v-model="templateSubject" placeholder="Например: Приглашаем на вакансию" class="w-full" />
+          </div>
+
+          <div class="mb-6">
+            <label class="mb-2 block text-sm font-medium text-space">Содержание письма</label>
+            <div class="rounded-ten border border-[#edeff5] bg-[#F5F6F8] overflow-hidden">
+              <TiptapEditor v-model="templateContent" />
             </div>
-            <MyInput :placeholder="'Например: Приглашаем на вакансию'" v-model="templateTheme" />
           </div>
-          <div>
-            <div class="flex justify-between w-full mb-13px">
-              <p class="text-sm font-medium text-space">Содержание письма</p>
-              <button class="flex items-center gap-x-5px">
-                <svg-icon name="accordion-plus" width="20" height="20" /><span
-                  class="text-sm font-medium text-dodger">Добавить переменную</span>
-              </button>
-            </div>
-            <TiptapEditor v-model="templateContent" />
+
+          <div class="mb-6">
+            <p class="text-xs font-medium text-[#8a94a6] mb-2">Доступные переменные</p>
+            <ul class="space-y-1.5 text-sm text-[#2f353d]">
+              <li v-for="v in EMAIL_VARIABLES" :key="v.key" class="flex items-baseline gap-2">
+                <code class="shrink-0 rounded px-1.5 py-0.5 text-dodger font-mono text-xs">{{ v.key }}</code>
+                <span class="text-[#8a94a6]">— {{ v.label }}</span>
+              </li>
+            </ul>
           </div>
-          <div class="mt-[24px]">
-            <UiButton variant="action" size="semiaction" class="mr-15px">Создать</UiButton>
-            <UiButton variant="back" size="semiaction" @click="handleCloseCreateTemplatePopup">Отмена</UiButton>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <UiButton variant="action" size="semiaction" @click="submitTemplate">
+              {{ isEditMode() ? 'Сохранить' : 'Создать' }}
+            </UiButton>
+            <UiButton variant="back" size="second-back" @click="closeTemplatePopup">Закрыть</UiButton>
           </div>
         </div>
       </Popup>

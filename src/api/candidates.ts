@@ -183,6 +183,24 @@ export async function getCandidateEvents(
   return Array.isArray(response.data) ? response.data : [];
 }
 
+/** Отправить письмо кандидату и создать событие в ленте. */
+export async function sendCandidateEmail(
+  candidateId: number,
+  payload: { subject: string; body: string; to: string; from_email?: string }
+): Promise<{ event_id: number }> {
+  const response = await apiPost<{ event_id: number }>(
+    `/candidates/${candidateId}/emails`,
+    {
+      subject: payload.subject.trim(),
+      body: payload.body,
+      to: payload.to.trim(),
+      from_email: payload.from_email || undefined,
+    }
+  );
+  const raw = response as { data?: { event_id?: number }; event_id?: number };
+  return { event_id: raw.data?.event_id ?? raw.event_id ?? 0 };
+}
+
 /** Создать комментарий (заметку) по кандидату. */
 export async function createCandidateComment(
   candidateId: number,

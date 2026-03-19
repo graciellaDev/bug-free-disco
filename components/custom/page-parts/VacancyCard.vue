@@ -192,7 +192,9 @@
     const id = props.vacancy?.id;
     if (id == null) return;
     const stageId = column?.id;
-    const url = stageId != null ? `/vacancies/${id}?stage=${stageId}` : `/vacancies/${id}`;
+    const url = stageId != null
+      ? `/vacancies/${id}?stage=${stageId}`
+      : `/vacancies/${id}`;
     router.push(url);
   }
 
