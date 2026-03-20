@@ -2,60 +2,68 @@
   <div class="container p-0">
     <div class="flex gap-x-[24px]">
       <div class="max-w-[100%] flex-grow bg-white rounded-fifteen">
-        <p class="text-space text-xl font-semibold">Новая публикация</p>
-        <div class="mb-25px mt-25px border-t"></div>
         <p class="text-space text-xl font-semibold mb-8">
           Основная информация
         </p>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div id="name" class="w-full anchor">
-            <p 
-              class="text-sm font-medium mb-4 leading-normal"
-              :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'"
-            >
+            <p class="text-sm font-medium mb-4 leading-normal"
+              :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
               Название должности
             </p>
-            <MyInput
-                placeholder="Например, Менеджер по продажам"
-                v-model="data.name"
-                @update:model-value="($event) => updateValidField('name', $event.trim() !== '')"
-            />
+            <MyInput placeholder="Например, Менеджер по продажам" v-model="data.name"
+              @update:model-value="($event) => updateValidField('name', $event.trim() !== '')" />
           </div>
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
               Код вакансии
             </p>
-            <MyInput
-                placeholder="Код вакансии"
-                v-model="data.code"
-            />
+            <MyInput placeholder="Код вакансии" v-model="data.code" />
           </div>
         </div>
         <!-- SuperJob: одно поле «Профессиональная сфера» (как в форме редактирования вакансии в БД), маппинг с catalogues сохранён -->
         <div v-if="isSuperjobPlatform" id="professional_roles" class="w-full mb-6 anchor">
           <div class="flex items-center gap-1 mb-3.5">
-            <p
-              class="text-sm font-medium leading-normal"
-              :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'"
-            >
+            <p class="text-sm font-medium leading-normal"
+              :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
               Профессиональная сфера
             </p>
           </div>
           <ClientOnly>
-            <SpecializationSelector
-              :options="professionsOptions"
-              :full-catalog="superjobCatalogForSelector"
-              :model-value="data.professional_roles?.[0] ?? null"
-              placeholder="Выберите из списка"
+            <SpecializationSelector :options="professionsOptions" :full-catalog="superjobCatalogForSelector"
+              :model-value="data.professional_roles?.[0] ?? null" placeholder="Выберите из списка"
               :error="validFields.professional_roles.status === false"
-              @update:model-value="handleSuperjobProfessionalSphereUpdate"
-            />
+              @update:model-value="handleSuperjobProfessionalSphereUpdate" />
             <template #fallback>
               <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
             </template>
           </ClientOnly>
+        </div>
+        <div v-else-if="currentPlatform === 'hh'" id="professional_roles" class="w-full mb-6 anchor">
+          <div class="flex items-center gap-1 mb-3.5">
+            <p class="text-sm font-medium leading-normal"
+              :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
+              <span class="text-red-custom">*</span>
+              Специализация сотрудника
+            </p>
+            <span class="inline-flex items-center cursor-help">
+              <svg-icon name="question" width="16" height="16" />
+              <MyTooltip text="Должность или направление деятельности, на которое подбираете кандидата" />
+            </span>
+          </div>
+          <ClientOnly>
+            <SpecializationSelector :options="professionsOptions" :full-catalog="currectRole"
+              :model-value="data.professional_roles?.[0] ?? null"
+              placeholder="Выберите из списка"
+              :error="validFields.professional_roles.status === false"
+              @update:model-value="handleHhSpecializationUpdate" />
+            <template #fallback>
+              <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
+            </template>
+          </ClientOnly>
+          <p v-if="validFields.professional_roles.status === false" class="text-xs text-red-500 mt-1">Выберите, чтобы продолжить</p>
         </div>
         <div v-else class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
@@ -63,65 +71,47 @@
               <span class="text-red-custom">*</span>
               Отрасль компании
             </p>
-            <DropDownRoles 
-            :options="currectRole"
-            :selected="data.industry ?? ''"
-            @update:model-value="handleIndustryChange"
-            ></DropDownRoles>
+            <DropDownRoles :options="currectRole" :selected="data.industry ?? ''"
+              @update:model-value="handleIndustryChange">
+            </DropDownRoles>
           </div>
           <div id="professional_roles" class="w-full anchor">
-            <p 
-              class="text-sm font-medium mb-4 leading-normal"
-              :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'"
-            >
+            <p class="text-sm font-medium mb-4 leading-normal"
+              :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
               Выберите специализацию
             </p>
-            <DropDownRoles
-            :options="professionsOptions"
-            :selected="data.professional_roles[0]"
-            @update:model-value="($event) => handleIdUpdate('professional_roles', $event)"
-            ></DropDownRoles>
+            <DropDownRoles :options="professionsOptions" :selected="data.professional_roles[0]"
+              @update:model-value="($event) => handleIdUpdate('professional_roles', $event)"></DropDownRoles>
           </div>
         </div>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full anchor">
-              <div class="flex items-center gap-1 mb-4">
-                <p 
-                  class="text-sm font-medium leading-normal"
-                  :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'"
-                >
-                  <span class="text-red-custom">*</span>
-                  Опыт работы
-                </p>
-                <span v-if="hideScheduleBlockForSuperjob" class="inline-flex items-center cursor-help">
-                  <svg-icon name="question" width="16" height="16" />
-                  <MyTooltip text="Для кандидатов с опытом до года подходит вариант «Нет опыта»" />
-                </span>
+            <div class="flex items-center gap-1 mb-4">
+              <p class="text-sm font-medium leading-normal"
+                :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'">
+                <span class="text-red-custom">*</span>
+                Опыт работы
+              </p>
+              <span v-if="currentPlatform === 'hh' || hideScheduleBlockForSuperjob" class="inline-flex items-center cursor-help">
+                <svg-icon name="question" width="16" height="16" />
+                <MyTooltip text="Для кандидатов с опытом до года подходит вариант «Нет опыта»" />
+              </span>
+            </div>
+            <template v-if="currentPlatform === 'hh' || hideScheduleBlockForSuperjob">
+              <div class="flex w-full gap-2">
+                <button v-for="opt in experienceOptions" :key="opt.id" type="button"
+                  class="flex-1 px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                  :class="isExperienceSelectedForSuperjob(opt)
+                    ? 'bg-zumthor border-dodger text-dodger font-normal'
+                    : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'" @click="handleIdUpdate('experience', opt)">
+                  {{ getExperienceButtonLabel(opt) }}
+                </button>
               </div>
-              <template v-if="hideScheduleBlockForSuperjob">
-                <div class="flex w-full gap-2">
-                  <button
-                    v-for="opt in experienceOptions"
-                    :key="opt.id"
-                    type="button"
-                    class="flex-1 px-4 py-2.5 text-sm rounded-ten border transition-colors"
-                    :class="isExperienceSelectedForSuperjob(opt)
-                      ? 'bg-zumthor border-dodger text-dodger font-normal'
-                      : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
-                    @click="handleIdUpdate('experience', opt)"
-                  >
-                    {{ getExperienceButtonLabel(opt) }}
-                  </button>
-                </div>
-              </template>
-              <DropDownTypes 
-                v-else
-                :options=experienceOptions
-                :selected="findValue(experienceOptions, globCurrentVacancy?.experience)"
-                v-model="data.experience"
-                @update:model-value="($event) => handleIdUpdate('experience', $event)"
-              ></DropDownTypes>
+            </template>
+            <DropDownTypes v-else :options=experienceOptions
+              :selected="findValue(experienceOptions, globCurrentVacancy?.experience)" v-model="data.experience"
+              @update:model-value="($event) => handleIdUpdate('experience', $event)"></DropDownTypes>
           </div>
         </div>
         <div class="mb-25px mt-25px border-t"></div>
@@ -130,16 +120,11 @@
             Условия занятости
           </p>
           <div id="superjob_employment_conditions" class="w-full anchor flex flex-wrap gap-2">
-            <button
-              v-for="opt in SUPERJOB_EMPLOYMENT_CONDITIONS"
-              :key="opt.id"
-              type="button"
+            <button v-for="opt in SUPERJOB_EMPLOYMENT_CONDITIONS" :key="opt.id" type="button"
               class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
               :class="(data.superjob_employment_conditions || []).includes(opt.id)
                 ? 'bg-dodger border-dodger text-white font-normal'
-                : 'bg-athens-gray border-athens text-bali font-normal hover:bg-zumthor hover:border-dodger hover:text-dodger'"
-              @click="toggleSuperjobEmploymentCondition(opt.id)"
-            >
+                : 'bg-athens-gray border-athens text-bali font-normal hover:bg-zumthor hover:border-dodger hover:text-dodger'" @click="toggleSuperjobEmploymentCondition(opt.id)">
               {{ opt.name }}
             </button>
           </div>
@@ -149,94 +134,162 @@
           <p class="text-space text-xl font-semibold mb-8">
             Условия работы
           </p>
-          <div class="w-full justify-between flex gap-25px mb-6">
-            <div id="employment_form" class="w-full anchor">
-              <p 
-                class="text-sm font-medium mb-4 leading-normal"
-                :class="validFields.employment_form.status === false ? 'text-red-custom' : 'text-space'"
-              >
+          <template v-if="currentPlatform === 'hh'">
+            <div class="w-full mb-6">
+              <p class="text-sm font-medium text-space mb-3.5">
+                Какого сотрудника ищите?
+              </p>
+              <div class="flex w-full gap-2">
+                <button v-for="opt in hhEmployeeTypeOptions" :key="opt.id" type="button"
+                  class="flex-1 px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                  :class="hhEmployeeType === opt.id
+                    ? 'bg-zumthor border-dodger text-dodger font-normal'
+                    : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                  @click="hhEmployeeType = opt.id">
+                  {{ opt.name }}
+                </button>
+              </div>
+            </div>
+            <div class="w-full mb-6">
+              <p class="text-sm font-medium text-space mb-3.5">
                 <span class="text-red-custom">*</span>
                 Тип занятости
               </p>
-              <DropDownTypes 
-              :options=employmentTypesOptions
-              :selected="findValue(employmentTypesOptions, globCurrentVacancy?.employment) || employmentTypesOptions[0]"
-              v-model="data.employment_form"
-              @update:model-value="($event) => handleIdUpdate('employment_form', $event)"
-              ></DropDownTypes>
+              <div class="flex w-full gap-2">
+                <button v-for="opt in hhEmploymentOptionsForType" :key="opt.id" type="button"
+                  class="flex-1 px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                  :class="isHhEmploymentSelected(opt)
+                    ? 'bg-zumthor border-dodger text-dodger font-normal'
+                    : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                  @click="handleIdUpdate('employment_form', opt)">
+                  {{ opt.name }}
+                </button>
+              </div>
             </div>
-            <div class="w-full">
-              <template v-if="data.employment_form?.id === 'FLY_IN_FLY_OUT'">
-                <p class="text-sm font-medium mb-4 leading-normal text-space">
-                  Количество смен
+            <div class="flex gap-25px mb-6">
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-space mb-3.5">
+                  Формат работы
                 </p>
-                <MultiSelect 
-                :options="experienceDaysOptions"
-                :withId="true"
-                v-model="data.fly_in_fly_out_duration"
-                defaultValue="Выберите количество смен"
-                ></MultiSelect>
-              </template>
+                <MultiSelect :options="workFormatOptions" v-model="data.work_format" defaultValue="Выберите формат работы"
+                  :withId="true" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-space mb-3.5">
+                  Оформление сотрудника
+                </p>
+                <MultiSelect :options="hhOformlenieOptions" v-model="data.oformlenie" defaultValue="Выберите оформление"
+                  :withId="true" />
+              </div>
             </div>
-          </div>
-          <div class="w-full justify-between flex gap-25px mb-6">
-             <div class="w-full">
-              <p class="text-sm font-medium mb-4 leading-normal text-space">
-                Формат работы
-              </p>
-              <MultiSelect 
-                :options="workFormatOptions"
-                v-model="data.work_format"
-                defaultValue="Выберите формат работы"
-                :withId="true"
-              />
-             </div>
-          </div>
+          </template>
+          <template v-else>
+            <div class="w-full justify-between flex gap-25px mb-6">
+              <div id="employment_form" class="w-full anchor">
+                <p class="text-sm font-medium mb-4 leading-normal"
+                  :class="validFields.employment_form.status === false ? 'text-red-custom' : 'text-space'">
+                  <span class="text-red-custom">*</span>
+                  Тип занятости
+                </p>
+                <DropDownTypes :options=employmentTypesOptions
+                  :selected="findValue(employmentTypesOptions, globCurrentVacancy?.employment) || employmentTypesOptions[0]"
+                  v-model="data.employment_form"
+                  @update:model-value="($event) => handleIdUpdate('employment_form', $event)"></DropDownTypes>
+              </div>
+              <div class="w-full">
+                <template v-if="data.employment_form?.id === 'FLY_IN_FLY_OUT'">
+                  <p class="text-sm font-medium mb-4 leading-normal text-space">
+                    Количество смен
+                  </p>
+                  <MultiSelect :options="experienceDaysOptions" :withId="true" v-model="data.fly_in_fly_out_duration"
+                    defaultValue="Выберите количество смен"></MultiSelect>
+                </template>
+              </div>
+            </div>
+            <div class="w-full justify-between flex gap-25px mb-6">
+              <div class="w-full">
+                <p class="text-sm font-medium mb-4 leading-normal text-space">
+                  Формат работы
+                </p>
+                <MultiSelect :options="workFormatOptions" v-model="data.work_format" defaultValue="Выберите формат работы"
+                  :withId="true" />
+              </div>
+            </div>
+          </template>
         </template>
         <template v-if="!hideScheduleBlockForSuperjob">
           <div class="mb-25px mt-25px border-t"></div>
           <p class="text-space text-xl font-semibold mb-8">
             График и часы работы
           </p>
-          <div class="w-full justify-between flex gap-25px mb-6">
-            <div id="work_schedule_by_days" class="w-full anchor">
-              <p 
-                class="text-sm font-medium mb-4 leading-normal"
-                :class="validFields.work_schedule_by_days.status === false ? 'text-red-custom' : 'text-space'"
-              >
-                <span class="text-red-custom">*</span>
-                График работы
-              </p>
-              <MultiSelect 
-              :options="workScheduleOptions"
-              v-model="data.work_schedule_by_days"
-              defaultValue="Выберите график работы"
-              :withId="true"
-              ></MultiSelect>
+          <template v-if="currentPlatform === 'hh'">
+            <div class="flex gap-25px mb-6 items-start">
+              <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start" data-error-field="work_schedule_by_days">
+                <div class="w-full flex items-center gap-1 mb-3.5">
+                  <p class="text-sm font-medium text-space">
+                    <span class="text-red-custom">*</span>
+                    График работы
+                  </p>
+                  <span class="inline-flex items-center cursor-help">
+                    <svg-icon name="question" width="16" height="16" />
+                    <MyTooltip text="Распределение рабочих дней и выходных — например, пятидневка (5/2), двухсменный график (2/2) или сменный." />
+                  </span>
+                </div>
+                <button
+                  v-for="opt in workScheduleOptions" :key="opt.id"
+                  type="button"
+                  class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                  :class="isHhScheduleSelected(opt)
+                    ? 'bg-zumthor border-dodger text-dodger font-normal'
+                    : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                  @click="handleHhScheduleSelect(opt)">
+                  {{ opt.name }}
+                </button>
+              </div>
+              <div class="flex-1 min-w-0 flex flex-wrap gap-2 self-start" data-error-field="working_hours">
+                <p class="w-full text-sm font-medium text-space mb-3.5">
+                  <span class="text-red-custom">*</span>
+                  Рабочие часы в день
+                </p>
+                <button
+                  v-for="opt in workingHoursOptions" :key="opt.id"
+                  type="button"
+                  class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                  :class="isHhWorkHoursSelected(opt)
+                    ? 'bg-zumthor border-dodger text-dodger font-normal'
+                    : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                  @click="handleHhWorkHoursSelect(opt)">
+                  {{ opt.name }}
+                </button>
+              </div>
             </div>
-            <div id="working_hours" class="w-full anchor">
-              <p 
-                class="text-sm font-medium mb-4 leading-normal"
-                :class="validFields.working_hours.status === false ? 'text-red-custom' : 'text-space'"
-              >
-                <span class="text-red-custom">*</span>
-                Рабочие часы в день
-              </p>
-              <MultiSelect 
-              :options="workingHoursOptions"
-              v-model="data.working_hours"
-              defaultValue="Выберите рабочие часы"
-              :withId="true"
-              ></MultiSelect>
+          </template>
+          <template v-else>
+            <div class="w-full justify-between flex gap-25px mb-6">
+              <div id="work_schedule_by_days" class="w-full anchor">
+                <p class="text-sm font-medium mb-4 leading-normal"
+                  :class="validFields.work_schedule_by_days.status === false ? 'text-red-custom' : 'text-space'">
+                  <span class="text-red-custom">*</span>
+                  График работы
+                </p>
+                <MultiSelect :options="workScheduleOptions" v-model="data.work_schedule_by_days"
+                  defaultValue="Выберите график работы" :withId="true"></MultiSelect>
+              </div>
+              <div id="working_hours" class="w-full anchor">
+                <p class="text-sm font-medium mb-4 leading-normal"
+                  :class="validFields.working_hours.status === false ? 'text-red-custom' : 'text-space'">
+                  <span class="text-red-custom">*</span>
+                  Рабочие часы в день
+                </p>
+                <MultiSelect :options="workingHoursOptions" v-model="data.working_hours"
+                  defaultValue="Выберите рабочие часы" :withId="true"></MultiSelect>
+              </div>
             </div>
-          </div>
+          </template>
           <div class="w-full justify-between flex gap-25px mb-6">
             <div class="w-full">
-               <MyCheckbox 
-                  :id="'evening-night-shifts'" 
-                  :label="'Есть вечерние или ночные смены'" 
-                  v-model="data.has_evening_night_shifts" 
-               />
+              <MyCheckbox :id="'evening-night-shifts'" :label="'Есть вечерние или ночные смены'"
+                v-model="data.has_evening_night_shifts" />
             </div>
           </div>
           <div class="mb-25px mt-25px border-t"></div>
@@ -244,108 +297,131 @@
         <p class="text-space text-xl font-semibold mb-8">
           Город публикации и адрес работы
         </p>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div id="areas" class="w-full anchor">
-            <p class="text-sm font-medium mb-4 leading-normal" 
-                 :class="validFields.area.status === false ? 'text-red-custom' : 'text-space'">
+        <template v-if="currentPlatform === 'hh'">
+          <div class="w-full mb-6" data-error-field="area">
+            <p class="text-sm font-medium text-space mb-3.5">
               <span class="text-red-custom">*</span>
               Город публикации
             </p>
-            <CityAutocomplete 
-              :options="citiesOptions"
-              :model-value="data.area?.id || null"
-              @update:model-value="($event) => handleIdUpdate('area', $event)"
-              placeholder="Например, Санкт-Петербург"
-            />
-          </div>
-          <div id="address" class="w-full anchor">
-            <p class="text-sm font-medium mb-4 leading-normal" 
-                 :class="validFields.address.status === false ? 'text-red-custom' : 'text-space'">
-              <span class="text-red-custom">*</span>
-              Город размещения
+            <ClientOnly>
+              <GeoInput
+                class="mb-2.5"
+                :model-value="hhLocationDisplay"
+                :error="validFields.area.status === false"
+                :use-api-cities="true"
+                placeholder="Например, Москва, Санкт-Петербург"
+                @update:model-value="onHhLocationUpdate"
+                @blur="onHhLocationBlur"
+              />
+              <template #fallback>
+                <div class="w-full h-11 rounded-ten border border-athens bg-athens-gray animate-pulse" />
+              </template>
+            </ClientOnly>
+            <p v-if="validFields.area.status === false" class="text-xs text-red-500 mt-1">
+              Выберите город, где опубликовать вакансию
             </p>
-            <CityAutocomplete 
-              :options="addresses"
-              :isOpen="true"
-              :model-value="data.address"
-              @update:model-value="($event) => handleIdUpdate('address', $event)"
-              placeholder="Например, Санкт-Петербург"
-            />
           </div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-             <MyCheckbox 
-                :id="'show_metro_only'" 
-                :label="'Показывать только станцию метро в вакансии'" 
-                v-model="data.address.show_metro_only" 
-             />
+          <div class="w-full mb-6" data-error-field="address">
+            <p class="text-sm font-medium text-space mb-3.5">
+              <span class="text-red-custom">*</span>
+              Адрес работы сотрудника
+            </p>
+            <ClientOnly>
+              <AddressMapInput
+                :model-value="data.workAddress || ''"
+                :hide-address="data.hideWorkAddress"
+                :error="validFields.address.status === false"
+                placeholder="Введите адрес, метро или название компании"
+                @update:model-value="onHhWorkAddressUpdate"
+                @update:hide-address="onHhHideWorkAddressUpdate"
+              />
+              <template #fallback>
+                <div class="w-full h-11 rounded-ten border border-athens bg-athens-gray animate-pulse mb-3" />
+                <div class="w-full h-[300px] rounded-ten border border-athens bg-athens-gray animate-pulse" />
+              </template>
+            </ClientOnly>
+            <p v-if="validFields.address.status === false" class="text-xs text-red-500 mt-1">
+              Укажите адрес работы сотрудника
+            </p>
           </div>
-        </div>
+        </template>
+        <template v-else>
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div id="areas" class="w-full anchor">
+              <p class="text-sm font-medium mb-4 leading-normal"
+                :class="validFields.area.status === false ? 'text-red-custom' : 'text-space'">
+                <span class="text-red-custom">*</span>
+                Город публикации
+              </p>
+              <CityAutocomplete :options="citiesOptions" :model-value="data.area?.id || null"
+                @update:model-value="($event) => handleIdUpdate('area', $event)"
+                placeholder="Например, Санкт-Петербург" />
+            </div>
+            <div id="address" class="w-full anchor">
+              <p class="text-sm font-medium mb-4 leading-normal"
+                :class="validFields.address.status === false ? 'text-red-custom' : 'text-space'">
+                <span class="text-red-custom">*</span>
+                Город размещения
+              </p>
+              <CityAutocomplete :options="addresses" :isOpen="true" :model-value="data.address"
+                @update:model-value="($event) => handleIdUpdate('address', $event)"
+                placeholder="Например, Санкт-Петербург" />
+            </div>
+          </div>
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div class="w-full">
+              <MyCheckbox :id="'show_metro_only'" :label="'Показывать только станцию метро в вакансии'"
+                v-model="data.address.show_metro_only" />
+            </div>
+          </div>
+        </template>
         <div class="mb-25px mt-25px border-t"></div>
         <p class="text-space text-xl font-semibold mb-8">
           Оплата работы
         </p>
         <div class="w-full justify-between flex gap-25px mb-6">
-           <div class="w-full">
-            
-           <div class="flex items-end gap-[10px] mb-6">
+          <div class="w-full">
+
+            <div class="flex items-end gap-[10px] mb-6">
               <div class="w-full">
                 <p class="text-sm font-medium mb-4 leading-normal text-space">
                   Заработная плата / мес
                 </p>
                 <div class="w-full flex gap-x-2.5">
-                  <MyInput
-                   placeholder="От"
-                   type="Number"
-                   v-model="data.salary_range.from"
-                   @update:model-value="($event) => handleSalaryRangeUpdate('from', $event)"
-                   />
-                   <MyInput
-                   placeholder="До"
-                   type="Number"
-                   v-model="data.salary_range.to"
-                   @update:model-value="($event) => handleSalaryRangeUpdate('to', $event)"
-                   /> 
+                  <MyInput placeholder="От" type="Number" v-model="data.salary_range.from"
+                    @update:model-value="($event) => handleSalaryRangeUpdate('from', $event)" />
+                  <MyInput placeholder="До" type="Number" v-model="data.salary_range.to"
+                    @update:model-value="($event) => handleSalaryRangeUpdate('to', $event)" />
                 </div>
               </div>
               <div class="w-full">
                 <p class="text-sm font-medium text-space mb-3.5">Валюта</p>
-                <MyDropdown 
-                  :options="ArrayCurrency" 
+                <MyDropdown :options="ArrayCurrency"
                   :model-value="ArrayCurrency.find(c => c.id === data.salary_range.currency)?.value"
-                  @update:model-value="($event) => handleSalaryRangeUpdate('currency', ArrayCurrency.find(c => c.value === $event))"
-                />
+                  @update:model-value="($event) => handleSalaryRangeUpdate('currency', ArrayCurrency.find(c => c.value === $event))" />
               </div>
               <div class="w-full">
-                <DropDownTypes 
-                  :options=HH_SALARY_TYPE
-                  :selected="HH_SALARY_TYPE[0]"
-                  v-model="data.salary_range.mode"
-                  @update:model-value="($event) => handleSalaryRangeUpdate('mode', $event)"
-                >
+                <DropDownTypes :options=HH_SALARY_TYPE :selected="HH_SALARY_TYPE[0]" v-model="data.salary_range.mode"
+                  @update:model-value="($event) => handleSalaryRangeUpdate('mode', $event)">
                 </DropDownTypes>
-                </div>
+              </div>
             </div>
             <div class="w-full  items-end justify-between flex mb-6 gap-25px">
-              <RadioGroup 
-                default-value="full-cash" 
-                class="w-full flex gap-[18px]" 
+              <RadioGroup default-value="full-cash" class="w-full flex gap-[18px]"
                 :model-value="data.salary_range?.gross === true ? 'full-cash' : 'past-cash'"
-                @update:model-value="(value) => data.salary_range.gross = value === 'full-cash'"
-              >
-                      <div class="my-checkbox">
-                        <Label for="past-cash" class="cursor-pointer flex items-center">
-                          <RadioGroupItem id="past-cash" value="past-cash" class="mr-5px" />
-                          <p>На руки</p>
-                        </Label>
-                      </div>
-                      <div class="my-checkbox">
-                        <Label for="full-cash" class="cursor-pointer flex items-center">
-                          <RadioGroupItem id="full-cash" value="full-cash" class="mr-5px" />
-                          <p>До вычета налогов</p>
-                        </Label>
-                      </div>
+                @update:model-value="(value) => data.salary_range.gross = value === 'full-cash'">
+                <div class="my-checkbox">
+                  <Label for="past-cash" class="cursor-pointer flex items-center">
+                    <RadioGroupItem id="past-cash" value="past-cash" class="mr-5px" />
+                    <p>На руки</p>
+                  </Label>
+                </div>
+                <div class="my-checkbox">
+                  <Label for="full-cash" class="cursor-pointer flex items-center">
+                    <RadioGroupItem id="full-cash" value="full-cash" class="mr-5px" />
+                    <p>До вычета налогов</p>
+                  </Label>
+                </div>
               </RadioGroup>
             </div>
             <div class="w-full  items-end justify-between flex gap-25px">
@@ -353,179 +429,131 @@
                 <p class="text-sm font-medium text-space mb-3.5">
                   Частота выплаты
                 </p>
-                <DropDownTypes 
-                  :options=HH_SALARY_FREQUENCY
-                  :selected="HH_SALARY_FREQUENCY[3]"
+                <DropDownTypes :options=HH_SALARY_FREQUENCY :selected="HH_SALARY_FREQUENCY[3]"
                   v-model="data.salary_range.frequency"
-                  @update:model-value="($event) => handleSalaryRangeUpdate('frequency', $event)"
-                >
+                  @update:model-value="($event) => handleSalaryRangeUpdate('frequency', $event)">
                 </DropDownTypes>
               </div>
               <div class="w-full"></div>
             </div>
-          </div> 
+          </div>
         </div>
         <div class="mb-25px mt-25px border-t"></div>
         <p class="text-space text-xl font-semibold mb-8">
           Описание вакансии
         </p>
         <div id="description" class="w-full anchor">
-          <p 
-            class="text-sm font-medium mb-3.5"
-            :class="validFields.description.status === false ? 'text-red-custom' : 'text-space'"
-          >
+          <p class="text-sm font-medium mb-3.5"
+            :class="validFields.description.status === false ? 'text-red-custom' : 'text-space'">
             <span class="text-red-custom">*</span>
             Текст вакансии
           </p>
           <GenerateButton></GenerateButton>
           <div class="mt-15px mb-25px">
-          <TiptapEditor 
-            v-model="data.description" 
-            class="mb-15px"
-            @update:model-value="($event) => updateDescriptionValidation($event)"
-          />
-          <p 
-            class="text-xs font-normal"
-            :class="descriptionLength < 200 ? 'text-red-custom' : 'text-bali'"
-          >
-            Минимум 200 символов. Максимум 700 символов. Использовано {{ descriptionLength }} символов.
-            <span v-if="descriptionLength < 200" class="text-red-custom font-medium">
-              (Требуется еще {{ 200 - descriptionLength }} символов)
-            </span>
-          </p>
-        </div>
-        <div class="flex gap-25px">
-          <div class="w-full">
-            <p class="text-sm font-medium text-space mb-13px">
-              Навыки
+            <TiptapEditor v-model="data.description" class="mb-15px"
+              @update:model-value="($event) => updateDescriptionValidation($event)" />
+            <p class="text-xs font-normal" :class="descriptionLength < 200 ? 'text-red-custom' : 'text-bali'">
+              Минимум 200 символов. Максимум 700 символов. Использовано {{ descriptionLength }} символов.
+              <span v-if="descriptionLength < 200" class="text-red-custom font-medium">
+                (Требуется еще {{ 200 - descriptionLength }} символов)
+              </span>
             </p>
-            <TagSelect 
-              :options="[]" :model-value="data.key_skills ? data.key_skills : []"
-              :is-new="true"
-              :placeholder="'Например, Активный'"
-              @enter="$event => updateSkills($event)" 
-              @delete="$event => updateSkills($event)" 
-            />
           </div>
-          <div class="w-full">
-            <p class="text-sm font-medium text-space mb-13px">
-               Водительские права
-            </p>
-            <MultiSelect 
-            :options="driverLicenseOptions"
-            v-model="data.driver_license_types"
-            defaultValue="Сделайте выбор"
-             :withId="true"
-            ></MultiSelect>
-          </div>
-        </div>
-        <div class="mb-25px mt-25px border-t"></div>
-        <p class="text-space text-xl font-semibold mb-8">
-          Настройка откликов и управление вакансией
-        </p>
-        <div class="w-full mb-6">
-          <p class="text-sm font-medium mb-4 leading-normal text-space">
-            Кто и как может откликаться
-          </p>
-          <!-- SuperJob: чекбоксы «Готовы рассмотреть» (как на платформе SuperJob) -->
-          <template v-if="isSuperjobPlatform">
-            <div class="flex flex-col gap-3">
-              <label
-                v-for="opt in SUPERJOB_READY_TO_CONSIDER"
-                :key="opt.id"
-                class="flex items-center gap-2 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  :checked="(data.superjob_ready_to_consider || []).includes(opt.id)"
-                  @change="toggleSuperjobReadyConsider(opt.id, $event.target.checked)"
-                  class="rounded border-gray-300"
-                />
-                <span class="text-space">{{ opt.name }}</span>
-              </label>
+          <div class="flex gap-25px">
+            <div class="w-full">
+              <p class="text-sm font-medium text-space mb-13px">
+                Навыки
+              </p>
+              <TagSelect :options="[]" :model-value="data.key_skills ? data.key_skills : []" :is-new="true"
+                :placeholder="'Например, Активный'" @enter="$event => updateSkills($event)"
+                @delete="$event => updateSkills($event)" />
             </div>
-            <p class="text-xs text-gray-500 mt-2">На платформе SuperJob отображается как «Готовы рассмотреть» (+15% к откликам)</p>
-          </template>
-          <MultiSelect
-            v-else
-            :options="additionalConditionsOptions"
-            defaultValue="Сделайте выбор"
-            :withId="true"
-            v-model="data.additional_conditions"
-          />
-        </div>
-        <div class="w-full flex justify-between gap-25px mb-6">
-          <div class="w-full">
+            <div class="w-full">
+              <p class="text-sm font-medium text-space mb-13px">
+                Водительские права
+              </p>
+              <MultiSelect :options="driverLicenseOptions" v-model="data.driver_license_types"
+                defaultValue="Сделайте выбор" :withId="true"></MultiSelect>
+            </div>
+          </div>
+          <div class="mb-25px mt-25px border-t"></div>
+          <p class="text-space text-xl font-semibold mb-8">
+            Настройка откликов и управление вакансией
+          </p>
+          <div class="w-full mb-6">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Нужно ли приложить к отклику сопроводительное письмо?
+              Кто и как может откликаться
             </p>
-            <DropDownRoles 
-              :options="[
-                {id: '1', name: 'Да'}, 
-                {id: '0', name: 'Нет'}
+            <!-- SuperJob: чекбоксы «Готовы рассмотреть» (как на платформе SuperJob) -->
+            <template v-if="isSuperjobPlatform">
+              <div class="flex flex-col gap-3">
+                <label v-for="opt in SUPERJOB_READY_TO_CONSIDER" :key="opt.id"
+                  class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" :checked="(data.superjob_ready_to_consider || []).includes(opt.id)"
+                    @change="toggleSuperjobReadyConsider(opt.id, $event.target.checked)"
+                    class="rounded border-gray-300" />
+                  <span class="text-space">{{ opt.name }}</span>
+                </label>
+              </div>
+              <p class="text-xs text-gray-500 mt-2">На платформе SuperJob отображается как «Готовы рассмотреть» (+15% к
+                откликам)</p>
+            </template>
+            <MultiSelect v-else :options="additionalConditionsOptions" defaultValue="Сделайте выбор" :withId="true"
+              v-model="data.additional_conditions" />
+          </div>
+          <div class="w-full flex justify-between gap-25px mb-6">
+            <div class="w-full">
+              <p class="text-sm font-medium mb-4 leading-normal text-space">
+                Нужно ли приложить к отклику сопроводительное письмо?
+              </p>
+              <DropDownRoles :options="[
+                { id: '1', name: 'Да' },
+                { id: '0', name: 'Нет' }
               ]"
-              :selected="data.response_letter_required === true ? {id: '1', name: 'Да'} : data.response_letter_required === false ? {id: '0', name: 'Нет'} : null"
-              @update:model-value="($event) => data.response_letter_required = $event?.id === '1'"
-            ></DropDownRoles>
+                :selected="data.response_letter_required === true ? { id: '1', name: 'Да' } : data.response_letter_required === false ? { id: '0', name: 'Нет' } : null"
+                @update:model-value="($event) => data.response_letter_required = $event?.id === '1'"></DropDownRoles>
+            </div>
+            <div class="w-full"></div>
           </div>
-          <div class="w-full"></div>
-        </div>
-        <div class="w-full justify-between flex gap-25px mb-25px">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Контактное лицо
-            </p>
-            <MyInput
-                placeholder="Ответственный"
-                type="String"
-            />
+          <div class="w-full justify-between flex gap-25px mb-25px">
+            <div class="w-full">
+              <p class="text-sm font-medium mb-4 leading-normal text-space">
+                Контактное лицо
+              </p>
+              <MyInput placeholder="Ответственный" type="String" />
+            </div>
+            <div class="w-full"></div>
           </div>
-          <div class="w-full"></div>
-        </div>
-        <div class="w-full flex justify-between gap-25px mb-10">
-          <div class="w-full">
-            <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Номер телефона
-            </p>
-            <PhoneInput 
-              :model-value="null"
-            />
+          <div class="w-full flex justify-between gap-25px mb-10">
+            <div class="w-full">
+              <p class="text-sm font-medium mb-4 leading-normal text-space">
+                Номер телефона
+              </p>
+              <PhoneInput :model-value="null" />
+            </div>
+            <div class="w-full">
+              <p class="text-sm font-medium text-space leading-normal mb-4">
+                Email
+              </p>
+              <email-input :model-value="data.executor_email"
+                @update:model-value="$event => console.log('update:model-value', $event)" />
+            </div>
           </div>
-          <div class="w-full">
-            <p class="text-sm font-medium text-space leading-normal mb-4">
-              Email
-            </p>
-            <email-input :model-value="data.executor_email"
-              @update:model-value="$event => console.log('update:model-value', $event)" />
-          </div>
-        </div>
 
-        <div class="w-full justify-between flex gap-25px mb-6">
-          <div class="w-full">
-             <MyCheckbox 
-               id="show-contacts" 
-               label="Сохранить в черновике" 
-               v-model="isDraft" 
-               @update:model-value="$event => (isDraft = $event)"
-             />
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div class="w-full">
+              <MyCheckbox id="show-contacts" label="Сохранить в черновике" v-model="isDraft"
+                @update:model-value="$event => (isDraft = $event)" />
+            </div>
           </div>
-        </div>
-        <div class="w-full justify-start flex gap-25px mb-6">
-           <template v-if="currentPlatform === 'hh' && tariffsOptions.length > 0">
-              <DropDownTypes 
-                :options="tariffsOptions"
-                :selected="tariffsOptions[0]"
-                placeholder="Выберите тариф"
-                @update:model-value="($event) => handleTariffUpdate($event)"
-              ></DropDownTypes>
+          <div class="w-full justify-start flex gap-25px mb-6">
+            <template v-if="currentPlatform === 'hh' && tariffsOptions.length > 0">
+              <DropDownTypes :options="tariffsOptions" :selected="tariffsOptions[0]" placeholder="Выберите тариф"
+                @update:model-value="($event) => handleTariffUpdate($event)"></DropDownTypes>
             </template>
             <template v-else-if="currentPlatform === 'hh'">
-              <DropDownTypes 
-                :options="HH_BILLING_TYPES"
-                :selected="data.billing_types"
-                placeholder="Выберите тариф"
-                v-model="data.billing_types"
-              ></DropDownTypes>
+              <DropDownTypes :options="HH_BILLING_TYPES" :selected="data.billing_types" placeholder="Выберите тариф"
+                v-model="data.billing_types"></DropDownTypes>
             </template>
             <!-- <template v-if="data.platform?.platform === 'hh' && tariffsOptions.length > 0">
               <DropDownTypes 
@@ -547,32 +575,29 @@
             <div class="status" v-if="status">
               {{ status }}
             </div>
-            <UiButton variant="semiaction" size="semiaction" class="text-space">
+            <UiButton variant="semiaction" size="semiaction" class="text-space" @click="emit('cancel')">
               Отмена
             </UiButton>
-        </div>
-        <div v-if="statusValidate === false" class="w-full text-red-custom mb-6">
-          <p class="text-sm font-medium mb-4 leading-normal text-space">
-            Не заполнены обязательные поля:
-          </p>
-          <div class="grid grid-cols-2 gap-5px">
-            <template v-for="(field, key) in validFields" :key="key">
-              <div v-if="field.status === false" class="flex flex-col">
-                <a 
-                  :href="`#${key}`" 
-                  @click.prevent="scrollToElement(key)"
-                  class="text-red-custom hover:text-red-custom-hover underline cursor-pointer"
-                >
-                  {{ field.name }}
-                </a>
-                <span v-if="field.error" class="text-xs text-red-custom mt-1">
-                  {{ field.error }}
-                </span>
-              </div>
-            </template>
+          </div>
+          <div v-if="statusValidate === false" class="w-full text-red-custom mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              Не заполнены обязательные поля:
+            </p>
+            <div class="grid grid-cols-2 gap-5px">
+              <template v-for="(field, key) in validFields" :key="key">
+                <div v-if="field.status === false" class="flex flex-col">
+                  <a :href="`#${key}`" @click.prevent="scrollToElement(key)"
+                    class="text-red-custom hover:text-red-custom-hover underline cursor-pointer">
+                    {{ field.name }}
+                  </a>
+                  <span v-if="field.error" class="text-xs text-red-custom mt-1">
+                    {{ field.error }}
+                  </span>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
-      </div>   
       </div>
     </div>
   </div>
@@ -589,6 +614,8 @@ import GenerateButton from '../custom/GenerateButton.vue';
 import TagSelect from '~/components/custom/TagSelect.vue'
 import MultiSelect from '~/components/custom/MultiSelect.vue'
 import CityAutocomplete from '~/components/custom/CityAutocomplete.vue'
+import GeoInput from '~/components/custom/GeoInput.vue'
+import AddressMapInput from '~/components/custom/AddressMapInput.vue'
 import SpecializationSelector from '~/components/custom/SpecializationSelector.vue'
 import MyTooltip from '~/components/custom/MyTooltip.vue'
 import { Label } from '@/components/ui/label'
@@ -596,10 +623,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getPhrases } from '@/utils/getVacancies'
 import PhoneInput from '~/components/custom/PhoneInput.vue';
 import currency from '~/src/data/currency.json'
-import { 
-  PLATFORM_PROPERTIES, 
-  HH_EMPLOYMENT_TYPES, 
-  HH_WORKING_HOURS, 
+import {
+  PLATFORM_PROPERTIES,
+  HH_EMPLOYMENT_TYPES,
+  HH_WORKING_HOURS,
   HH_WORK_SCHEDULE_BY_DAYS,
   HH_EDUCATION_LAVEL,
   HH_WORK_FORMAT,
@@ -629,9 +656,9 @@ const props = defineProps({
 const emit = defineEmits(['saved', 'cancel'])
 const isEditingMode = computed(() => props.editingVacancy != null)
 
-import { 
-  getProfile as profileHh, 
-  getAvailableTypes as typesHh, 
+import {
+  getProfile as profileHh,
+  getAvailableTypes as typesHh,
   addDraft as addDraftHh,
   publishVacancy as publishVacancyToHh,
   getRoles as getRolesHh,
@@ -640,9 +667,9 @@ import {
   getAvailablePublications as getAvailablePublicationsHh
 } from '@/utils/hhAccount'
 import { addDraft as addDraftAvito, getProfile as profileAvito, publishVacancy as publishVacancyToAvito, getProfessions as getProfessionsAvito, getSpecializations as getSpecializationsAvito } from '@/utils/avitoAccount'
-import { 
-  getProfile as profileRabota, 
-  addDraft as addDraftRabota, 
+import {
+  getProfile as profileRabota,
+  addDraft as addDraftRabota,
   publishVacancy as publishVacancyToRabota,
   getProfessions as getProfessionsRabota,
   getRegions as getRegionsRabota,
@@ -659,7 +686,7 @@ import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 
 /** Уникальные города по названию (первое вхождение) — для чистого списка без дублей */
-function dedupeAreasByName (arr) {
+function dedupeAreasByName(arr) {
   if (!Array.isArray(arr)) return []
   const seen = new Set()
   return arr.filter((c) => {
@@ -674,11 +701,21 @@ function dedupeAreasByName (arr) {
 const scrollToElement = (elementId) => {
   const element = document.getElementById(elementId)
   if (element) {
-    element.scrollIntoView({ 
-      behavior: 'smooth', 
-      block: 'start' 
+    element.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
     })
   }
+}
+
+/** Нормализация имени платформы: hh.ru -> hh, superjob.ru -> superjob и т.д. */
+function normalizePlatformName(name) {
+  if (!name) return null
+  if (name === 'hh.ru') return 'hh'
+  if (name === 'avito.ru') return 'avito'
+  if (name === 'rabota.ru') return 'rabota'
+  if (name === 'superjob.ru' || name === 'superjob') return 'superjob'
+  return name
 }
 
 const isDraft = ref(true)
@@ -726,8 +763,8 @@ const validFields = ref({
     name: 'Опыт работы',
   },
   employment_form: {
-   status: true,
-   name: 'Форма найма',
+    status: true,
+    name: 'Форма найма',
   },
   work_schedule_by_days: {
     status: true,
@@ -748,8 +785,8 @@ const validFields = ref({
 });
 
 const mappingFieldsHH = {
-  'experience': {'field': 'experience', 'values': experience},
-  'employment_form': {'field': 'employment', 'values': HH_EMPLOYMENT_TYPES},
+  'experience': { 'field': 'experience', 'values': experience },
+  'employment_form': { 'field': 'employment', 'values': HH_EMPLOYMENT_TYPES },
   'education_level': 'education',
   'salary_type': 'salary_type',
   'salary_frequency': 'salary_frequency',
@@ -855,6 +892,33 @@ const handleIdUpdate = (property, value) => {
   }
 }
 
+// hh.ru: выбор специализации (как на нашей платформе — единое поле SpecializationSelector)
+function handleHhSpecializationUpdate(value) {
+  if (!value) {
+    data.value.industry = null
+    data.value.professional_roles = [null]
+    updateValidField('professional_roles', false)
+    return
+  }
+  const catalog = currectRole.value
+  if (Array.isArray(catalog)) {
+    const industry = catalog.find((cat) => {
+      const roles = cat?.roles && Array.isArray(cat.roles) ? cat.roles : []
+      return roles.some(
+        (r) =>
+          (value.id != null && r.id != null && String(r.id) === String(value.id)) ||
+          (value.key != null && r.key != null && String(r.key) === String(value.key)) ||
+          (value.name && r.name && r.name === value.name)
+      )
+    })
+    if (industry) {
+      data.value.industry = { ...industry }
+    }
+  }
+  data.value.professional_roles = [value]
+  updateValidField('professional_roles', true)
+}
+
 // SuperJob: выбор профессиональной сферы (отрасль + специализация в одном поле), маппинг в superjob_catalogue_id сохраняется
 function handleSuperjobProfessionalSphereUpdate(value) {
   if (!value) {
@@ -899,10 +963,10 @@ const handleIndustryChange = async (industry) => {
     try {
       const specializationsResult = await getSpecializationsAvito(industry.id)
       if (specializationsResult?.data && !specializationsResult.error) {
-        avitoSpecializations.value = Array.isArray(specializationsResult.data) 
-          ? specializationsResult.data 
+        avitoSpecializations.value = Array.isArray(specializationsResult.data)
+          ? specializationsResult.data
           : (specializationsResult.data.items || [])
-        
+
         // Обновляем industry с загруженными специализациями
         data.value.industry = {
           ...industry,
@@ -911,7 +975,7 @@ const handleIndustryChange = async (industry) => {
             name: spec.name || spec.title
           }))
         }
-        
+
         // Выбираем первую специализацию, если есть
         if (avitoSpecializations.value.length > 0) {
           const firstSpec = avitoSpecializations.value[0]
@@ -949,10 +1013,10 @@ const handleIndustryChange = async (industry) => {
 
   // Используем полный объект, если найден, иначе используем переданный
   const selectedIndustry = fullIndustry || industry
-  
+
   // Обновляем industry - создаем новый объект для реактивности Vue
   data.value.industry = selectedIndustry ? { ...selectedIndustry } : null
-  
+
   // Сбрасываем специализацию при изменении отрасли и всегда выбираем первую
   if (selectedIndustry && selectedIndustry.roles && Array.isArray(selectedIndustry.roles) && selectedIndustry.roles.length > 0) {
     // Всегда выбираем первую специализацию из списка при изменении отрасли
@@ -978,7 +1042,7 @@ const handleSalaryRangeUpdate = (property, value) => {
 
 const handleTariffUpdate = (tariff) => {
   if (tariff) {
-    data.value.vacancy_properties = {property_type: tariff.property_type}
+    data.value.vacancy_properties = { property_type: tariff.property_type }
   } else {
     data.value.vacancy_properties = null
   }
@@ -990,6 +1054,7 @@ data.value.salary_range = {
 }
 data.value.professional_roles = [null]
 data.value.work_format = []
+data.value.oformlenie = []
 data.value.fly_in_fly_out_duration = []
 data.value.work_schedule_by_days = []
 data.value.schedule = []
@@ -997,7 +1062,9 @@ data.value.education_level = null
 data.value.driver_license_types = []
 data.value.has_evening_night_shifts = false
 data.value.area = {}
-data.value.address = {show_metro_only: false}
+data.value.address = { show_metro_only: false }
+data.value.workAddress = ''
+data.value.hideWorkAddress = false
 data.value.salary_range = {
   currency: 'RUR',
   frequency: {
@@ -1032,12 +1099,28 @@ const citiesOptions = computed(() => {
 })
 
 // Computed свойства для выбора справочников в зависимости от платформы
-const currentPlatform = ref(props.editingVacancy.platforms_data[0]?.name || 'hh');
+// При редактировании — из editingVacancy.platforms_data (id или name); при новой публикации — из selectedPlatform
+const platformIdToNameMap = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' }
+const currentPlatform = computed(() => {
+  const platformData = props.editingVacancy?.platforms_data?.[0]
+  if (platformData) {
+    const byId = platformData.id != null ? platformIdToNameMap[platformData.id] : null
+    if (byId) return byId
+    const byName = platformData.name ? normalizePlatformName(platformData.name) : null
+    if (byName) return byName
+  }
+  const fromSelected = normalizePlatformName(props.selectedPlatform)
+  return fromSelected || 'hh'
+})
 // SuperJob может приходить как 'superjob' или 'superjob.ru' — единый UI (одно поле «Профессиональная сфера»)
-const isSuperjobPlatform = ref(currentPlatform.value === 'superjob' || currentPlatform.value === 'superjob.ru');
-console.log('platform', data.value);
+const isSuperjobPlatform = computed(() => {
+  const p = currentPlatform.value
+  return p === 'superjob' || p === 'superjob.ru'
+})
 // Скрывать блок «График и часы работы» для SuperJob: по выбранной платформе или по редактируемой вакансии (data.platform может обновиться позже)
-const hideScheduleBlockForSuperjob = ref(isSuperjobPlatform.value ? true : props.editingVacancy?.platforms_data?.[0]?.id === 4);
+const hideScheduleBlockForSuperjob = computed(() => {
+  return isSuperjobPlatform.value ? true : props.editingVacancy?.platforms_data?.[0]?.id === 4
+})
 
 // Каталог SuperJob для SpecializationSelector (отрасли с roles = positions)
 const superjobCatalogForSelector = ref(Array.isArray(currectRole.value) ? currectRole.value : []);
@@ -1075,7 +1158,7 @@ const updateComputedValues = () => {
     computedCity.value = null;
     return;
   }
-  
+
   // Обновляем отрасль
   if (vacancy.industry && currectRole.value && Array.isArray(currectRole.value)) {
     computedIndustry.value = currectRole.value.find(cat => {
@@ -1095,7 +1178,7 @@ const updateComputedValues = () => {
   } else {
     computedIndustry.value = null;
   }
-  
+
   // Обновляем специализацию
   if (computedIndustry.value && vacancy.specializations && computedIndustry.value.roles && Array.isArray(computedIndustry.value.roles)) {
     computedProfessionalRole.value = computedIndustry.value.roles.find(r => {
@@ -1115,13 +1198,13 @@ const updateComputedValues = () => {
   } else {
     computedProfessionalRole.value = null;
   }
-  
+
   // Обновляем город
   if (vacancy.location && cities.value && Array.isArray(cities.value) && cities.value.length > 0) {
     const cityName = vacancy.location.split(',')[0].trim();
     computedCity.value = cities.value.find(city => {
       if (!city || !city.name) return false;
-      
+
       if (city.name.toLowerCase() === cityName.toLowerCase()) {
         return true;
       }
@@ -1151,7 +1234,7 @@ const applyComputedValues = async () => {
       console.log('=== AddPublication: установка отрасли из ref ===');
       console.log('computedIndustry:', industry);
       handleIndustryChange(industry);
-      
+
       // Устанавливаем специализацию
       const role = computedProfessionalRole.value || (industry.roles.length > 0 ? industry.roles[0] : null);
       if (role) {
@@ -1160,7 +1243,7 @@ const applyComputedValues = async () => {
       }
     }
   }
-  
+
   // Обработка города публикации из location
   // Устанавливаем город только если:
   // 1. Город найден в списке hh.ru
@@ -1174,7 +1257,7 @@ const applyComputedValues = async () => {
       console.log('Город из вакансии (location):', globCurrentVacancy.value?.location || vacancyData.value?.location);
       console.log('Найденный город в списке hh.ru:', city);
       console.log('Текущий data.value.area:', data.value.area);
-      
+
       // Устанавливаем город публикации и город размещения (из location вакансии — один и тот же город)
       data.value.area = {
         id: city.id,
@@ -1185,20 +1268,20 @@ const applyComputedValues = async () => {
         name: city.name,
         show_metro_only: data.value.address?.show_metro_only ?? false
       };
-      
+
       // Устанавливаем флаг, что город был установлен из вакансии
       isCitySetFromVacancy.value = true;
-      
+
       console.log('✅ Установлен город публикации и город размещения из вакансии:', data.value.area);
       console.log('Город должен быть в citiesOptions:', citiesOptions.value.find(c => c.id === city.id));
       console.log('citiesOptions.length:', citiesOptions.value.length);
-      
+
       // Используем nextTick для обновления DOM
       await nextTick();
-      
+
       // Дополнительная задержка для обновления CityAutocomplete
       await new Promise(resolve => setTimeout(resolve, 50));
-      
+
       console.log('После nextTick data.value.area:', data.value.area);
     } else {
       console.log('Город уже установлен пользователем:', data.value.area);
@@ -1220,6 +1303,125 @@ const employmentTypesOptions = computed(() => {
   }
   return HH_EMPLOYMENT_TYPES
 })
+
+// hh.ru: «Какого сотрудника ищите?» и тип занятости (как на нашей платформе)
+const hhEmployeeType = ref('permanent')
+const hhEmployeeTypeOptions = [
+  { id: 'permanent', name: 'Постоянного' },
+  { id: 'temporary', name: 'Временного' },
+]
+const hhEmploymentOptionsPermanent = [
+  { id: 'FULL', name: 'Полная', siteName: 'Полная' },
+  { id: 'PART', name: 'Частичная', siteName: 'Частичная' },
+  { id: 'FLY_IN_FLY_OUT', name: 'Вахта', siteName: 'Вахта' },
+]
+const hhEmploymentOptionsTemporary = [
+  { id: 'PROJECT', name: 'Проект', siteName: 'Временная' },
+  { id: 'SIDE_JOB', name: 'Подработка', siteName: 'Подработка' },
+]
+const hhEmploymentOptionsForType = computed(() =>
+  hhEmployeeType.value === 'permanent' ? hhEmploymentOptionsPermanent : hhEmploymentOptionsTemporary
+)
+function isHhEmploymentSelected(opt) {
+  const v = data.value.employment_form
+  if (!v) return false
+  return String(opt?.id) === String(v?.id) || opt?.siteName === v?.siteName
+}
+const hhOformlenieOptions = [
+  { id: 'labor', name: 'Трудовой договор', value: 'labor' },
+  { id: 'internship', name: 'Стажировка', value: 'internship' },
+  { id: 'gph', name: 'Договор ГПХ', value: 'gph' },
+]
+
+function isHhScheduleSelected(opt) {
+  const arr = data.value.work_schedule_by_days
+  if (!Array.isArray(arr) || arr.length === 0) return false
+  const first = arr[0]
+  return (opt?.id && first?.id && String(opt.id) === String(first.id)) ||
+    (opt?.value && first?.value && String(opt.value) === String(first.value))
+}
+function handleHhScheduleSelect(opt) {
+  data.value.work_schedule_by_days = opt ? [opt] : []
+  updateValidField('work_schedule_by_days', !!opt)
+}
+function isHhWorkHoursSelected(opt) {
+  const arr = data.value.working_hours
+  if (!Array.isArray(arr) || arr.length === 0) return false
+  const first = arr[0]
+  return (opt?.id && first?.id && String(opt.id) === String(first.id)) ||
+    (opt?.value && first?.value && String(opt.value) === String(first.value))
+}
+function handleHhWorkHoursSelect(opt) {
+  data.value.working_hours = opt ? [opt] : []
+  updateValidField('working_hours', !!opt)
+}
+
+// hh.ru: отображение города для GeoInput (из area.name или location)
+const hhLocationDisplay = computed(() => {
+  if (data.value.area?.name) return data.value.area.name
+  if (data.value.location) return data.value.location
+  return ''
+})
+
+function onHhLocationUpdate(cityName) {
+  if (!cityName || !String(cityName).trim()) {
+    data.value.area = {}
+    data.value.location = ''
+    updateValidField('area', false)
+    isCitySetFromVacancy.value = false
+    return
+  }
+  const trimmed = String(cityName).trim()
+  data.value.location = trimmed
+  const city = cities.value.find((c) => c?.name && c.name.toLowerCase() === trimmed.toLowerCase())
+  if (city) {
+    data.value.area = { id: city.id, name: city.name }
+    data.value.address = {
+      id: city.id,
+      name: city.name,
+      show_metro_only: data.value.address?.show_metro_only ?? false
+    }
+    updateValidField('area', true)
+  } else {
+    data.value.area = {}
+    updateValidField('area', false)
+  }
+  isCitySetFromVacancy.value = false
+}
+
+function onHhLocationBlur() {
+  if (!data.value.location?.trim()) {
+    updateValidField('area', false)
+  }
+}
+
+function onHhHideWorkAddressUpdate(val) {
+  data.value.hideWorkAddress = !!val
+}
+
+function onHhWorkAddressUpdate(addr) {
+  data.value.workAddress = addr || ''
+  if (addr?.trim()) {
+    updateValidField('address', true)
+    if (data.value.area?.id) {
+      data.value.address = {
+        id: data.value.area.id,
+        name: data.value.area.name,
+        building: addr,
+        show_metro_only: data.value.address?.show_metro_only ?? false
+      }
+    } else {
+      data.value.address = { building: addr, show_metro_only: data.value.address?.show_metro_only ?? false }
+    }
+  } else {
+    if (data.value.area?.id) {
+      data.value.address = { id: data.value.area.id, name: data.value.area.name, show_metro_only: data.value.address?.show_metro_only ?? false }
+    } else {
+      data.value.address = { show_metro_only: data.value.address?.show_metro_only ?? false }
+    }
+    updateValidField('address', !!data.value.area?.id)
+  }
+}
 
 const workSchedulesOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaWorkSchedules.value.length > 0) {
@@ -1275,7 +1477,7 @@ const loadDictionaries = async (platform) => {
       getExperienceLevelsRabota(),
       getEducationLevelsRabota()
     ])
-    
+
     if (professionsResult?.data) {
       rabotaProfessions.value = Array.isArray(professionsResult.data) ? professionsResult.data : (professionsResult.data.items || [])
     }
@@ -1303,10 +1505,10 @@ const loadDictionaries = async (platform) => {
     // Загружаем профессии для Avito
     const professionsResult = await getProfessionsAvito()
     if (professionsResult?.data && !professionsResult.error) {
-      avitoProfessions.value = Array.isArray(professionsResult.data) 
-        ? professionsResult.data 
+      avitoProfessions.value = Array.isArray(professionsResult.data)
+        ? professionsResult.data
         : (professionsResult.data.items || [])
-      
+
       // Преобразуем в формат для использования в выпадающем списке
       currectRole.value = avitoProfessions.value.map(prof => ({
         id: prof.id,
@@ -1337,7 +1539,7 @@ const loadDictionaries = async (platform) => {
     if (!errorRoles) {
       currectRole.value = roles.categories
     }
-    
+
     // Загрузка списка городов из API (локальная БД hh_areas)
     const { data: areasData, error: areasError } = await getAreasHh()
     if (!areasError && areasData) {
@@ -1365,10 +1567,10 @@ const { data: areasData, error: areasError } = await getAreasHh()
 if (!areasError && areasData) {
   cities.value = dedupeAreasByName(areasData)
   console.log('Загружены города, количество:', cities.value.length)
-  
+
   // Обновляем вычисленные значения после загрузки городов
   updateComputedValues()
-  
+
   // Теперь применяем значения, включая установку города из вакансии
   await applyComputedValues()
 }
@@ -1454,8 +1656,8 @@ async function fillFormFromCurrentVacancy() {
     const arr = Array.isArray(skillsRaw)
       ? skillsRaw.map((s) => (typeof s === 'object' && s != null && 'name' in s ? { name: String(s.name ?? '').trim() } : { name: String(s ?? '').trim() })).filter((o) => o.name)
       : (typeof skillsRaw === 'string' && skillsRaw.trim()
-          ? skillsRaw.split(',').map((s) => ({ name: s.trim() })).filter((o) => o.name)
-          : [])
+        ? skillsRaw.split(',').map((s) => ({ name: s.trim() })).filter((o) => o.name)
+        : [])
     data.value.key_skills = arr
   }
   // Водительские права: для вакансий с SuperJob наша БД может вернуть driving_licence: ["A", "B", "C"]; иначе — drivers: [{ id: 1 }, ...] (числовые id нашей БД).
@@ -1499,6 +1701,10 @@ async function fillFormFromCurrentVacancy() {
     }
   }
   if (vacancy.location) data.value.location = vacancy.location
+  if (vacancy.work_address != null) data.value.workAddress = String(vacancy.work_address)
+  else if (vacancy.workAddress != null) data.value.workAddress = String(vacancy.workAddress)
+  if (vacancy.hide_work_address != null) data.value.hideWorkAddress = !!vacancy.hide_work_address
+  else if (vacancy.hideWorkAddress != null) data.value.hideWorkAddress = !!vacancy.hideWorkAddress
 
   // График работы: API может вернуть один id/name или несколько через запятую (например "FOUR_ON_FOUR_OFF, FOUR_ON_THREE_OFF")
   const scheduleVal = vacancy.schedule ?? vacancy.work_schedule
@@ -1651,7 +1857,7 @@ async function loadInitialFormData() {
 
 await loadInitialFormData();
 
-const getPhrasesVacancy = async function() {
+const getPhrasesVacancy = async function () {
   const { data, error } = await getPhrases()
   return data
 }
@@ -1701,118 +1907,138 @@ if (vacancyData.value) {
 // })[0] || HH_EMPLOYMENT_TYPES[0];
 
 if (!inject('isPlatforms')) {
-    const { data, error } = await profileHh()
-    if (!error) {
-      platforms.value[0].isAuthenticated = true
-      platforms.value[0].data = {email: data.data.email }
-    }
-    const { types, errorTypes } = await typesHh(data.data.employer.id, data.data.manager.id)
-    if (!error && !errorTypes) {
-      platforms.value[0].types = types
-    }
-    // Загружаем тарифы для платформы hh
-    if (data.data?.employer?.id) {
-      await loadTariffsForHh(data.data.employer.id)
-    }
+  const { data, error } = await profileHh()
+  if (!error) {
+    platforms.value[0].isAuthenticated = true
+    platforms.value[0].data = { email: data.data.email }
+  }
+  const { types, errorTypes } = await typesHh(data.data.employer.id, data.data.manager.id)
+  if (!error && !errorTypes) {
+    platforms.value[0].types = types
+  }
+  // Загружаем тарифы для платформы hh
+  if (data.data?.employer?.id) {
+    await loadTariffsForHh(data.data.employer.id)
+  }
 }
 
-// Определяем платформу из props или из inject
-const getPlatformName = (platformName) => {
-  // Преобразуем формат 'hh.ru' в 'hh', 'avito.ru' в 'avito', 'rabota.ru' в 'rabota'
-  if (platformName === 'hh.ru') return 'hh'
-  if (platformName === 'avito.ru') return 'avito'
-  if (platformName === 'rabota.ru') return 'rabota'
-  return platformName
+// При новой публикации (selectedPlatform) — всегда устанавливаем платформу и загружаем справочники
+const targetPlatformFromProps = props.selectedPlatform ? normalizePlatformName(props.selectedPlatform) : null
+if (targetPlatformFromProps) {
+  const platformKey = platforms.value?.find((p) => p.platform === targetPlatformFromProps)
+  if (platformKey) {
+    data.value.platform = platformKey
+    if (targetPlatformFromProps === 'hh') {
+      // hh.ru: загружаем тарифы (как при редактировании), справочники уже загружены по умолчанию
+      const profile = await profileHh()
+      if (!profile.error && profile.data?.data?.employer?.id) {
+        await loadTariffsForHh(profile.data.data.employer.id)
+        platformKey.isAuthenticated = true
+        platformKey.data = profile.data.data
+      }
+    } else if (targetPlatformFromProps === 'superjob') {
+      await loadDictionaries('superjob')
+    } else if (targetPlatformFromProps === 'avito') {
+      await loadDictionaries('avito')
+    } else if (targetPlatformFromProps === 'rabota') {
+      await loadDictionaries('rabota')
+    }
+  }
 }
 
 for (let key of platforms.value) {
-    if (!isPlatforms.value) {
-        // Если передан selectedPlatform через props, используем его
-        if (props.selectedPlatform) {
-          const targetPlatform = getPlatformName(props.selectedPlatform)
-          if (key.platform === targetPlatform) {
-            if (key.platform == 'hh') {
-              const profile = await profileHh()  
-              if (!profile.error && profile.data?.data?.employer?.id) {
-                await loadTariffsForHh(profile.data.data.employer.id)
-                key.isAuthenticated = true
-                key.data = profile.data.data
-                isPlatforms.value = true
-              }
-            } else if (key.platform == 'avito') {
-              const profile = await profileAvito()  
-              if (!profile.error) {
-                key.isAuthenticated = true
-                key.data = profile.data.data
-                isPlatforms.value = true
-              }
-            } else if (key.platform == 'rabota') {
-              const profile = await profileRabota()  
-              if (!profile.error && profile.data) {
-                key.isAuthenticated = true
-                key.data = profile.data.data
-                isPlatforms.value = true
-                // Загружаем справочники rabota.ru
-                await loadDictionaries('rabota')
-              }
-            }
-            data.value.platform = key
-            break // Используем найденную платформу
+  if (!isPlatforms.value) {
+    // Если передан selectedPlatform через props, используем его (новая публикация)
+    if (props.selectedPlatform) {
+      const targetPlatform = normalizePlatformName(props.selectedPlatform)
+      if (key.platform === targetPlatform) {
+        if (key.platform == 'hh') {
+          const profile = await profileHh()
+          if (!profile.error && profile.data?.data?.employer?.id) {
+            await loadTariffsForHh(profile.data.data.employer.id)
+            key.isAuthenticated = true
+            key.data = profile.data.data
+            isPlatforms.value = true
           }
-        } else {
-          // Старая логика, если платформа не передана
-          if (key.platform == 'hh') {
-            const profile = await profileHh()  
-            if (!profile.error && profile.data?.data?.employer?.id) {
-              await loadTariffsForHh(profile.data.data.employer.id)
-              key.isAuthenticated = true
-              key.data = profile.data.data
-              isPlatforms.value = true
-              // data.value.billing_types = key.types ? key.types[6] : null
-            }
-          } else if (key.platform == 'avito') {
-            const profile = await profileAvito()  
-            if (!profile.error) {
-              key.isAuthenticated = true
-              key.data = profile.data.data
-              isPlatforms.value = true
-              // Загружаем справочники avito.ru
-              await loadDictionaries('avito')
-            }
-          } else if (key.platform == 'rabota') {
-            const profile = await profileRabota()  
-            if (!profile.error && profile.data) {
-              key.isAuthenticated = true
-              key.data = profile.data.data
-              isPlatforms.value = true
-              // Загружаем справочники rabota.ru
-              await loadDictionaries('rabota')
-            }
+        } else if (key.platform == 'avito') {
+          const profile = await profileAvito()
+          if (!profile.error) {
+            key.isAuthenticated = true
+            key.data = profile.data.data
+            isPlatforms.value = true
           }
-          data.value.platform = key
-          data.value.vacancy_properties = {
-                properties: [
-                  {
-                    property_type: tariffsOptions.value[0]
-                  }
-                ]
+        } else if (key.platform == 'rabota') {
+          const profile = await profileRabota()
+          if (!profile.error && profile.data) {
+            key.isAuthenticated = true
+            key.data = profile.data.data
+            isPlatforms.value = true
+            // Загружаем справочники rabota.ru
+            await loadDictionaries('rabota')
           }
+        } else if (key.platform == 'superjob') {
+          // SuperJob: устанавливаем платформу и загружаем каталог
+          key.isAuthenticated = true
+          isPlatforms.value = true
+          await loadDictionaries('superjob')
         }
+        data.value.platform = key
+        break // Используем найденную платформу
+      }
+    } else {
+      // Старая логика, если платформа не передана
+      if (key.platform == 'hh') {
+        const profile = await profileHh()
+        if (!profile.error && profile.data?.data?.employer?.id) {
+          await loadTariffsForHh(profile.data.data.employer.id)
+          key.isAuthenticated = true
+          key.data = profile.data.data
+          isPlatforms.value = true
+          // data.value.billing_types = key.types ? key.types[6] : null
+        }
+      } else if (key.platform == 'avito') {
+        const profile = await profileAvito()
+        if (!profile.error) {
+          key.isAuthenticated = true
+          key.data = profile.data.data
+          isPlatforms.value = true
+          // Загружаем справочники avito.ru
+          await loadDictionaries('avito')
+        }
+      } else if (key.platform == 'rabota') {
+        const profile = await profileRabota()
+        if (!profile.error && profile.data) {
+          key.isAuthenticated = true
+          key.data = profile.data.data
+          isPlatforms.value = true
+          // Загружаем справочники rabota.ru
+          await loadDictionaries('rabota')
+        }
+      }
+      data.value.platform = key
+      data.value.vacancy_properties = {
+        properties: [
+          {
+            property_type: tariffsOptions.value[0]
+          }
+        ]
+      }
     }
+  }
 }
 
 const ArrayCurrency = ref(currency)
 
 // Преобразование HH_EXPERIENCE_DAYS для MultiSelect (id -> value)
 const experienceDaysOptions = HH_EXPERIENCE_DAYS.map(day => ({
-    ...day,
-    value: day.id
+  ...day,
+  value: day.id
 }))
 
 // Преобразование HH_WORK_FORMAT для MultiSelect (id -> value)
 const workFormatOptions = HH_WORK_FORMAT.map(format => ({
-    ...format,
-    value: format.id
+  ...format,
+  value: format.id
 }))
 
 // Преобразование графика работы для MultiSelect (id -> value)
@@ -1826,14 +2052,14 @@ const workScheduleOptions = computed(() => {
 
 // Преобразование HH_WORKING_HOURS для MultiSelect (id -> value)
 const workingHoursOptions = HH_WORKING_HOURS.map(hours => ({
-    ...hours,
-    value: hours.id
+  ...hours,
+  value: hours.id
 }))
 
 // Преобразование HH_ADDITIONAL_CONDITIONS для MultiSelect (id -> value)
 const additionalConditionsOptions = HH_ADDITIONAL_CONDITIONS.map(condition => ({
-    ...condition,
-    value: condition.id
+  ...condition,
+  value: condition.id
 }))
 
 // Переключение чекбокса «Готовы рассмотреть» для SuperJob
@@ -1896,7 +2122,7 @@ const updateDescriptionValidation = (value) => {
   }
 }
 
-const validateFields = () => { 
+const validateFields = () => {
   let isValid = true;
   for (const key in validFields.value) {
     // Для SuperJob не проверяем график и часы работы — раздел скрыт в форме
@@ -1922,13 +2148,13 @@ const validateFields = () => {
       }
       continue;
     }
-    
-    if (data.value[key] == null 
-         || data.value[key] == undefined 
-         || data.value[key] == '' 
-         || data.value[key] == [] 
-         || data.value[key] == {}
-        ) {
+
+    if (data.value[key] == null
+      || data.value[key] == undefined
+      || data.value[key] == ''
+      || data.value[key] == []
+      || data.value[key] == {}
+    ) {
       isValid = false
       validFields.value[key].status = false
     } else {
@@ -1971,15 +2197,15 @@ const savePublication = async () => {
 
   // Определяем текущую платформу
   const currentPlatform = data.value.platform?.platform || 'hh'
-  
+
   // Обработка дополнительных условий (актуально для hh.ru)
   if (data.value.additional_conditions && data.value.additional_conditions.length > 0) {
     const boolConditions = [
-        'accept_handicapped', 
-        'accept_incomplete_resumes', 
-        'accept_temporary'
-      ];
-    data.value.additional_conditions.forEach(item => { 
+      'accept_handicapped',
+      'accept_incomplete_resumes',
+      'accept_temporary'
+    ];
+    data.value.additional_conditions.forEach(item => {
       if (boolConditions.includes(item.id)) {
         data.value[item.id] = true
       }
@@ -2000,7 +2226,7 @@ const savePublication = async () => {
       }
     });
   }
-  
+
   // Если редактируем, обновляем вакансию на API и на привязанной платформе
   if (isEditing) {
     try {
@@ -2071,14 +2297,14 @@ const savePublication = async () => {
     }
     return;
   }
-  
+
   // Иначе создаем новую вакансию
   let response;
   if (currentPlatform !== 'avito' && currentPlatform !== 'hh' && currentPlatform !== 'rabota') {
-   status.value = `Платформа ${currentPlatform} пока не поддерживается`
-   return
+    status.value = `Платформа ${currentPlatform} пока не поддерживается`
+    return
   }
-  
+
   // Выбираем функцию в зависимости от платформы и флага isDraft
   if (currentPlatform === 'avito') {
     if (isDraft.value || isDraft.value === 'true') {
@@ -2086,7 +2312,7 @@ const savePublication = async () => {
     } else {
       response = await publishVacancyToAvito(data.value)
     }
-  } 
+  }
   if (currentPlatform === 'hh') {
     if (isDraft.value || isDraft.value === 'true'
     ) {
@@ -2102,7 +2328,7 @@ const savePublication = async () => {
       response = await publishVacancyToRabota(data.value)
     }
   }
-  
+
   // Обработка результата
   if (response?.error || response?.errorDraft) {
     status.value = response.error || response.errorDraft || 'Ошибка при сохранении вакансии'
@@ -2119,17 +2345,33 @@ const updateSkills = (el) => {
   if (el.length > 0) {
     const phrases = []
     el.forEach((item, key) => {
-      phrases.push({name: item.name})
+      phrases.push({ name: item.name })
     })
     data.value.key_skills = phrases
 
   } else {
     if (data.value.key_skills)
-        delete data.value.key_skills
-    }
+      delete data.value.key_skills
+  }
 }
 
 // Сброс experience_days при изменении типа занятости
+watch(hhEmployeeType, (newType) => {
+  if (currentPlatform.value === 'hh') {
+    const opts = newType === 'permanent' ? hhEmploymentOptionsPermanent : hhEmploymentOptionsTemporary
+    if (opts.length > 0) {
+      handleIdUpdate('employment_form', opts[0])
+    }
+  }
+})
+
+watch(() => [data.value.employment_form, currentPlatform.value], ([emp, platform]) => {
+  if (platform === 'hh' && emp?.id) {
+    const isTemp = emp.id === 'PROJECT' || emp.id === 'SIDE_JOB'
+    hhEmployeeType.value = isTemp ? 'temporary' : 'permanent'
+  }
+}, { immediate: true })
+
 watch(() => data.value.employment_form, (newValue) => {
   if (newValue?.id !== 'FLY_IN_FLY_OUT') {
     data.value.experience_days = []
@@ -2157,7 +2399,7 @@ onBeforeMount(async () => {
 </script>
 
 <style scoped>
-  .anchor {
-    scroll-margin-top: 80px;
-  }
+.anchor {
+  scroll-margin-top: 80px;
+}
 </style>
