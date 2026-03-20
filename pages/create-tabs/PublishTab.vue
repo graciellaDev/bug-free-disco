@@ -558,6 +558,7 @@
                         <svg-icon name="close" width="20" height="20" />
                     </button>
                 </div>
+                <div class="mb-25px mt-25px border-t"></div>
                 <AddPublication 
                     v-if="editingVacancy"
                     :selectedPlatform="null"
@@ -570,15 +571,29 @@
 
         <Popup
             :isOpen="isOpenPopup"
-            @close="() => (isOpenPopup = false)"
-            :width="'740px'"
+            @close="closeCreatePublicationPopup"
+            :width="'900px'"
+            :height="'fit-content'"
             :showCloseButton="false"
             :disableOverflowHidden="true"
             :overflowContainer="true"
             maxHeight
             :lgSize="true"
         >
-            <AddPublication :selectedPlatform="selectedPlatformForPublish"/>
+            <div class="p-25px max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-25px">
+                    <div>
+                        <p class="text-xl font-semibold text-space mb-1">Публикация вакансии</p>
+                        <p class="text-sm font-normal text-slate-custom">
+                            Заполните форму для публикации вакансии на выбранной платформе
+                        </p>
+                    </div>
+                    <button @click="closeCreatePublicationPopup" class="text-slate-custom hover:text-space transition-colors">
+                        <svg-icon name="close" width="20" height="20" />
+                    </button>
+                </div>
+                <AddPublication :selectedPlatform="selectedPlatformForPublish" @cancel="closeCreatePublicationPopup"/>
+            </div>
         </Popup>
 
         <template v-if="isLoadingPublicationPlatforms || sortedData.length > 0">
@@ -2258,6 +2273,12 @@ const openEditPopup = (vacancyItem) => {
 const closeEditPopup = () => {
     isEditPopupOpen.value = false;
     editingVacancy.value = null;
+};
+
+// Закрытие попапа создания публикации
+const closeCreatePublicationPopup = () => {
+    isOpenPopup.value = false;
+    selectedPlatformForPublish.value = null;
 };
 
 // Обработчик успешного обновления вакансии
