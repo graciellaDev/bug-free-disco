@@ -141,6 +141,42 @@ export const getCatalogues = async () => {
 };
 
 /**
+ * Получение списка городов SuperJob (GET /api/superjob/towns).
+ * Используется для селектора города при публикации на SuperJob — API требует town как число (id).
+ * @param params - { keyword?: string, all?: 1 } — поиск по названию или полный список
+ */
+export const getTowns = async (params?: { keyword?: string; all?: 1 }) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+  const query = new URLSearchParams();
+  if (params?.keyword) query.set('keyword', params.keyword);
+  if (params?.all === 1) query.set('all', '1');
+  const qs = query.toString();
+  try {
+    const response = await $fetch<any>(`/superjob/towns${qs ? `?${qs}` : ''}`, {
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    const raw = response?.data ?? response;
+    const objects = raw?.objects ?? (Array.isArray(raw) ? raw : []);
+    result.value.data = objects;
+  } catch (err: any) {
+    if (err.response?.status === 401) handle401Error();
+    result.value.error = err.response?._data?.message ?? 'Ошибка при загрузке городов SuperJob';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение одной вакансии SuperJob по id
  */
 export const getVacancy = async (id: string | number) => {
@@ -200,6 +236,41 @@ export const archivePublication = async (vacancyId: string | number) => {
   } catch (err: any) {
     if (err.response?.status === 401) handle401Error();
     result.value.error = err.response?._data?.message ?? 'Ошибка при переводе вакансии в архив';
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Создание и публикация вакансии на SuperJob (POST /2.0/vacancies/).
+ * @param formData - Данные из формы AddPublication (mapVacancyToSuperjobPayload вызывается внутри)
+ */
+export const publishVacancy = async (formData: Record<string, any>) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const { mapVacancyToSuperjobPayload } = await import('@/utils/mapVacancyToSuperjob');
+    const payload = mapVacancyToSuperjobPayload(formData, undefined);
+    const response = await $fetch<any>('/superjob/vacancies', {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: payload,
+    });
+    result.value.data = response?.data ?? response;
+  } catch (err: any) {
+    if (err.response?.status === 401) handle401Error();
+    result.value.error = err.response?._data?.message ?? err.response?._data?.error ?? 'Ошибка при публикации вакансии на SuperJob';
   } finally {
     return result.value;
   }
