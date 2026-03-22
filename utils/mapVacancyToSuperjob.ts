@@ -50,6 +50,8 @@ export interface SuperjobPayloadFormData {
   candidat?: string | null;
   /** Выбранные чекбоксы «Готовы рассмотреть» (id из SUPERJOB_READY_TO_CONSIDER). Отправляются как флаги accept_short_resume, accept_age_14 и т.д. */
   superjob_ready_to_consider?: string[] | null;
+  /** ID города из справочника SuperJob towns (при использовании городов SuperJob). Иначе используется area.name или location. */
+  superjob_town_id?: number | null;
   [key: string]: any;
 }
 
@@ -268,7 +270,8 @@ export function mapVacancyToSuperjobPayload(
     payload.place_of_work = Number(placeOfWorkId);
   }
 
-  // town — город: API требует строго число (id из справочника SuperJob); обязательно при обновлении
+  // town — город: API SuperJob для создания/обновления вакансии требует строго число (id из справочника towns).
+  // Ошибки: "Id Town must be a number", "Указан не существующий город". Передаём только numeric id.
   const townObj = existing?.town;
   const townRaw =
     townObj != null && typeof townObj === 'object'
@@ -281,6 +284,10 @@ export function mapVacancyToSuperjobPayload(
     const alt = (existing as any).town_id ?? (existing as any).id_town ?? (existing as any).town;
     const altNum = typeof alt === 'number' ? alt : (alt != null && typeof alt === 'object' && 'id' in alt ? Number((alt as any).id) : NaN);
     if (!isNaN(altNum) && altNum > 0) townId = altNum;
+  }
+  if (isNaN(townId) && formData.superjob_town_id != null) {
+    const sid = Number(formData.superjob_town_id);
+    if (!isNaN(sid) && sid > 0) townId = sid;
   }
   if (!isNaN(townId) && townId > 0) {
     payload.town = Number(Math.floor(townId));

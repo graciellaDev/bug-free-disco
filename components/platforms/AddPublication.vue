@@ -678,7 +678,7 @@ import {
   getExperienceLevels as getExperienceLevelsRabota,
   getEducationLevels as getEducationLevelsRabota
 } from '@/utils/rabotaAccount'
-import { updatePublication as updatePublicationSuperjob, getVacancy as getSuperjobVacancy, getCatalogues as getSuperjobCatalogues } from '@/utils/superjobAccount'
+import { updatePublication as updatePublicationSuperjob, getVacancy as getSuperjobVacancy, getCatalogues as getSuperjobCatalogues, getTowns as getSuperjobTowns, publishVacancy as publishVacancyToSuperjob } from '@/utils/superjobAccount'
 import { mapVacancyToSuperjobPayload } from '@/utils/mapVacancyToSuperjob'
 import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFields, buildDriverDbIdToNameMap } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
@@ -1122,8 +1122,10 @@ const hideScheduleBlockForSuperjob = computed(() => {
   return isSuperjobPlatform.value ? true : props.editingVacancy?.platforms_data?.[0]?.id === 4
 })
 
-// Каталог SuperJob для SpecializationSelector (отрасли с roles = positions)
-const superjobCatalogForSelector = ref(Array.isArray(currectRole.value) ? currectRole.value : []);
+// Каталог SuperJob для SpecializationSelector: computed из currectRole, чтобы при loadDictionaries('superjob') данные сразу отображались
+const superjobCatalogForSelector = computed(() =>
+  isSuperjobPlatform.value && Array.isArray(currectRole.value) ? currectRole.value : []
+);
 
 const professionsOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaProfessions.value.length > 0) {
@@ -1533,6 +1535,26 @@ const loadDictionaries = async (platform) => {
     } else {
       currectRole.value = []
     }
+    // Города SuperJob — API требует town как число (id). Загружаем справочник и подставляем в селектор.
+    const townsResult = await getSuperjobTowns({ all: 1 })
+    const townObjects = Array.isArray(townsResult?.data) ? townsResult.data : (townsResult?.data?.objects ?? [])
+    if (townObjects.length > 0) {
+      cities.value = townObjects.map((t) => ({ id: t.id, name: t.title ?? t.name ?? '' })).filter((c) => c.id != null && c.name)
+      // Если уже выбран город по названию (HH), подбираем SuperJob town по имени
+      const currentArea = data.value.area
+      if (currentArea?.name && !currentArea?.id) {
+        const match = cities.value.find((c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase())
+        if (match) data.value.area = { id: match.id, name: match.name }
+      } else if (currentArea?.name && currentArea?.id) {
+        const byId = cities.value.find((c) => Number(c.id) === Number(currentArea.id))
+        if (!byId) {
+          const byName = cities.value.find((c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase())
+          if (byName) data.value.area = { id: byName.id, name: byName.name }
+        }
+      }
+      updateComputedValues()
+      await applyComputedValues()
+    }
   } else {
     // Загружаем справочники hh.ru (по умолчанию)
     const { roles, errorRoles } = await getRolesHh()
@@ -1575,9 +1597,15 @@ if (!areasError && areasData) {
   await applyComputedValues()
 }
 
-const { data: addressesData, error: addressesError } = await getAddressesHh()
-if (!addressesError && addressesData) {
-  addresses.value = addressesData.items
+try {
+  const result = await getAddressesHh()
+  const addressesData = result?.data
+  const addressesError = result?.error
+  if (!addressesError && addressesData?.items) {
+    addresses.value = addressesData.items
+  }
+} catch (e) {
+  addresses.value = []
 }
 
 // Преобразование тарифов из tariffsHh в формат для DropDownTypes
@@ -1772,11 +1800,13 @@ async function loadInitialFormData() {
       if (platformData.id === 4) {
         await loadDictionaries('superjob');
         const { data: sjVacancy } = await getSuperjobVacancy(platformData.platform_id);
-        // SuperJob: catalogues[0] = отрасль (id/key), catalogues[0].positions[0] = специализация (id/key)
+        // SuperJob: catalogues[0] может быть: (a) отрасль с positions[] или (b) категория с parent
+        // В обоих случаях передаём в payload только id позиции (position.key из каталога)
         if (sjVacancy?.catalogues?.length && currectRole.value?.length) {
           const cat = sjVacancy.catalogues[0];
-          const industryId = cat.id ?? cat.key;
-          const positionId = cat.positions?.[0]?.id ?? cat.positions?.[0]?.key ?? industryId;
+          const hasParent = cat?.parent && typeof cat.parent === 'object';
+          const industryId = hasParent ? (cat.parent?.id ?? cat.parent?.key) : (cat.id ?? cat.key);
+          const positionId = hasParent ? (cat.id ?? cat.key) : (cat.positions?.[0]?.id ?? cat.positions?.[0]?.key ?? industryId);
           for (const ind of currectRole.value) {
             if (String(ind.id ?? ind.key) !== String(industryId)) continue;
             const role = ind.roles?.find(r => String(r.id ?? r.key) === String(positionId));
@@ -1787,6 +1817,12 @@ async function loadInitialFormData() {
               break;
             }
           }
+        }
+        // Город: SuperJob town { id, title } — используем id (число) для payload
+        if (sjVacancy?.town && (sjVacancy.town.id != null || sjVacancy.town.key != null)) {
+          const tid = sjVacancy.town.id ?? sjVacancy.town.key
+          const ttitle = sjVacancy.town.title ?? sjVacancy.town.name ?? ''
+          data.value.area = { id: tid, name: ttitle }
         }
         // Готовы рассмотреть (candidat): подставляем из текущей вакансии SuperJob, если в нашей БД ещё нет
         if (sjVacancy?.candidat && (data.value.candidat == null || data.value.candidat === '')) {
@@ -1884,17 +1920,15 @@ if (vacancyData.value) {
   data.value.code = vacancyData.value.code
   data.value.description = vacancyData.value.description
   // Отрасль/специализацию из vacancyData не подставляем, если уже заданы из каталога SuperJob (редактирование вакансии с SuperJob)
-  if (data.value.superjob_catalogue_id == null) {
-    data.value.industry = currectRole.value.filter(function (n, index) {
-      n.key = index
-      return n.name == vacancyData.value.industry
-    })[0]
-    if (data.value.industry !== undefined && data.value.industry.length == 0) {
-      data.value.professional_roles[0] = data.value.industry.roles.filter(function (n) {
+  if (data.value.superjob_catalogue_id == null && currectRole.value && Array.isArray(currectRole.value)) {
+    data.value.industry = currectRole.value.find((n) => n.name === vacancyData.value.industry) ?? null
+    if (data.value.industry !== undefined && data.value.industry?.roles?.length > 0) {
+      const roleMatch = data.value.industry.roles.filter(function (n) {
         return n.name == vacancyData.value.specializations
       })
+      data.value.professional_roles[0] = roleMatch[0] ?? data.value.industry.roles[0]
     }
-    if (data.value.professional_roles.length == 0) {
+    if (!data.value.professional_roles?.[0] && data.value.industry?.roles?.[0]) {
       roleData.value = data.value.industry.roles[0]
       data.value.professional_roles[0] = data.value.industry.roles[0]
     }
@@ -1907,18 +1941,23 @@ if (vacancyData.value) {
 // })[0] || HH_EMPLOYMENT_TYPES[0];
 
 if (!inject('isPlatforms')) {
-  const { data, error } = await profileHh()
-  if (!error) {
+  const profileResult = await profileHh()
+  const profileData = profileResult?.data
+  const profileError = profileResult?.error
+  if (!profileError && profileData?.data) {
     platforms.value[0].isAuthenticated = true
-    platforms.value[0].data = { email: data.data.email }
-  }
-  const { types, errorTypes } = await typesHh(data.data.employer.id, data.data.manager.id)
-  if (!error && !errorTypes) {
-    platforms.value[0].types = types
-  }
-  // Загружаем тарифы для платформы hh
-  if (data.data?.employer?.id) {
-    await loadTariffsForHh(data.data.employer.id)
+    platforms.value[0].data = { email: profileData.data.email }
+    const employerId = profileData.data?.employer?.id
+    const managerId = profileData.data?.manager?.id
+    if (employerId && managerId) {
+      const { types, errorTypes } = await typesHh(employerId, managerId)
+      if (!errorTypes) {
+        platforms.value[0].types = types
+      }
+    }
+    if (profileData.data?.employer?.id) {
+      await loadTariffsForHh(profileData.data.employer.id)
+    }
   }
 }
 
@@ -2279,6 +2318,10 @@ const savePublication = async () => {
             const names = data.value.driver_license_types.map((d) => idToName.get(Number(d?.id ?? 0))).filter(Boolean);
             payloadFormData = { ...data.value, driver_license_types: names.map((n) => ({ id: n })) };
           }
+          const areaId = data.value.area?.id ?? payloadFormData.area?.id;
+          if (areaId != null && !isNaN(Number(areaId))) {
+            payloadFormData = { ...payloadFormData, superjob_town_id: Number(areaId) };
+          }
           const payload = mapVacancyToSuperjobPayload(payloadFormData, currentSuperjobVacancy ?? undefined);
           platformResponse = await updatePublicationSuperjob(vacancyPlatformId, payload);
         }
@@ -2300,13 +2343,32 @@ const savePublication = async () => {
 
   // Иначе создаем новую вакансию
   let response;
-  if (currentPlatform !== 'avito' && currentPlatform !== 'hh' && currentPlatform !== 'rabota') {
+  if (currentPlatform !== 'avito' && currentPlatform !== 'hh' && currentPlatform !== 'rabota' && currentPlatform !== 'superjob') {
     status.value = `Платформа ${currentPlatform} пока не поддерживается`
     return
   }
 
   // Выбираем функцию в зависимости от платформы и флага isDraft
-  if (currentPlatform === 'avito') {
+  if (currentPlatform === 'superjob') {
+    let payloadFormData = data.value;
+    if (data.value.driver_license_types?.length && data.value.driver_license_types.some((d) => typeof d?.id === 'number')) {
+      try {
+        const fields = await getVacancyFields();
+        const idToName = buildDriverDbIdToNameMap(fields?.data?.drivers);
+        const names = data.value.driver_license_types.map((d) => idToName.get(Number(d?.id ?? 0))).filter(Boolean);
+        payloadFormData = { ...data.value, driver_license_types: names.map((n) => ({ id: n })) };
+      } catch (e) {
+        console.warn('Не удалось преобразовать водительские права для SuperJob:', e);
+      }
+    }
+    // SuperJob требует town как число (id из справочника). При платформе SuperJob cities загружаются из SuperJob towns, area.id = SuperJob town id.
+    const areaId = data.value.area?.id ?? payloadFormData.area?.id;
+    if (areaId != null && !isNaN(Number(areaId))) {
+      payloadFormData = { ...payloadFormData, superjob_town_id: Number(areaId) };
+    }
+    const { data: sjData, error: sjError } = await publishVacancyToSuperjob(payloadFormData);
+    response = sjError ? { error: sjError } : { data: sjData };
+  } else if (currentPlatform === 'avito') {
     if (isDraft.value || isDraft.value === 'true') {
       response = await addDraftAvito(data.value)
     } else {
