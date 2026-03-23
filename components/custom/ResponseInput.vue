@@ -106,7 +106,7 @@
       <transition name="slide-fade">
         <ul
           v-if="filteredResponses.length && isFocused"
-          class="responses-list absolute w-full bg-white border border-athens rounded-plus shadow-shadow-droplist top-12 z-10 max-h-[240px] overflow-y-auto"
+          class="responses-list absolute w-full bg-white rounded-plus shadow-shadow-droplist top-12 z-10 max-h-[240px] overflow-y-auto"
         >
           <li
             v-for="(response, index) in filteredResponses"
@@ -129,7 +129,7 @@
 
         <div
           v-else-if="currentResponse && isFocused"
-          class="no-reponse absolute w-full bg-white border border-athens rounded-plus shadow-shadow-droplist top-12 z-10"
+          class="no-reponse absolute w-full bg-white rounded-plus shadow-shadow-droplist top-12 z-10"
         >
           <div class="text-slate-custom text-sm font-normal py-10px px-15px">
             {{ props.notFound }}

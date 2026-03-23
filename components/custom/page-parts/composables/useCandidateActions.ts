@@ -1,5 +1,4 @@
 import { ref, unref, type Ref } from 'vue';
-import { useRouter } from 'vue-router';
 import {
   deleteCandidate,
   updateCandidate,
@@ -78,8 +77,6 @@ export function useCandidateActions(
   onDeleted?: (id: number) => void,
   onClosePopup?: () => void
 ) {
-  const router = useRouter();
-
   // Состояние формы
   const isSubmitting = ref(false);
   const serverErrors = ref<Record<string, string>>({});
@@ -110,7 +107,6 @@ export function useCandidateActions(
 
       onDeleted?.(currentCandidate.id);
       onClosePopup?.();
-      router.push('/candidates');
     } catch (error) {
       console.error('[handleDelete] Ошибка при удалении кандидата:', error);
       //TODO: Проработать оповещение об ошибке

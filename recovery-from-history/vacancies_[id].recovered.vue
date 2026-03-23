@@ -27,11 +27,6 @@
   const isLoadingVacancy = ref(false);
   const isLoadingVacancies = ref(false);
   const isLoadingCandidate = ref(false);
-  /** Пока грузится карточка — подсветка строки в списке по id клика, а не по старому selectedCandidate */
-  const loadingCandidateId = ref<number | null>(null);
-  const activeListCandidateId = computed(
-    () => loadingCandidateId.value ?? selectedCandidate.value?.id ?? null
-  );
   const isInitialLoad = ref(true);
   const isDropdownOpen = ref(false);
   const selected = ref<Record<number, boolean>>({});
@@ -178,16 +173,6 @@
     loadNext,
   } = useCandidateList(candidateFilter, 'infinite', false);
 
-  const candidatesHasMore = computed(() => {
-    const p = pagination.value;
-    if (!p?.last_page) return false;
-    return p.current_page < p.last_page;
-  });
-
-  const handleCandidatesLoadMore = async () => {
-    await loadNext();
-  };
-
   const {
     candidateFormData,
     serverErrors,
@@ -241,11 +226,6 @@
   const filteredCandidatesList = computed(() => {
     return candidatesList.value ?? [];
   });
-
-  /** Скролл только внутри списка при >20 строк; иначе колесо прокручивает страницу */
-  const candidateListNeedsInnerScroll = computed(
-    () => (filteredCandidatesList.value?.length ?? 0) > 20
-  );
 
   const isInitialLoading = computed(
     () => isLoadingVacancy.value || isLoadingVacancies.value
@@ -305,7 +285,7 @@
   };
 
   /** Загрузить кандидата и открыть в правой панели. Этап и воронка подставляются из данных кандидата в БД. */
-  const loadCandidate = async (id: number, options: { syncStageFromCandidate?: boolean } = {}) => {
+  const loadCandidate = async (id: number) => {
     if (!id || isNaN(id)) {
       throw createError({
         statusCode: 404,
@@ -313,31 +293,24 @@
       });
     }
 
-    loadingCandidateId.value = id;
     isLoadingCandidate.value = true;
     try {
       const result = await getCandidateById(id);
       const data = result.candidateData;
       selectedCandidate.value = data;
       syncCandidateToUrl(data.id);
-      if (options.syncStageFromCandidate) {
-        const stageId =
-          data.stage ?? (data as { stage_id?: number }).stage_id ?? null;
-        if (stageId != null) {
-          // Не вызываем refreshCandidates: фильтр candidateFilter зависит от этапа,
-          // useDataList сам перезагрузит список при смене selectedStageId / «Все».
-          if (selectedStageId.value !== stageId || isActiveAll.value) {
-            selectedStageId.value = stageId;
-            isActiveAll.value = false;
-          }
-        }
+      const stageId =
+        data.stage ?? (data as { stage_id?: number }).stage_id ?? null;
+      if (stageId != null) {
+        selectedStageId.value = stageId;
+        isActiveAll.value = false;
+        await refreshCandidates();
       }
     } catch (error: unknown) {
       console.error('Ошибка при загрузке кандидата:', error);
       throw error;
     } finally {
       isLoadingCandidate.value = false;
-      loadingCandidateId.value = null;
     }
   };
 
@@ -427,13 +400,14 @@
   };
 
   const handleCandidateClick = async (candidate: Candidate) => {
-    try {
-      // Только карточка и URL; воронку не трогаем — иначе смена этапа дублирует
-      // загрузку списка (watch на candidateFilter + лишний refreshCandidates).
-      await loadCandidate(candidate.id, { syncStageFromCandidate: false });
-    } catch (e) {
-      console.error('[handleCandidateClick] Не удалось загрузить кандидата:', e);
+    const stageId = candidate.stage ?? (candidate as { stage_id?: number }).stage_id ?? null;
+    if (stageId != null) {
+      selectedStageId.value = stageId;
+      isActiveAll.value = false;
+      await refreshCandidates();
     }
+    selectedCandidate.value = candidate;
+    syncCandidateToUrl(candidate.id);
   };
 
   // Обработчик изменения выбора кандидатов
@@ -519,17 +493,13 @@
     }
 
     const movedCandidateId = movedCandidate.id;
-    const listBeforeMove = filteredCandidatesList.value || [];
-    const movedIndex = listBeforeMove.findIndex(c => c.id === movedCandidateId);
-    const wasSelectedMoved = selectedCandidate.value?.id === movedCandidateId;
     const wasMovedToAnotherVacancy =
       movedCandidate.vacancy_id !== vacancy.value?.id;
     const stageToSelect =
       newStageId ?? movedCandidate.stage ?? movedCandidate.stage_id ?? null;
 
-    // При переносе в другую вакансию остаёмся на текущем этапе.
-    // Переключаем воронку только при переносе внутри этой же вакансии.
-    if (!wasMovedToAnotherVacancy && stageToSelect != null) {
+    // Переключаем воронку на этап, на который перенесли кандидата
+    if (stageToSelect != null) {
       selectedStageId.value = stageToSelect;
       isActiveAll.value = false;
     }
@@ -540,30 +510,12 @@
       if (selected.value[movedCandidateId]) {
         delete selected.value[movedCandidateId];
       }
-
-      // Кандидат ушёл из этой вакансии — переключаем карточку на следующего в текущем списке.
-      if (wasSelectedMoved) {
-        const listAfterMove = filteredCandidatesList.value || [];
-        if (listAfterMove.length === 0) {
-          selectedCandidate.value = null;
-          syncCandidateToUrl(null);
-          return;
-        }
-
-        const nextIndex =
-          movedIndex >= 0 ? Math.min(movedIndex, listAfterMove.length - 1) : 0;
-        const nextCandidate = listAfterMove[nextIndex] || listAfterMove[0];
-        if (nextCandidate) {
-          await loadCandidate(nextCandidate.id);
-        }
-      }
-      return;
     }
 
     // Обновляем воронку: перезагружаем вакансию, чтобы цифры по этапам обновились
     await loadVacancy(getVacancyId());
 
-    // Перенос внутри текущей вакансии: обновляем данные текущего кандидата
+    // Остаёмся в карточке: обновляем данные текущего кандидата
     if (selectedCandidate.value?.id === movedCandidateId) {
       try {
         const result = await getCandidateById(movedCandidateId);
@@ -575,33 +527,13 @@
     }
   };
 
-  // Обработчик удаления кандидата: остаёмся в том же этапе и открываем следующего
-  const handleCandidateDeleted = async (id: number) => {
-    const listBeforeDelete = filteredCandidatesList.value || [];
-    const deletedIndex = listBeforeDelete.findIndex(c => c.id === id);
-    const wasSelectedDeleted = selectedCandidate.value?.id === id;
-
+  // Обработчик удаления кандидата
+  const handleCandidateDeleted = (id: number) => {
     delete selected.value[id];
 
-    await refreshCandidates();
-    await loadVacancy(getVacancyId());
-
-    if (!wasSelectedDeleted) return;
-
-    const listAfterDelete = filteredCandidatesList.value || [];
-    if (listAfterDelete.length === 0) {
+    if (selectedCandidate.value?.id === id) {
       selectedCandidate.value = null;
       syncCandidateToUrl(null);
-      return;
-    }
-
-    const nextIndex =
-      deletedIndex >= 0
-        ? Math.min(deletedIndex, listAfterDelete.length - 1)
-        : 0;
-    const nextCandidate = listAfterDelete[nextIndex] || listAfterDelete[0];
-    if (nextCandidate) {
-      await loadCandidate(nextCandidate.id);
     }
   };
 
@@ -659,14 +591,6 @@
   /** Загрузить вакансию по id из route и применить candidate/stage из query. */
   const syncRouteToState = async () => {
     if (_isSyncing.value) return;
-    const authToken = useCookie('auth_token').value;
-    const authUser = useCookie('auth_user').value;
-    if (!authToken || !authUser) {
-      if (route.path !== '/auth') {
-        void router.replace('/auth');
-      }
-      return;
-    }
     _isSyncing.value = true;
     try {
       const id = route.params.id;
@@ -677,7 +601,8 @@
         !vacancy.value?.id || String(vacancy.value.id) !== String(vacancyId);
 
       if (needVacancy) {
-        await Promise.all([loadVacancy(vacancyId), loadVacancies()]);
+        await loadVacancy(vacancyId);
+        await loadVacancies();
         await nextTick();
       }
 
@@ -686,13 +611,10 @@
       if (cidParam != null && cidParam !== '') {
         const cid = Number(cidParam);
         if (Number.isInteger(cid) && cid > 0) {
-          const sameCandidate =
-            Number(selectedCandidate.value?.id) === cid &&
-            Number(vacancy.value?.id) === Number(vacancyId);
-          if (sameCandidate) {
+          if (selectedCandidate.value?.id === cid && vacancy.value?.id === Number(vacancyId)) {
             return;
           }
-          await loadCandidate(cid, { syncStageFromCandidate: true });
+          await loadCandidate(cid);
           return;
         }
       }
@@ -749,14 +671,10 @@
     async newCandidates => {
       if (_isSyncing.value) return;
       if (!newCandidates?.length) return;
-      const routeCandidateId = Number(route.query.candidate);
-      const hasRouteCandidate =
-        Number.isInteger(routeCandidateId) && routeCandidateId > 0;
-
-      // Если кандидат задан в URL, не перезаписываем его автоселектом первого из списка.
-      if (hasRouteCandidate) return;
-
-      if (!selectedCandidate.value) {
+      if (
+        !selectedCandidate.value ||
+        !newCandidates.some(c => c.id === selectedCandidate.value?.id)
+      ) {
         await loadCandidate(newCandidates[0].id);
       }
     },
@@ -862,60 +780,35 @@
     </div>
     <div v-else>
       <!-- Один контейнер для списка + карточки: левая колонка всегда видна при загруженной вакансии -->
-      <!-- items-start: левая колонка по высоте контента, без пустоты под списком -->
-      <div class="flex flex-row items-start gap-x-15px">
+      <div class="flex gap-x-15px flex-row">
         <div
           v-if="vacancy"
-          class="w-[375px] shrink-0 self-start overflow-hidden rounded-sixteen bg-white"
+          class="w-[375px] shrink-0 rounded-sixteen bg-white"
         >
+          <CandidateList
+            v-if="filteredCandidatesList.length > 0 || loadingCandidates"
+            :candidates="filteredCandidatesList || []"
+            :selected="selected"
+            :show-checkboxes="true"
+            :all-selected="allSelected"
+            :loading="loadingCandidates"
+            :active-candidate-id="selectedCandidate?.id ?? null"
+            @item-click="handleCandidateClick"
+            @selection-change="handleSelectionChange"
+            @select-all="handleSelectAll"
+          />
           <div
-            :class="
-              candidateListNeedsInnerScroll
-                ? 'max-h-[calc(52px_+_(20_*_74px))] overflow-y-auto overscroll-y-contain'
-                : ''
-            "
+            v-else
+            class="flex flex-col items-center justify-center py-12 px-4 text-center text-sm text-slate-custom"
           >
-            <CandidateList
-              v-if="filteredCandidatesList.length > 0 || loadingCandidates"
-              :candidates="filteredCandidatesList || []"
-              :selected="selected"
-              :show-checkboxes="true"
-              :all-selected="allSelected"
-              :loading="loadingCandidates"
-              :active-candidate-id="activeListCandidateId"
-              :has-more="candidatesHasMore"
-              @item-click="handleCandidateClick"
-              @selection-change="handleSelectionChange"
-              @select-all="handleSelectAll"
-              @load-more="handleCandidatesLoadMore"
-            />
-            <div
-              v-else
-              class="flex flex-col items-center justify-center px-4 py-12 text-center text-sm text-slate-custom"
-            >
-              <p>Кандидаты по выбранному этапу не найдены.</p>
-            </div>
+            <p>Кандидаты по выбранному этапу не найдены.</p>
           </div>
         </div>
-        <div
-          v-if="selectedCandidate || isLoadingCandidate"
-          class="relative min-w-0 flex-1"
-        >
-          <!-- Первый клик: до ответа API selectedCandidate ещё null — иначе пустая правая колонка «как зависание» -->
-          <div
-            v-if="isLoadingCandidate && !selectedCandidate"
-            class="flex min-h-[320px] items-center justify-center rounded-fifteen bg-white"
-          >
+        <div v-if="selectedCandidate" class="min-w-0 flex-1">
+          <div v-if="isLoadingCandidate">
             <UiDotsLoader />
           </div>
-          <!-- При переключении не размонтируем тяжёлые блоки — только оверлей -->
-          <template v-else-if="selectedCandidate">
-            <div
-              v-if="isLoadingCandidate"
-              class="absolute inset-0 z-10 flex items-center justify-center rounded-fifteen bg-white/80"
-            >
-              <UiDotsLoader />
-            </div>
+          <template v-else>
             <BlockCandidateInfo
               ref="candidateInfoRef"
               :candidate="selectedCandidate"

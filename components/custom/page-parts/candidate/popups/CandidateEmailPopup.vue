@@ -8,6 +8,7 @@
   import { getEmailTemplates } from '@/src/api/emailTemplates';
   import { apiGet } from '@/src/api/client';
   import type { Candidate } from '@/types/candidates';
+  import { displayCandidateEmailOrEmpty } from '@/utils/candidateDisplayEmail';
 
   const props = withDefaults(
     defineProps<{
@@ -26,7 +27,7 @@
     const c = props.candidate;
     if (!c) return { name: '', email: '' };
     const name = [c.firstname, c.surname].filter(Boolean).join(' ') || '—';
-    return { name, email: c.email || '' };
+    return { name, email: displayCandidateEmailOrEmpty(c.email) };
   });
 
   const subject = ref('');
@@ -152,6 +153,7 @@
 
 <template>
   <Popup
+    class="email-compose-popup"
     :isOpen="unref(isOpen)"
     @close="close"
     width="790px"
@@ -286,5 +288,10 @@
   /* Зазор между полем «Отправитель» и выпадающим списком — нижняя обводка не перекрывается */
   .sender-block :deep(.options-wrapper) {
     margin-top: 2px;
+  }
+  /* В базовом Popup у скролл-контейнера есть правый отступ 15px.
+     Для окна письма убираем его, чтобы правый и левый внутренние поля были симметричны. */
+  .email-compose-popup :deep(.h-full.overflow-y-auto.pr-\[15px\]) {
+    padding-right: 0 !important;
   }
 </style>

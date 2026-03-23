@@ -1,12 +1,18 @@
 <script setup lang="ts">
   import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
   import { createTag, findTag } from '@/src/api/tags';
-  import { updateCandidate } from '@/src/api/candidates';
+  import { detachCandidateTag, updateCandidate } from '@/src/api/candidates';
   import type {
     Candidate,
     CandidateUpdateRequest,
     TagCandidate,
   } from '@/types/candidates';
+  import { buildCandidateLocationLine } from '@/utils/hhCandidateLocationLine';
+  import {
+    displayCandidateEmailOrEmpty,
+    hasDisplayableCandidateEmail,
+  } from '@/utils/candidateDisplayEmail';
+  import { formatCandidateSalaryLine } from '@/utils/candidateSalaryLine';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -20,10 +26,22 @@
     'write-email': [];
   }>();
 
+  const DEFAULT_AVATAR_SRC = '/img/default-avatar.png';
+
+  const candidatePhotoSrc = computed(
+    () => props.candidate.imagePath?.trim() || DEFAULT_AVATAR_SRC
+  );
+
+  /** Заглушка — целиком в квадрате; фото — cover как раньше */
+  const isPlaceholderAvatar = computed(
+    () => !props.candidate.imagePath?.trim()
+  );
+
   const isAddingTag = ref(false);
   const tagInputValue = ref('');
   const isSubmittingTag = ref(false);
   const tagInputRef = ref<HTMLInputElement | null>(null);
+  const detachingTagId = ref<number | null>(null);
 
   type FieldKey = 'phone' | 'email' | null;
   const openDropdown = ref<FieldKey>(null);
@@ -31,6 +49,12 @@
   const editPhoneValue = ref('');
   const editEmailValue = ref('');
   const dropdownRoot = ref<HTMLElement | null>(null);
+
+  const showCandidateEmailRow = computed(
+    () =>
+      hasDisplayableCandidateEmail(props.candidate.email) ||
+      editingField.value === 'email'
+  );
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -61,7 +85,7 @@
     const value =
       field === 'phone'
         ? (formattedPhone.value || props.candidate.phone || '')
-        : (props.candidate.email || '');
+        : displayCandidateEmailOrEmpty(props.candidate.email);
     copyToClipboard(value);
   };
 
@@ -77,7 +101,10 @@
     openDropdown.value = null;
     editingField.value = field;
     if (field === 'phone') editPhoneValue.value = props.candidate.phone || '';
-    else editEmailValue.value = props.candidate.email || '';
+    else
+      editEmailValue.value = displayCandidateEmailOrEmpty(
+        props.candidate.email
+      );
   };
 
   const handleWriteEmail = () => {
@@ -152,49 +179,58 @@
       : 'Город не указан';
   });
 
-  /** Город и адрес в одну строку через точку */
-  const cityAndAddressLine = computed(() => {
-    const parts: string[] = [];
-    if (props.candidate.location) parts.push(`г. ${props.candidate.location}`);
-    if (props.candidate.address?.trim()) parts.push(props.candidate.address.trim());
-    if (parts.length === 0) return 'Город и адрес не указаны';
-    return parts.join(' · ');
+  /** Город, м., переезд, командировки, адрес — см. buildCandidateLocationLine */
+  const cityAndAddressLine = computed(() =>
+    buildCandidateLocationLine(props.candidate)
+  );
+
+  /** Бейдж «Обновлено»: дата резюме HH, иначе updated_at */
+  const resumeUpdatedDisplay = computed(() => {
+    const raw =
+      props.candidate.resume_updated_at?.trim() ||
+      props.candidate.updated_at?.trim();
+    if (!raw) return '';
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    }
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+    if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+    return raw;
   });
 
-  /** Зарплата кандидата: "80 000 - 100 000 ₽" или "80 000 ₽" */
-  const salaryLine = computed(() => {
-    const from = props.candidate.salaryFrom;
-    const to = props.candidate.salaryTo;
-    const hasFrom = typeof from === 'number' && !Number.isNaN(from);
-    const hasTo = typeof to === 'number' && !Number.isNaN(to);
+  const sourceBadgeText = computed(() => {
+    const s = props.candidate.source?.trim();
+    return s ? `Источник: ${s}` : '';
+  });
 
-    if (!hasFrom && !hasTo) return '';
+  const showMetaBadges = computed(
+    () => Boolean(resumeUpdatedDisplay.value || sourceBadgeText.value)
+  );
 
-    const format = (v: number) =>
-      new Intl.NumberFormat('ru-RU', {
-        maximumFractionDigits: 0,
-      }).format(v);
+  const salaryLine = computed(() => formatCandidateSalaryLine(props.candidate));
 
-    let main = '';
-    if (hasFrom && hasTo && from !== to) {
-      main = `${format(from as number)} - ${format(to as number)}`;
-    } else if (hasFrom) {
-      main = format(from as number);
-    } else if (hasTo) {
-      main = format(to as number);
-    }
-
-    if (!main) return '';
-
-    const cur = (props.candidate.currency || 'RUR').toUpperCase();
-    const suffix = cur === 'RUR' || cur === 'RUB' ? '₽' : cur;
-    return `${main} ${suffix}`;
+  /** Пол для UI: по HH `gender.id` (male/female), иначе нормализация старого текста (напр. «Мужской») */
+  const genderDisplayLabel = computed(() => {
+    const id = props.candidate.gender_id;
+    if (id === 'male') return 'Мужчина';
+    if (id === 'female') return 'Женщина';
+    const g = props.candidate.gender?.trim();
+    if (!g) return '';
+    if (/мужск/i.test(g)) return 'Мужчина';
+    if (/женск/i.test(g)) return 'Женщина';
+    return g;
   });
 
   /** Пол и возраст в одну строку, серым, через точку (как у вакансий) */
   const genderAndAgeLine = computed(() => {
     const parts: string[] = [];
-    if (props.candidate.gender?.trim()) parts.push(props.candidate.gender.trim());
+    const genderLabel = genderDisplayLabel.value;
+    if (genderLabel) parts.push(genderLabel);
     if (props.candidate.age != null && props.candidate.age > 0) {
       const n = Number(props.candidate.age);
       const mod10 = n % 10;
@@ -206,6 +242,18 @@
     }
     if (parts.length === 0) return '';
     return parts.join(' · ');
+  });
+
+  /** Для отображения и для ввода: без пробелов. */
+  const tagNameForDisplay = (name: string) => (name || '').replace(/\s+/g, '');
+
+  const normalizeNewTagName = (raw: string) =>
+    raw.trim().replace(/^#+/u, '').replace(/\s+/g, '');
+
+  const candidateTagsList = computed((): TagCandidate[] => {
+    const raw = props.candidate.tags;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((t): t is TagCandidate => typeof t === 'object' && t !== null && 'id' in t);
   });
 
   const handleAddTagClick = async () => {
@@ -222,12 +270,12 @@
     }
     if (event.key !== 'Enter') return;
 
-    const tagName = tagInputValue.value.trim();
+    const tagName = normalizeNewTagName(tagInputValue.value);
 
     if (!tagName) return;
 
-    const existingTag = props.candidate.tags?.find(tag =>
-      typeof tag === 'object' ? tag.name === tagName : false
+    const existingTag = candidateTagsList.value.find(
+      t => tagNameForDisplay(t.name) === tagName
     );
 
     if (existingTag) {
@@ -306,6 +354,20 @@
     tagInputValue.value = '';
   };
 
+  const handleRemoveTag = async (tag: TagCandidate) => {
+    if (detachingTagId.value !== null) return;
+    detachingTagId.value = tag.id;
+    try {
+      await detachCandidateTag(props.candidate.id, tag.id);
+      const tags = candidateTagsList.value.filter(t => t.id !== tag.id);
+      emit('candidate-updated', { ...props.candidate, tags });
+    } catch (err) {
+      console.error('[CandidateInfoContent] Ошибка удаления тега:', err);
+    } finally {
+      detachingTagId.value = null;
+    }
+  };
+
   onMounted(() => {
     document.addEventListener('click', handleClickOutside);
   });
@@ -316,27 +378,43 @@
     <div>
       <div class="mb-6px text-25px font-bold leading-normal text-space">
         {{ candidate.surname }} {{ candidate.firstname }}
-        {{ candidate?.patronymic }}
         <span
           v-if="genderAndAgeLine"
           class="ml-1 text-13px font-normal text-slate-custom"
         >
-          · {{ genderAndAgeLine }}
+          {{ genderAndAgeLine }}
         </span>
       </div>
 
       <div class="mb-6px text-15px font-medium leading-normal text-space">
         {{ candidate.quickInfo || vacancyName }}
+        <template v-if="salaryLine">
+          <span class="font-normal text-space"> · </span>{{ salaryLine }}
+        </template>
       </div>
 
-      <div class="mb-6 text-13px text-slate-custom">
+      <div
+        class="text-13px text-slate-custom"
+        :class="showMetaBadges ? 'mb-4' : 'mb-6'"
+      >
         {{ cityAndAddressLine }}
       </div>
       <div
-        v-if="salaryLine"
-        class="mb-6 text-15px font-medium leading-normal text-space"
+        v-if="showMetaBadges"
+        class="mb-6 flex flex-wrap gap-2"
       >
-        {{ salaryLine }}
+        <span
+          v-if="resumeUpdatedDisplay"
+          class="inline-flex items-center rounded-fifteen bg-athens-gray px-2.5 py-[5px] text-xs font-normal leading-normal text-slate-custom"
+        >
+          Обновлено {{ resumeUpdatedDisplay }}
+        </span>
+        <span
+          v-if="sourceBadgeText"
+          class="inline-flex items-center rounded-fifteen bg-athens-gray px-2.5 py-[5px] text-xs font-normal leading-normal text-slate-custom"
+        >
+          {{ sourceBadgeText }}
+        </span>
       </div>
       <div ref="dropdownRoot" class="space-between relative flex flex-col gap-y-[5px]">
         <div v-if="candidate.phone || editingField === 'phone'" class="flex items-center leading-[1.5]">
@@ -403,7 +481,10 @@
             </Transition>
           </div>
         </div>
-        <div class="flex items-center leading-[1.5]">
+        <div
+          v-if="showCandidateEmailRow"
+          class="flex items-center leading-[1.5]"
+        >
           <span
             class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
           >
@@ -425,7 +506,7 @@
               class="text-left text-sm font-medium text-space"
               @click="openFieldDropdown('email', $event)"
             >
-              {{ candidate.email || 'Не указан' }}
+              {{ candidate.email }}
             </button>
             <Transition name="slide-fade">
               <div
@@ -458,64 +539,87 @@
             </Transition>
           </div>
         </div>
-        <div class="flex items-center leading-[1.5]">
+        <div class="flex items-start">
           <span
-            class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
-          >
-            Источник:
-          </span>
-          <span v-if="candidate.source" class="text-sm font-medium text-space">
-            {{ candidate.source }}
-          </span>
-          <span v-else class="text-sm font-medium text-space">Не указан</span>
-        </div>
-        <div class="flex items-center leading-[1.5]">
-          <span
-            class="mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
+            class="mr-[45px] min-w-[70px] shrink-0 self-start text-sm font-normal leading-normal text-space"
           >
             Теги:
           </span>
-          <div class="flex items-center">
-            <span
-              v-for="(tag, index) in candidate?.tags as TagCandidate[]"
-              :key="index"
-              class="mr-2 text-sm font-medium text-dodger"
+          <div class="flex min-w-0 flex-1 flex-col gap-y-1">
+            <div
+              v-if="candidateTagsList.length"
+              class="flex flex-wrap items-center gap-x-2 gap-y-1"
             >
-              #{{ tag.name }}
-            </span>
-            <button
-              v-if="!isAddingTag"
-              :class="{
-                'ml-2.5': candidate?.tags && candidate?.tags?.length > 0,
-              }"
-              class="flex items-center text-slate-custom"
-              @click="handleAddTagClick"
-            >
-              <svg-icon
-                name="plus-gray20"
-                width="18"
-                height="17"
-                class="mr-5px"
-              />
-              <span class="text-sm font-medium">Добавить</span>
-            </button>
-            <div v-else class="flex items-center gap-2">
-              <input
-                ref="tagInputRef"
-                v-model="tagInputValue"
-                type="text"
-                class="h-5 rounded border border-gray-300 px-2 text-sm focus:border-dodger focus:outline-none"
-                :disabled="isSubmittingTag"
-                @keydown="handleTagInputKeyDown"
-                @blur="handleCancelAddTag"
-              />
-              <button
-                v-if="isSubmittingTag"
-                class="text-state-custom text-sm"
-                disabled
+              <span
+                v-for="tag in candidateTagsList"
+                :key="tag.id"
+                class="group relative inline-flex max-w-full items-center whitespace-nowrap pr-1 focus-within:outline-none"
               >
-                Сохранение...
+                <span class="text-sm font-normal leading-normal text-dodger">
+                  #{{ tagNameForDisplay(tag.name) }}
+                </span>
+                <button
+                  type="button"
+                  class="tag-delete-btn pointer-events-none absolute -right-1 -top-2 z-10 inline-flex h-[22px] w-[22px] items-center justify-center rounded-md bg-white p-0 shadow-sm ring-1 ring-athens opacity-0 transition-opacity hover:bg-zumthor group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                  :disabled="detachingTagId === tag.id"
+                  aria-label="Удалить тег"
+                  title="Удалить"
+                  @click.stop="handleRemoveTag(tag)"
+                >
+                  <svg-icon
+                    name="cross15"
+                    width="12"
+                    height="12"
+                    class="block shrink-0"
+                    :class="{
+                      'animate-pulse opacity-50': detachingTagId === tag.id,
+                    }"
+                  />
+                </button>
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center">
+              <button
+                v-if="!isAddingTag"
+                type="button"
+                class="flex items-center text-13px font-normal leading-normal text-slate-custom transition-opacity hover:opacity-80"
+                @click="handleAddTagClick"
+              >
+                <svg-icon
+                  name="plus-gray20"
+                  width="18"
+                  height="17"
+                  class="mr-5px shrink-0"
+                />
+                Добавить
               </button>
+              <div v-else class="inline-flex min-w-0 items-baseline">
+                <span
+                  class="select-none text-sm font-normal leading-normal text-dodger"
+                  aria-hidden="true"
+                >
+                  #
+                </span>
+                <input
+                  ref="tagInputRef"
+                  v-model="tagInputValue"
+                  type="text"
+                  class="tag-input-inline max-w-[min(100%,280px)] border-0 bg-transparent p-0 text-sm font-normal leading-normal text-dodger outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none disabled:opacity-50"
+                  :style="{
+                    width: `${Math.max(2, (tagInputValue?.length || 0) + 1)}ch`,
+                  }"
+                  :disabled="isSubmittingTag"
+                  autocomplete="off"
+                  @keydown="handleTagInputKeyDown"
+                  @blur="handleCancelAddTag"
+                />
+                <span
+                  v-if="isSubmittingTag"
+                  class="ml-2 shrink-0 text-sm font-normal text-slate-custom"
+                >
+                  Сохранение…
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -540,11 +644,14 @@
         </div>
       </div>
     </div>
-    <div class="h-[200px] w-[200px]">
+    <div
+      class="h-[200px] w-[200px] shrink-0 overflow-hidden rounded-fifteen bg-catskill"
+    >
       <img
-        :src="candidate.imagePath || '/img/default-avatar.png'"
+        :src="candidatePhotoSrc"
         alt="Фото кандидата"
-        class="h-full w-full rounded-fifteen bg-catskill object-contain"
+        class="h-full w-full object-center"
+        :class="isPlaceholderAvatar ? 'object-contain' : 'object-cover'"
       />
     </div>
   </div>
@@ -568,5 +675,13 @@
 }
 .tg-icon-link :deep(path) {
   fill: white;
+}
+
+.tag-input-inline {
+  caret-color: #5898ff;
+}
+
+.tag-delete-btn :deep(svg path) {
+  fill: #f50a0a;
 }
 </style>

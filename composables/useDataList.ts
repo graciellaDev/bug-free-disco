@@ -30,7 +30,19 @@ export function useDataList<T>(config: DataListConfig<T>) {
       const response = await config.fetchFn(page, params);
 
       if (config.mode === 'infinite' && page > 1) {
-        items.value = [...items.value, ...response.items] as T[];
+        const prev = items.value as unknown as { id?: number }[];
+        const incoming = response.items as unknown as { id?: number }[];
+        const seen = new Set(
+          prev.map(i => i?.id).filter((id): id is number => id != null)
+        );
+        const appended = incoming.filter(row => {
+          const id = row?.id;
+          if (id == null) return true;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        items.value = [...items.value, ...(appended as T[])] as T[];
       } else {
         items.value = response.items;
       }
@@ -81,6 +93,10 @@ export function useDataList<T>(config: DataListConfig<T>) {
   };
 
   const refresh = async () => {
+    if (config.mode === 'infinite') {
+      await loadPage(1);
+      return;
+    }
     if (pagination.value) {
       await loadPage(pagination.value.current_page);
     } else {

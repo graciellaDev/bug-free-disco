@@ -32,7 +32,7 @@
     <transition name="slide-fade">
       <div
         v-if="isDropdownOpen"
-        class="absolute left-0 right-0 top-full mt-1 max-h-[22.1rem] overflow-y-auto bg-white border border-athens rounded-plus shadow-shadow-droplist z-20"
+        class="absolute left-0 right-0 top-full mt-1 max-h-[22.1rem] overflow-y-auto bg-white rounded-plus shadow-shadow-droplist z-20"
       >
         <template v-if="filteredOptions.length > 0">
           <div

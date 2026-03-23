@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, onMounted, toRef, watch } from 'vue';
+  import { ref, onMounted, toRef, watch, computed } from 'vue';
   import { getVacancyById } from '@/src/api/vacancies';
   import { usePopups } from '@/composables/usePopup';
   import { normalizeUsername } from '@/helpers/messengers';
@@ -15,6 +15,8 @@
   import { useCandidateActions } from '../composables/useCandidateActions';
   import { useCandidateActionsUI } from '../composables/useCandidateActionsUI';
   import { createCandidate, updateCandidate, attachCandidateToVacancy, sendCandidateEmail } from '@/src/api/candidates';
+  import { getCandidateProfileExternalUrl, getCandidateResumePdfUrl } from '@/utils/candidateSourceLinks';
+  import { displayCandidateEmailOrEmpty } from '@/utils/candidateDisplayEmail';
 
   import type {
     Candidate,
@@ -106,7 +108,7 @@
       firstname: props.candidate.firstname || '',
       surname: props.candidate.surname || '',
       patronymic: props.candidate.patronymic || '',
-      email: props.candidate.email || '',
+      email: displayCandidateEmailOrEmpty(props.candidate.email),
       phone: props.candidate.phone || '',
       resume: props.candidate.resume || '',
       source: props.candidate.source || '',
@@ -187,7 +189,7 @@
   };
 
   const candidateActions = useCandidateActions(
-    toRef(props.candidate),
+    toRef(props, 'candidate'),
     updated => emit('candidate-updated', updated),
     id => emit('candidate-deleted', id),
     () => popups.editCandidate.close()
@@ -203,17 +205,27 @@
     resetFormState,
   } = candidateActions;
 
-  const dropdownOptions = [
-    'Поделиться кандидатом',
-    'Редактировать',
-    'Файл резюме',
-    'Переместить в вакансию',
-    'Копировать в вакансию',
-    ...(props.candidate?.vacancy_id ? ['Открепить от вакансии'] : []),
-    'Отправить сообщение',
-    'Отправить на оценку {-}',
-    'Удалить',
-  ];
+  const dropdownOptions = computed(() => {
+    const c = props.candidate;
+    const items: string[] = [];
+    const profileUrl = getCandidateProfileExternalUrl(c);
+    if (profileUrl) {
+      const src = c?.source?.trim();
+      items.push(src ? `Смотреть на ${src}` : 'Смотреть на сайте источника');
+    }
+    if (getCandidateResumePdfUrl(c)) {
+      items.push('Скачать резюме');
+    }
+    items.push(
+      'Переместить в вакансию',
+      'Копировать в вакансию',
+      ...(c?.vacancy_id ? ['Открепить от вакансии'] : []),
+      'Отправить сообщение',
+      'Отправить на оценку {-}',
+      'Удалить'
+    );
+    return items;
+  });
 
   //  Подтверждение удаления кандидата
   const confirmDelete = async () => {
@@ -243,8 +255,7 @@
     }
   };
 
-  const candidateActionsUI = useCandidateActionsUI(toRef(props.candidate), {
-    onEdit: () => handleEditCandidate(),
+  const candidateActionsUI = useCandidateActionsUI(toRef(props, 'candidate'), {
     onDelete: () => handleDeleteCandidate(),
     onEmail: () => popups.mailToCandidate.open(),
     onMoveToVacancy: () => handleMoveToVacancy(),

@@ -24,7 +24,7 @@ export function useCandidateList(
     },
     fetchParams: filters,
     mode: mode ? mode : 'pagination',
-    autoLoad: true,
+    autoLoad: autoLoad ?? true,
   };
 
   return useDataList<Candidate>(config);
