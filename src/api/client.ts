@@ -7,6 +7,80 @@ type ApiRequestOptions<T> = Omit<
 > & {
   skipAuth?: boolean; // Если надо пропустить авторизацию
   customHeaders?: Record<string, string>;
+  /**
+   * По умолчанию true: не дергать глобальный лоадер из plugins/loader.ts на каждый запрос
+   * (иначе при открытии карточки кандидата десятки параллельных вызовов блокируют UI).
+   */
+  skipLoader?: boolean;
+};
+
+type RuntimePublicConfig = {
+  apiBase?: string;
+};
+
+let isAuthRedirecting = false;
+let lastAuthNotifyAt = 0;
+
+const getCookieValue = (name: string): string | null => {
+  try {
+    const value = useCookie<string | null>(name).value;
+    if (value != null && value !== '') return value;
+  } catch {
+    // useCookie может быть недоступен вне setup/composable контекста
+  }
+
+  if (import.meta.client) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  return null;
+};
+
+const getApiBase = (): string => {
+  try {
+    const config = useRuntimeConfig();
+    if (config?.public?.apiBase) {
+      return config.public.apiBase;
+    }
+  } catch {
+    // useRuntimeConfig может быть недоступен вне setup/composable контекста
+  }
+
+  if (import.meta.client) {
+    const runtime = (window as unknown as { __NUXT__?: { config?: { public?: RuntimePublicConfig } } })
+      .__NUXT__;
+    if (runtime?.config?.public?.apiBase) {
+      return runtime.config.public.apiBase;
+    }
+  }
+
+  return '/api';
+};
+
+const redirectToAuth = () => {
+  if (isAuthRedirecting) return;
+  isAuthRedirecting = true;
+  try {
+    const router = useRouter();
+    void router.replace('/auth');
+    return;
+  } catch {
+    // useRouter может быть недоступен вне setup/composable контекста
+  }
+
+  if (import.meta.client) {
+    window.location.href = '/auth';
+  }
+};
+
+const notifyAuthError = (message: string) => {
+  if (!import.meta.client) return;
+  const now = Date.now();
+  if (now - lastAuthNotifyAt < 5000) return;
+  lastAuthNotifyAt = now;
+  alert(message);
 };
 
 // Универсальная обработка ошибок API
@@ -31,8 +105,8 @@ async function handleApiError(error: unknown): Promise<void> {
           ? (errorData as ApiErrorResponse).message
           : null) || 'Ваша сессия истекла! Пожалуйста, авторизуйтесь снова.';
 
-      alert(message);
-      useRouter().replace('/auth');
+      notifyAuthError(message);
+      redirectToAuth();
       return;
     }
 
@@ -53,19 +127,28 @@ export async function apiFetch<T>(
   endpoint: string,
   options: ApiRequestOptions<ApiSuccessResponse<T>> = {}
 ): Promise<ApiSuccessResponse<T>> {
-  const config = useRuntimeConfig();
-  const authToken = useCookie('auth_token').value;
-  const authUser = useCookie('auth_user').value;
+  const apiBase = getApiBase();
+  const authToken = getCookieValue('auth_token');
+  const authUser = getCookieValue('auth_user');
+
+  const {
+    skipAuth,
+    customHeaders,
+    skipLoader = true,
+    ...fetchOptions
+  } = options as ApiRequestOptions<ApiSuccessResponse<T>>;
 
   // Формирование заголовков запроса
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    ...options.customHeaders,
+    ...customHeaders,
   };
 
   // Добавление авторизации, если не пропущена
-  if (!options.skipAuth) {
+  if (!skipAuth) {
     if (!authToken || !authUser) {
+      notifyAuthError('Ваша сессия истекла! Пожалуйста, авторизуйтесь снова.');
+      redirectToAuth();
       throw createError({
         statusCode: 401,
         statusMessage: 'Токены авторизации отсутствуют',
@@ -77,10 +160,11 @@ export async function apiFetch<T>(
 
   try {
     const response = await $fetch<ApiSuccessResponse<T>>(
-      `${config.public.apiBase}${endpoint}`,
+      `${apiBase}${endpoint}`,
       {
-        ...options,
+        ...fetchOptions,
         headers,
+        skipLoader,
       }
     );
     const parsedResponse =

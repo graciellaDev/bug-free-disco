@@ -121,7 +121,7 @@
       isOpenValue ? 'opacity-100' : 'opacity-0',
       overflowContainer
         ? 'overflow-y-auto'
-        : overflowVisible
+        : overflowVisible || allowDropdownOverflow
           ? 'overflow-visible'
           : 'overflow-hidden',
       parentRounded ? 'rounded-fifteen' : 'rounded-none',
@@ -129,8 +129,13 @@
   >
     <div
       @click.self="closePopup"
-      class="absolute w-full overflow-hidden rounded-fifteen bg-white"
-      :class="[props.noOuterPadding ? 'p-0' : 'p-25px']"
+      class="absolute w-full rounded-fifteen bg-white"
+      :class="[
+        props.noOuterPadding ? 'p-0' : 'p-25px',
+        props.allowDropdownOverflow || props.disableOverflowHidden
+          ? 'overflow-visible'
+          : 'overflow-hidden',
+      ]"
       :style="{
         maxWidth: width,
         top: lgSize ? '10%' : 'auto',
@@ -160,7 +165,7 @@
           class="h-full overflow-y-auto pr-[15px]"
           :class="{
             'overflow-y-auto': !allowDropdownOverflow,
-            'overtlow-visible': allowDropdownOverflow,
+            'overflow-visible': allowDropdownOverflow,
           }"
           :style="{
             ...customStyles,

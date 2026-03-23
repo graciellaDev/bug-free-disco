@@ -107,8 +107,69 @@ export async function updateCandidate(
   );
 }
 
+export async function detachCandidateTag(
+  candidateId: number,
+  tagId: number
+): Promise<void> {
+  await apiDelete(`/candidates/${candidateId}/tags/${tagId}`);
+}
+
 export async function deleteCandidate(id: number): Promise<void> {
   await apiDelete(`/candidates/${id}`);
+}
+
+/**
+ * Скачать PDF резюме через бэкенд (HH с токеном сервера).
+ */
+export async function downloadCandidateResume(candidateId: number): Promise<void> {
+  const config = useRuntimeConfig();
+  const authToken = useCookie('auth_token').value;
+  const authUser = useCookie('auth_user').value;
+  if (!authToken || !authUser) {
+    throw new Error('Не авторизован');
+  }
+  const url = `${config.public.apiBase}/candidates/${candidateId}/download-resume`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      'X-Auth-User': authUser,
+      Accept: 'application/pdf, application/json',
+    },
+  });
+  if (!res.ok) {
+    let msg = 'Не удалось скачать резюме';
+    try {
+      const j = (await res.json()) as { message?: string };
+      if (j?.message) msg = j.message;
+    } catch {
+      /* тело не JSON */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  let filename = `resume-${candidateId}.pdf`;
+  const cd = res.headers.get('Content-Disposition');
+  if (cd) {
+    const utf = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const quoted = /filename="([^"]+)"/i.exec(cd);
+    const plain = /filename=([^;\s]+)/i.exec(cd);
+    const raw = utf?.[1] ?? quoted?.[1] ?? plain?.[1];
+    if (raw) {
+      try {
+        filename = decodeURIComponent(raw.replace(/^"|"$/g, ''));
+      } catch {
+        filename = raw.replace(/^"|"$/g, '');
+      }
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
 }
 
 /**
@@ -162,10 +223,13 @@ export async function uploadCandidatePhoto(
 }
 
 export async function getCandidateConsiderations(
-  candidateId: number
+  candidateId: number,
+  opts?: { signal?: AbortSignal }
 ): Promise<CandidateConsideration[]> {
   const response = await apiGet<CandidateConsideration[]>(
-    `/candidates/${candidateId}/considerations`
+    `/candidates/${candidateId}/considerations`,
+    undefined,
+    { signal: opts?.signal }
   );
   return Array.isArray(response.data) ? response.data : [];
 }
@@ -173,13 +237,16 @@ export async function getCandidateConsiderations(
 /** События по кандидату (лог: создание резюме, смена этапа, изменение полей и т.д.). При указании vacancyId — события в контексте вакансии. */
 export async function getCandidateEvents(
   candidateId: number,
-  vacancyId?: number | null
+  vacancyId?: number | null,
+  opts?: { signal?: AbortSignal }
 ): Promise<CandidateEvent[]> {
   const url =
     vacancyId != null
       ? `/candidates/${candidateId}/vacancies/${vacancyId}/events`
       : `/candidates/${candidateId}/events`;
-  const response = await apiGet<CandidateEvent[]>(url);
+  const response = await apiGet<CandidateEvent[]>(url, undefined, {
+    signal: opts?.signal,
+  });
   return Array.isArray(response.data) ? response.data : [];
 }
 

@@ -26,6 +26,32 @@ export type AttachmentCandidate = {
   link: string;
 };
 
+/** Одна запись основного образования из HH (education.primary) */
+export type HhEducationPrimaryEntry = {
+  name: string;
+  organization?: string;
+  result?: string;
+  year?: string;
+  city?: string;
+  level?: string;
+};
+
+/** Одна запись курса / доп. образования из HH (education.additional) */
+export type HhEducationAdditionalEntry = {
+  id?: string;
+  name: string;
+  organization?: string;
+  result?: string;
+  year?: string;
+};
+
+/** Сертификат из HH (`certificate` в резюме) для отображения в карточке */
+export type HhCertificateDisplayItem = {
+  title: string;
+  year?: string;
+  url?: string;
+};
+
 /** Одна запись опыта работы (компания, период, должность, описание) */
 export type ExperienceEntryCandidate = {
   id?: number | string;
@@ -51,8 +77,20 @@ export interface Candidate {
   age?: number | null;
   /** Пол (в карточке после имени, серым через точку с возрастом) */
   gender?: string | null;
+  /** HH `gender.id`: male | female — приоритетнее строки `gender` для отображения */
+  gender_id?: 'male' | 'female' | null;
   phone?: string | null;
   location?: string;
+  /** Станция метро (HH `metro.name`) */
+  metro_name?: string | null;
+  /** HH `relocation.type.id` (справочник relocation_type) */
+  relocation_type_id?: string | null;
+  /** Текст готовности к переезду из HH (если id нет) */
+  relocation_readiness?: string | null;
+  /** HH `business_trip_readiness.id` (справочник business_trip_readiness) */
+  business_trip_readiness_id?: string | null;
+  /** Текст готовности к командировкам из HH (если id нет) */
+  business_trip_readiness?: string | null;
   /** Адрес (в карточке кандидата после города) */
   address?: string | null;
   /** Желаемая зарплата (от) */
@@ -70,8 +108,12 @@ export interface Candidate {
   workFormat?: string | null;
   work_format?: string | null;
   education?: string;
-  /** Уровень образования */
+  /** Уровень образования (в API Laravel: education_level_id — часто текст уровня из HH) */
+  education_level_id?: string | null;
+  /** @deprecated используйте education_level_id */
   educationLevel?: string | null;
+  /** Основное образование из HH (массив вузов) */
+  education_primary?: HhEducationPrimaryEntry[] | null;
   /** Название заведения */
   educationInstitution?: string | null;
   /** Факультет */
@@ -88,9 +130,17 @@ export interface Candidate {
   courseSpecialization?: string | null;
   /** Курсы повышения квалификации: год окончания */
   courseYear?: string | null;
+  /** Все курсы из HH (education.additional); поля course* — дубль первой записи для совместимости */
+  education_additional?: HhEducationAdditionalEntry[] | null;
   link?: string | null;
   /** Общий опыт (строка, напр. "28 лет 4 месяца") для заголовка блока */
   experience?: string | null;
+  /** Навыки из HH (может прийти строкой или массивом строк) */
+  skill_set?: string | string[] | null;
+  /** Языки из HH (может прийти строкой JSON/текстом или массивом объектов) */
+  language?: unknown;
+  /** Рекомендации из HH */
+  recommendation?: unknown;
   /** Список записей опыта работы (компании, периоды, описания) */
   experiences?: ExperienceEntryCandidate[] | null;
   telegram?: string | null;
@@ -104,6 +154,8 @@ export interface Candidate {
   coverPath?: string | null;
   /** Текст сопроводительного письма */
   coverLetter?: string | null;
+  /** Сертификаты из HH (массив объектов в ответе API) */
+  certificate?: unknown;
   source?: string | null;
   isReserve?: boolean | null;
   customer?: number | null;
@@ -117,20 +169,26 @@ export interface Candidate {
   otherLanguages?: string | null;
   /** Обо мне (текст) */
   aboutMe?: string | null;
-  /** Дополнительно: желательное время в пути до работы */
+  /** Дополнительно: желательное время в пути (HH `travel_time`, в API Laravel: `commute_time`) */
+  commute_time?: string | null;
   commuteTime?: string | null;
-  /** Дополнительно: командировки */
+  /** Командировки (HH `business_trip_readiness`, API: `business_trip_readiness`) */
+  business_trip_readiness?: string | null;
   businessTrips?: string | null;
-  /** Дополнительно: гражданство */
   citizenship?: string | null;
-  /** Дополнительно: разрешение на работу */
+  /** Разрешение на работу (HH `work_ticket`, API: `work_ticket`) */
+  work_ticket?: string | null;
   workPermit?: string | null;
-  /** Дополнительно: наличие машины */
+  /** Наличие автомобиля (HH `has_vehicle`, API: `has_vehicle`) */
+  has_vehicle?: string | null;
   hasCar?: string | null;
-  /** Дополнительно: наличие прав */
+  /** Категории прав (HH `driver_license_types`, API: JSON-массив) */
+  driver_license_types?: string[] | null;
   hasDriverLicense?: string | null;
   tags?: TagCandidate[] | number[] | null;
   customFields?: CustomFieldCandidate[] | null;
+  /** Дата обновления резюме на HH */
+  resume_updated_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }

@@ -37,6 +37,7 @@ const textareaValue = ref('')
 const passwordValue = ref('')
 const phoneValue = ref('')
 const dropdownValue = ref<string | null>(null)
+const departmentValue = ref<string | null>(null)
 const multiSelectValue = ref<string[]>([])
 const checkbox1 = ref(false)
 const checkbox2 = ref(true)
@@ -50,6 +51,17 @@ const dropdownOptions = [
   { name: 'Вариант 1', value: 'v1' },
   { name: 'Вариант 2', value: 'v2' },
   { name: 'Вариант 3', value: 'v3' },
+]
+
+const departmentOptions = [
+  { name: 'Отдел продаж', value: 'sales' },
+  { name: 'Отдел маркетинга', value: 'marketing' },
+  { name: 'Отдел подбора персонала', value: 'recruiting' },
+  { name: 'Отдел разработки', value: 'engineering' },
+  { name: 'Отдел клиентского сервиса', value: 'support' },
+  { name: 'Финансовый отдел', value: 'finance' },
+  { name: 'Юридический отдел', value: 'legal' },
+  { name: 'Административный отдел', value: 'administration' },
 ]
 
 // Иконки из папки icons (Tilda Icons): список генерируется скриптом scripts/extract-icons.cjs
@@ -218,11 +230,23 @@ onMounted(async () => {
       <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
         5. Выпадающий список (MyDropdown)
       </h2>
-      <div class="max-w-xs">
+      <div class="max-w-xs mb-4">
         <MyDropdown
           v-model="dropdownValue"
           :options="dropdownOptions"
           placeholder="Выберите вариант"
+        />
+      </div>
+      <div class="max-w-xs">
+        <p class="text-sm text-bali mb-1">
+          Поле "Отдел" (поиск по списку)
+        </p>
+        <MyDropdown
+          v-model="departmentValue"
+          :options="departmentOptions"
+          placeholder="Выберите отдел"
+          :searchable="true"
+          search-placeholder="Начните вводить название отдела"
         />
       </div>
     </section>

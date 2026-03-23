@@ -1,11 +1,4 @@
 <script setup lang="ts">
-  import {
-    ref,
-    watch,
-    onMounted,
-    onBeforeUnmount,
-    nextTick,
-  } from 'vue';
   import MyCheckbox from '@/components/custom/MyCheckbox.vue';
   import UiAvatar from '@/components/ui/avatar/Avatar.vue';
   import UiAvatarImage from '@/components/ui/avatar/AvatarImage.vue';
@@ -25,7 +18,16 @@
     'zarplata.ru': '/logos/zarplata.svg',
   };
 
-  const props = defineProps<{
+  interface Props {
+    candidates: Candidate[];
+    loading?: boolean;
+    selected?: Record<number, boolean>;
+    showCheckboxes?: boolean;
+    allSelected?: boolean;
+    activeCandidateId?: number | null;
+  }
+
+  const props: Props = defineProps<{
     candidates: Candidate[];
     loading: boolean;
     selected: Record<number, boolean>;
@@ -33,48 +35,13 @@
     allSelected: boolean;
     /** ID кандидата, открытого в правой панели — для подсветки строки */
     activeCandidateId?: number | null;
-    /** Есть ли ещё страницы (infinite на странице вакансии) */
-    hasMore?: boolean;
   }>();
 
   const emit = defineEmits<{
     'item-click': [candidate: Candidate, index: number];
     'selection-change': [selected: Record<number, boolean>];
     'select-all': [isSelected: boolean];
-    'load-more': [];
   }>();
-
-  const sentinelRef = ref<HTMLElement | null>(null);
-  let loadMoreObserver: IntersectionObserver | null = null;
-
-  const bindLoadMoreObserver = () => {
-    loadMoreObserver?.disconnect();
-    loadMoreObserver = null;
-    if (!sentinelRef.value || !props.hasMore) return;
-
-    loadMoreObserver = new IntersectionObserver(
-      entries => {
-        const hit = entries[0]?.isIntersecting;
-        if (hit && props.hasMore && !props.loading) {
-          emit('load-more');
-        }
-      },
-      { root: null, rootMargin: '120px', threshold: 0 }
-    );
-    loadMoreObserver.observe(sentinelRef.value);
-  };
-
-  watch(
-    () =>
-      [props.hasMore, props.loading, props.candidates?.length ?? 0] as const,
-    () => nextTick(() => bindLoadMoreObserver())
-  );
-
-  onMounted(() => nextTick(() => bindLoadMoreObserver()));
-  onBeforeUnmount(() => {
-    loadMoreObserver?.disconnect();
-    loadMoreObserver = null;
-  });
 
   const getFullName = (candidate: Candidate) => {
     const parts = [candidate.firstname, candidate.surname].filter(Boolean);
@@ -209,19 +176,6 @@
           />
         </div>
       </div>
-
-      <div
-        v-if="hasMore"
-        ref="sentinelRef"
-        class="candidate-list-sentinel h-1 w-full shrink-0"
-        aria-hidden="true"
-      />
-      <div
-        v-if="loading && candidates?.length"
-        class="flex justify-center py-3"
-      >
-        <UiDotsLoader />
-      </div>
     </div>
 
     <!-- Пустое состояние -->
@@ -244,12 +198,8 @@
   }
 
   .list-header {
-    position: sticky;
-    top: 0;
-    z-index: 2;
     padding: 12px 16px;
     border-bottom: 1px solid #f4f6f8;
-    background-color: #ffffff;
   }
 
   .candidate-item {

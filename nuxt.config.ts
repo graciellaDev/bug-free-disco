@@ -94,8 +94,14 @@ export default defineNuxtConfig({
     storesDirs: ['~/stores'],
   },
   routeRules: {
-    // Страница входа — только клиентский рендер, иначе при SSR возможен 503 (недоступность API из контейнера при первом запросе)
     '/auth': { ssr: false },
+    // Все защищённые разделы кабинета: SSR не нужен (требуют авторизации)
+    // и убирает 6+ сек блокировку Nitro‑воркера при dev‑пересборке
+    '/vacancies/**': { ssr: false },
+    '/candidates/**': { ssr: false },
+    '/applications/**': { ssr: false },
+    '/reports/**': { ssr: false },
+    '/settings/**': { ssr: false },
     // Проксирование /api/* на Laravel
     '/api/**': {
       proxy: (process.env.NUXT_PUBLIC_API_BACKEND || 'http://127.0.0.1:8000') + '/api/**',

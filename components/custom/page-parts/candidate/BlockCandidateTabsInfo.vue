@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  import { ref, watch, nextTick } from 'vue';
+  import { ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
   import BtnTab from '~/components/custom/BtnTab.vue';
+  import TextWithLinks from '~/components/custom/TextWithLinks.vue';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
   import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
   import FileUpload from '~/components/custom/FileUpload.vue';
@@ -23,8 +24,18 @@
     updateCandidateTask,
   } from '@/src/api/candidates';
 
-  import type { Candidate, CandidateEvent } from '@/types/candidates';
-  import type { CandidateConsideration } from '@/types/candidates';
+  import type {
+    Candidate,
+    CandidateConsideration,
+    CandidateEvent,
+    HhEducationPrimaryEntry,
+    HhEducationAdditionalEntry,
+    HhCertificateDisplayItem,
+  } from '@/types/candidates';
+  import { hasDisplayableCandidateEmail } from '@/utils/candidateDisplayEmail';
+  import { formatCandidateSalaryLine } from '@/utils/candidateSalaryLine';
+  import { formatCandidateExperienceForDisplay } from '@/utils/formatCandidateExperience';
+  import { formatExperienceWorkPeriod } from '@/utils/formatExperienceWorkPeriod';
   // import type { TimelineGroup }
 
   const newName = ref('');
@@ -358,6 +369,78 @@
 
   /** Состояние «Развернуть» по индексу записи опыта */
   const expandedExperience = ref<Record<number, boolean>>({});
+
+  /** Текст описания не помещается в 2 строки (line-clamp) — нужна кнопка */
+  const experienceDescOverflow = ref<Record<number, boolean>>({});
+  const experienceDescEls = new Map<number, HTMLElement>();
+  const experienceDescObservers = new Map<number, ResizeObserver>();
+
+  function measureExpDescriptionOverflow(idx: number) {
+    const el = experienceDescEls.get(idx);
+    if (!el) return;
+    if (expandedExperience.value[idx]) return;
+    const hasMore = el.scrollHeight > el.clientHeight + 2;
+    if (experienceDescOverflow.value[idx] === hasMore) return;
+    experienceDescOverflow.value[idx] = hasMore;
+  }
+
+  function setExperienceDescriptionEl(el: unknown, idx: number) {
+    if (!(el instanceof HTMLElement)) {
+      if (experienceDescEls.has(idx)) {
+        experienceDescObservers.get(idx)?.disconnect();
+        experienceDescObservers.delete(idx);
+        experienceDescEls.delete(idx);
+        if (idx in experienceDescOverflow.value) {
+          delete experienceDescOverflow.value[idx];
+        }
+      }
+      return;
+    }
+
+    if (experienceDescEls.get(idx) === el) return;
+
+    experienceDescObservers.get(idx)?.disconnect();
+    experienceDescEls.set(idx, el);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        measureExpDescriptionOverflow(idx);
+      });
+      ro.observe(el);
+      experienceDescObservers.set(idx, ro);
+    }
+    nextTick(() => measureExpDescriptionOverflow(idx));
+  }
+
+  watch(expandedExperience, () => {
+    nextTick(() => {
+      experienceDescEls.forEach((_, idx) => measureExpDescriptionOverflow(idx));
+    });
+  });
+
+  watch(
+    () => props.candidate?.id,
+    (newId, oldId) => {
+      if (newId === oldId) return;
+      expandedExperience.value = {};
+      experienceDescOverflow.value = {};
+      experienceDescObservers.forEach((o) => o.disconnect());
+      experienceDescObservers.clear();
+      experienceDescEls.clear();
+    }
+  );
+
+  onBeforeUnmount(() => {
+    experienceDescObservers.forEach((o) => o.disconnect());
+    experienceDescObservers.clear();
+    experienceDescEls.clear();
+  });
+
+  const experienceDisplay = computed(() => {
+    const f = formatCandidateExperienceForDisplay(props.candidate.experience);
+    return f !== '' ? f : '—';
+  });
+
   const toggleExperience = (idx: number) => {
     expandedExperience.value = {
       ...expandedExperience.value,
@@ -365,16 +448,23 @@
     };
   };
 
-  const loadConsiderations = async () => {
+  let considerationsAbort: AbortController | null = null;
+
+  const loadConsiderations = async (ac: AbortController) => {
     if (!props.candidate?.id) return;
     considerationsLoading.value = true;
     try {
-      considerations.value = await getCandidateConsiderations(props.candidate.id);
-    } catch (e) {
+      considerations.value = await getCandidateConsiderations(props.candidate.id, {
+        signal: ac.signal,
+      });
+    } catch (e: unknown) {
+      if (ac.signal.aborted) return;
       console.error('Ошибка загрузки рассмотрений:', e);
       considerations.value = [];
     } finally {
-      considerationsLoading.value = false;
+      if (considerationsAbort === ac) {
+        considerationsLoading.value = false;
+      }
     }
   };
 
@@ -386,10 +476,16 @@
       try {
         const saved = sessionStorage.getItem(`${STORAGE_KEY}-${id}`);
         if (saved && TAB_VALUES.includes(saved as (typeof TAB_VALUES)[number])) {
-          activeTab.value = saved;
+          // Не открываем тяжёлые вкладки автоматически при переключении кандидата:
+          // именно это вызывало зависание на «тяжёлых» HH-профилях.
+          activeTab.value =
+            saved === 'chat' || saved === 'review' ? 'resume' : saved;
+        } else {
+          activeTab.value = 'resume';
         }
       } catch {
         // ignore
+        activeTab.value = 'resume';
       }
     },
     { immediate: true }
@@ -410,11 +506,668 @@
   );
 
   watch(
-    () => [activeTab.value, props.candidate?.id, props.candidate],
+    () => [activeTab.value, props.candidate?.id] as const,
     ([tab, id]) => {
-      if (tab === 'review' && id) loadConsiderations();
+      considerationsAbort?.abort();
+      considerationsAbort = null;
+      if (tab === 'review' && id) {
+        const ac = new AbortController();
+        considerationsAbort = ac;
+        void loadConsiderations(ac);
+      } else {
+        considerationsLoading.value = false;
+      }
     },
     { immediate: true }
+  );
+
+  /** Карточка должности: показываем, если есть данные (тип занятости в условие не входит) */
+  const hasResumePositionBlock = computed(() => {
+    const c = props.candidate;
+    if (!c) return false;
+    const nonEmpty = (v: unknown) =>
+      typeof v === 'string' && v.trim().length > 0;
+    const hasSalary = formatCandidateSalaryLine(c) !== '';
+    return !!(
+      nonEmpty(c.quickInfo) ||
+      nonEmpty(c.specializations) ||
+      nonEmpty(c.employment) ||
+      nonEmpty(c.workFormat) ||
+      nonEmpty(c.work_format) ||
+      hasSalary
+    );
+  });
+
+  const resumeSalaryLine = computed(() =>
+    formatCandidateSalaryLine(props.candidate)
+  );
+
+  const hhSkillSetItems = computed(() => {
+    const raw = (props.candidate as { skill_set?: unknown }).skill_set;
+    if (Array.isArray(raw)) {
+      return raw
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean);
+    }
+    if (typeof raw !== 'string') return [];
+    const text = raw.trim();
+    if (!text) return [];
+
+    if (text.startsWith('[') || text.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => (typeof item === 'string' ? item.trim() : ''))
+            .filter(Boolean);
+        }
+      } catch {
+        // ignore parse errors and fallback to separators below
+      }
+    }
+
+    return text
+      .split(/[\n,;]+/u)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  });
+
+  type HhLanguageItem = {
+    name: string;
+    level?: string;
+    isNative: boolean;
+  };
+
+  function splitLanguageCsv(raw: string): string[] {
+    return raw
+      .split(/[,;\n]+/u)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function parseLanguageLabel(raw: string): { name: string; level?: string } {
+    const text = raw.trim();
+    if (!text) return { name: '' };
+    const paren = /^(.*?)\s*\((.*?)\)\s*$/u.exec(text);
+    if (paren) {
+      return {
+        name: paren[1].trim(),
+        level: paren[2].trim() || undefined,
+      };
+    }
+    const dash = /^(.*?)\s*[-–—]\s*(.*?)$/u.exec(text);
+    if (dash) {
+      return {
+        name: dash[1].trim(),
+        level: dash[2].trim() || undefined,
+      };
+    }
+    return { name: text };
+  }
+
+  const hhLanguageItems = computed(() => {
+    const raw = (props.candidate as { language?: unknown }).language;
+    if (raw == null) {
+      const fallback: HhLanguageItem[] = [];
+      const nativeRaw = props.candidate.nativeLanguage?.trim() || '';
+      const otherRaw = props.candidate.otherLanguages?.trim() || '';
+      if (nativeRaw) {
+        splitLanguageCsv(nativeRaw).forEach((name) => {
+          fallback.push({ name, isNative: true });
+        });
+      }
+      if (otherRaw) {
+        splitLanguageCsv(otherRaw).forEach((line) => {
+          const parsed = parseLanguageLabel(line);
+          if (parsed.name) {
+            fallback.push({
+              name: parsed.name,
+              level: parsed.level,
+              isNative: false,
+            });
+          }
+        });
+      }
+      return fallback;
+    }
+
+    let source: unknown = raw;
+    if (typeof source === 'string') {
+      const text = source.trim();
+      if (!text) return [] as HhLanguageItem[];
+      if (text.startsWith('[') || text.startsWith('{')) {
+        try {
+          source = JSON.parse(text);
+        } catch {
+          return [{ name: text, isNative: false }];
+        }
+      } else {
+        return text
+          .split(/[\n,;]+/u)
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .map((name) => ({ name, isNative: false }));
+      }
+    }
+
+    if (!Array.isArray(source)) return [] as HhLanguageItem[];
+
+    const parsed = source
+      .map((item) => {
+        if (typeof item === 'string') {
+          const name = item.trim();
+          if (!name) return null;
+          return { name, isNative: false };
+        }
+        if (!item || typeof item !== 'object') return null;
+        const obj = item as Record<string, unknown>;
+        const name =
+          (typeof obj.name === 'string' && obj.name.trim()) ||
+          (typeof obj.title === 'string' && obj.title.trim()) ||
+          '';
+        if (!name) return null;
+        const levelObj =
+          obj.level && typeof obj.level === 'object'
+            ? (obj.level as Record<string, unknown>)
+            : null;
+        const level =
+          (typeof levelObj?.name === 'string' && levelObj.name.trim()) ||
+          (typeof obj.level === 'string' && obj.level.trim()) ||
+          undefined;
+        const isNative =
+          obj.native === true ||
+          obj.is_native === true ||
+          (typeof level === 'string' && /родн/i.test(level));
+        return { name, level, isNative };
+      })
+      .filter((item): item is HhLanguageItem => item !== null);
+
+    if (parsed.length > 0) return parsed;
+
+    const fallback: HhLanguageItem[] = [];
+    const nativeRaw = props.candidate.nativeLanguage?.trim() || '';
+    const otherRaw = props.candidate.otherLanguages?.trim() || '';
+    if (nativeRaw) {
+      splitLanguageCsv(nativeRaw).forEach((name) => {
+        fallback.push({ name, isNative: true });
+      });
+    }
+    if (otherRaw) {
+      splitLanguageCsv(otherRaw).forEach((line) => {
+        const parsedLine = parseLanguageLabel(line);
+        if (parsedLine.name) {
+          fallback.push({
+            name: parsedLine.name,
+            level: parsedLine.level,
+            isNative: false,
+          });
+        }
+      });
+    }
+
+    return fallback;
+  });
+
+  const hhNativeLanguages = computed(() =>
+    hhLanguageItems.value.filter((item) => item.isNative)
+  );
+
+  const hhOtherLanguages = computed(() =>
+    hhLanguageItems.value
+      .filter((item) => !item.isNative)
+      .sort((a, b) => {
+        const levelOrder = (level?: string) => {
+          const s = (level || '').trim().toUpperCase();
+          if (!s) return 0;
+          if (s.includes('C2')) return 62;
+          if (s.includes('C1')) return 61;
+          if (s.includes('B2')) return 52;
+          if (s.includes('B1')) return 51;
+          if (s.includes('A2')) return 42;
+          if (s.includes('A1')) return 41;
+          if (s.includes('ADVANCED')) return 60;
+          if (s.includes('UPPER-INTERMEDIATE')) return 52;
+          if (s.includes('INTERMEDIATE')) return 51;
+          if (s.includes('ELEMENTARY')) return 41;
+          if (s.includes('НАЧАЛЬНЫЙ')) return 41;
+          if (s.includes('СРЕДНИЙ')) return 51;
+          if (s.includes('ПРОДВИНУТ')) return 60;
+          return 1;
+        };
+        const byLevel = levelOrder(b.level) - levelOrder(a.level);
+        if (byLevel !== 0) return byLevel;
+        return a.name.localeCompare(b.name, 'ru');
+      })
+  );
+
+  type HhRecommendationItem = {
+    name: string;
+    position?: string;
+    company?: string;
+  };
+
+  function parseHhRecommendationItem(item: unknown): HhRecommendationItem | null {
+    if (!item || typeof item !== 'object') return null;
+    const obj = item as Record<string, unknown>;
+
+    const name =
+      (typeof obj.name === 'string' && obj.name.trim()) ||
+      (typeof obj.person_name === 'string' && obj.person_name.trim()) ||
+      (typeof obj.fio === 'string' && obj.fio.trim()) ||
+      '';
+    if (!name) return null;
+
+    const position =
+      (typeof obj.position === 'string' && obj.position.trim()) ||
+      (typeof obj.post === 'string' && obj.post.trim()) ||
+      (typeof obj.role === 'string' && obj.role.trim()) ||
+      undefined;
+
+    const company =
+      (typeof obj.organization === 'string' && obj.organization.trim()) ||
+      (typeof obj.company === 'string' && obj.company.trim()) ||
+      undefined;
+
+    return { name, position, company };
+  }
+
+  const hhRecommendations = computed(() => {
+    const raw = (props.candidate as { recommendation?: unknown }).recommendation;
+    if (raw == null) return [] as HhRecommendationItem[];
+
+    let source: unknown = raw;
+    if (typeof source === 'string') {
+      const text = source.trim();
+      if (!text) return [] as HhRecommendationItem[];
+      if (text.startsWith('[') || text.startsWith('{')) {
+        try {
+          source = JSON.parse(text);
+        } catch {
+          return [{ name: text }];
+        }
+      } else {
+        return text
+          .split(/\n{2,}|[\n;]+/u)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => ({ name: line }));
+      }
+    }
+
+    if (!Array.isArray(source)) {
+      const single = parseHhRecommendationItem(source);
+      return single ? [single] : [];
+    }
+
+    return source
+      .map((item) => parseHhRecommendationItem(item))
+      .filter((item): item is HhRecommendationItem => item !== null);
+  });
+
+  function parseHhEducationPrimaryEntry(item: unknown): HhEducationPrimaryEntry | null {
+    if (!item || typeof item !== 'object') return null;
+    const o = item as Record<string, unknown>;
+    const name = typeof o.name === 'string' ? o.name : '';
+    const organization = typeof o.organization === 'string' ? o.organization : '';
+    const result = typeof o.result === 'string' ? o.result : '';
+    const year = typeof o.year === 'string' ? o.year : '';
+    const city = typeof o.city === 'string' ? o.city : '';
+    const level = typeof o.level === 'string' ? o.level : '';
+    if (
+      !name.trim() &&
+      !organization.trim() &&
+      !result.trim() &&
+      !year.trim() &&
+      !city.trim()
+    ) {
+      return null;
+    }
+    return { name, organization, result, year, city, level };
+  }
+
+  const resumeEducationLevelLabel = computed(() => {
+    const c = props.candidate as Record<string, unknown>;
+    const v = c.education_level_id ?? c.educationLevel;
+    return typeof v === 'string' && v.trim() !== '' ? v.trim() : '';
+  });
+
+  const hhEducationPrimaryEntries = computed((): HhEducationPrimaryEntry[] => {
+    const raw = (props.candidate as { education_primary?: unknown }).education_primary;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return raw
+      .map((item) => parseHhEducationPrimaryEntry(item))
+      .filter((e): e is HhEducationPrimaryEntry => e !== null);
+  });
+
+  const legacyEducationFallback = computed(() => {
+    if (hhEducationPrimaryEntries.value.length > 0) return '';
+    const ed = props.candidate.education;
+    return typeof ed === 'string' && ed.trim() !== '' ? ed.trim() : '';
+  });
+
+  function formatHhEducationLine1(entry: HhEducationPrimaryEntry): string {
+    const name = entry.name.trim();
+    const org = (entry.organization || '').trim();
+    const city = (entry.city || '').trim();
+    const institution = name || org;
+    const parts: string[] = [];
+    if (institution) parts.push(institution);
+    if (city) parts.push(city);
+    return parts.length ? parts.join(', ') : '—';
+  }
+
+  function formatHhEducationLine2(entry: HhEducationPrimaryEntry, globalLevel: string): string {
+    const name = entry.name.trim();
+    const org = (entry.organization || '').trim();
+    const parts: string[] = [];
+    if (name && org) parts.push(org);
+    const res = (entry.result || '').trim();
+    if (res) parts.push(res);
+    const y = (entry.year || '').trim();
+    if (y) parts.push(y);
+    const lvl = (entry.level || '').trim() || globalLevel.trim();
+    if (lvl) parts.push(lvl);
+    return parts.join(' · ');
+  }
+
+  const hasResumeEducationBlock = computed(
+    () =>
+      !!resumeEducationLevelLabel.value ||
+      hhEducationPrimaryEntries.value.length > 0 ||
+      !!legacyEducationFallback.value
+  );
+
+  function parseHhEducationAdditionalItem(item: unknown): HhEducationAdditionalEntry | null {
+    if (!item || typeof item !== 'object') return null;
+    const o = item as Record<string, unknown>;
+    const name = typeof o.name === 'string' ? o.name : '';
+    const organization = typeof o.organization === 'string' ? o.organization : '';
+    const result = typeof o.result === 'string' ? o.result : '';
+    const year =
+      typeof o.year === 'string'
+        ? o.year
+        : typeof o.year === 'number'
+          ? String(o.year)
+          : '';
+    const idRaw = o.id;
+    const id =
+      typeof idRaw === 'string'
+        ? idRaw
+        : typeof idRaw === 'number'
+          ? String(idRaw)
+          : '';
+    if (
+      !name.trim() &&
+      !organization.trim() &&
+      !result.trim() &&
+      !year.trim()
+    ) {
+      return null;
+    }
+    return {
+      ...(id.trim() ? { id: id.trim() } : {}),
+      name,
+      organization,
+      result,
+      year,
+    };
+  }
+
+  const hhEducationAdditionalEntries = computed((): HhEducationAdditionalEntry[] => {
+    const raw = (props.candidate as { education_additional?: unknown }).education_additional;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return raw
+      .map((row) => parseHhEducationAdditionalItem(row))
+      .filter((e): e is HhEducationAdditionalEntry => e !== null);
+  });
+
+  const hasCourseQualificationBlock = computed(() => {
+    if (hhEducationAdditionalEntries.value.length > 0) return true;
+    const c = props.candidate;
+    return [c.courseName, c.courseOrganization, c.courseSpecialization, c.courseYear].some(
+      (v) => typeof v === 'string' && v.trim() !== ''
+    );
+  });
+
+  function formatHhCourseTitleLine(entry: HhEducationAdditionalEntry): string {
+    const name = (entry.name || '').trim();
+    const org = (entry.organization || '').trim();
+    const res = (entry.result || '').trim();
+    return name || res || org || '—';
+  }
+
+  function formatHhCourseSecondaryLine(entry: HhEducationAdditionalEntry): string {
+    const title = formatHhCourseTitleLine(entry);
+    const org = (entry.organization || '').trim();
+    const res = (entry.result || '').trim();
+    const y = (entry.year || '').trim();
+    const parts: string[] = [];
+    if (org && org !== title) parts.push(org);
+    if (res && res !== title) parts.push(res);
+    if (y) parts.push(y);
+    return parts.join(' · ');
+  }
+
+  /** Первая строка: название курса; иначе специализация или организация (как на HH). */
+  const courseQualificationTitle = computed(() => {
+    const c = props.candidate;
+    const name = (c.courseName || '').trim();
+    if (name) return name;
+    const spec = (c.courseSpecialization || '').trim();
+    if (spec) return spec;
+    const org = (c.courseOrganization || '').trim();
+    if (org) return org;
+    return '';
+  });
+
+  /** Вторая строка: организация · квалификация · год (без дубля с первой строкой). */
+  const courseQualificationDetails = computed(() => {
+    const c = props.candidate;
+    const title = courseQualificationTitle.value;
+    const org = (c.courseOrganization || '').trim();
+    const spec = (c.courseSpecialization || '').trim();
+    const year = (c.courseYear || '').trim();
+    const parts: string[] = [];
+    if (org && org !== title) parts.push(org);
+    if (spec && spec !== title) parts.push(spec);
+    if (year) parts.push(year);
+    return parts.length > 0 ? parts.join(' · ') : '';
+  });
+
+  function extractHhCertificateUrl(o: Record<string, unknown>): string {
+    for (const k of ['url', 'alternate_url', 'link']) {
+      const v = o[k];
+      if (typeof v === 'string' && /^https?:\/\//i.test(v.trim())) return v.trim();
+    }
+    const file = o.file;
+    if (file && typeof file === 'object') {
+      const u = (file as Record<string, unknown>).url;
+      if (typeof u === 'string' && /^https?:\/\//i.test(u.trim())) return u.trim();
+    }
+    const actions = o.actions;
+    if (actions && typeof actions === 'object') {
+      const download = (actions as Record<string, unknown>).download;
+      if (download && typeof download === 'object') {
+        for (const val of Object.values(download as Record<string, unknown>)) {
+          if (val && typeof val === 'object' && 'url' in val) {
+            const u2 = (val as { url?: unknown }).url;
+            if (typeof u2 === 'string' && /^https?:\/\//i.test(u2.trim())) return u2.trim();
+          }
+        }
+      }
+    }
+    return '';
+  }
+
+  function parseHhCertificateItem(item: unknown): HhCertificateDisplayItem | null {
+    if (typeof item === 'string') {
+      const t = item.trim();
+      return t ? { title: t } : null;
+    }
+    if (!item || typeof item !== 'object') return null;
+    const o = item as Record<string, unknown>;
+
+    let title = '';
+    for (const k of ['title', 'name', 'description', 'result']) {
+      const v = o[k];
+      if (typeof v === 'string' && v.trim() !== '') {
+        title = v.trim();
+        break;
+      }
+    }
+    if (!title && typeof o.organization === 'string' && o.organization.trim() !== '') {
+      title = o.organization.trim();
+    }
+    if (!title && o.type && typeof o.type === 'object') {
+      const n = (o.type as { name?: unknown }).name;
+      if (typeof n === 'string' && n.trim() !== '') title = n.trim();
+    }
+
+    let year = '';
+    if (typeof o.year === 'number') year = String(o.year);
+    else if (typeof o.year === 'string' && o.year.trim() !== '') year = o.year.trim();
+    if (!year && typeof o.achieved_at === 'string') {
+      const m = /^(\d{4})/.exec(o.achieved_at.trim());
+      if (m) year = m[1];
+    }
+    if (!year && typeof o.date === 'string') {
+      const m = /^(\d{4})/.exec(o.date.trim());
+      if (m) year = m[1];
+    }
+
+    const url = extractHhCertificateUrl(o);
+    if (!title && url) title = 'Сертификат';
+    if (!title) return null;
+
+    return {
+      title,
+      ...(year ? { year } : {}),
+      ...(url ? { url } : {}),
+    };
+  }
+
+  const hhCertificateEntries = computed((): HhCertificateDisplayItem[] => {
+    const raw = props.candidate.certificate;
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+      const t = raw.trim();
+      if (!t) return [];
+      if (t.startsWith('[') || t.startsWith('{')) {
+        try {
+          list = JSON.parse(t);
+        } catch {
+          return [{ title: t }];
+        }
+      } else {
+        return [{ title: t }];
+      }
+    }
+    if (list == null) return [];
+    if (typeof list === 'object' && !Array.isArray(list)) {
+      const items = (list as Record<string, unknown>).items;
+      if (Array.isArray(items)) {
+        list = items;
+      }
+    }
+    if (!Array.isArray(list)) {
+      if (typeof list === 'object' && list !== null) {
+        const one = parseHhCertificateItem(list);
+        return one ? [one] : [];
+      }
+      return [];
+    }
+    return list
+      .map((row) => parseHhCertificateItem(row))
+      .filter((x): x is HhCertificateDisplayItem => x !== null);
+  });
+
+  function pickCandidateStr(c: Record<string, unknown>, ...keys: string[]): string {
+    for (const key of keys) {
+      const v = c[key];
+      if (typeof v === 'string' && v.trim() !== '') return v.trim();
+    }
+    return '';
+  }
+
+  function normalizeDriverLicenseTypes(raw: unknown): string[] {
+    if (!Array.isArray(raw)) return [];
+    const out: string[] = [];
+    for (const item of raw) {
+      if (typeof item === 'string' && item.trim() !== '') {
+        out.push(item.trim());
+        continue;
+      }
+      if (item && typeof item === 'object' && 'name' in item) {
+        const n = (item as { name?: unknown }).name;
+        if (typeof n === 'string' && n.trim() !== '') out.push(n.trim());
+      }
+    }
+    return [...new Set(out)];
+  }
+
+  /** HH: has_vehicle + driver_license_types → одна строка как на hh.ru */
+  function formatCandidateDrivingLine(c: Record<string, unknown>): string {
+    const vehicle = pickCandidateStr(c, 'has_vehicle', 'hasCar');
+    const licenses = normalizeDriverLicenseTypes(c.driver_license_types);
+    const chunks: string[] = [];
+    if (vehicle === 'Да') {
+      chunks.push('Есть своя машина');
+    } else if (vehicle === 'Нет') {
+      chunks.push('Нет собственного автомобиля');
+    } else if (vehicle) {
+      chunks.push(vehicle);
+    }
+    if (licenses.length > 0) {
+      chunks.push(`права категории ${licenses.join(', ')}`);
+    }
+    return chunks.join(', ');
+  }
+
+  const candidateAdditionalRows = computed(() => {
+    const c = props.candidate as Record<string, unknown>;
+    const commute = pickCandidateStr(c, 'commute_time', 'commuteTime');
+    const business = pickCandidateStr(c, 'business_trip_readiness', 'businessTrips');
+    const citizenship = pickCandidateStr(c, 'citizenship');
+    const workPermit = pickCandidateStr(c, 'work_ticket', 'workPermit');
+    const driving = formatCandidateDrivingLine(c);
+    const licenseLegacy = pickCandidateStr(c, 'hasDriverLicense');
+    const drivingFinal = driving || licenseLegacy;
+
+    return [
+      {
+        label: 'Желательное время в пути до работы',
+        value: commute,
+      },
+      { label: 'Командировки', value: business },
+      { label: 'Гражданство', value: citizenship },
+      { label: 'Разрешение на работу', value: workPermit },
+      { label: 'Опыт вождения', value: drivingFinal },
+    ] as const;
+  });
+
+  const hasCoverLetter = computed(() => {
+    const t = props.candidate.coverLetter;
+    return typeof t === 'string' && t.trim() !== '';
+  });
+
+  const hasAboutMeText = computed(() => {
+    const t = props.candidate.aboutMe;
+    return typeof t === 'string' && t.trim() !== '';
+  });
+
+  const hasResumeExperienceBlock = computed(() => {
+    const exps = props.candidate.experiences;
+    if (Array.isArray(exps) && exps.length > 0) return true;
+    const agg = props.candidate.experience;
+    return typeof agg === 'string' && agg.trim() !== '';
+  });
+
+  const candidateAdditionalRowsFilled = computed(() =>
+    candidateAdditionalRows.value.filter((row) => row.value.trim() !== '')
+  );
+
+  const hasAdditionalInfoSection = computed(
+    () => candidateAdditionalRowsFilled.value.length > 0
   );
 </script>
 
@@ -424,72 +1177,127 @@
       <BtnTab :tabs="tabs" v-model="activeTab" />
     </div>
     <div class="min-h-0 flex-1 flex flex-col">
-      <div v-if="activeTab === 'resume'">
-        <div class="mb-px bg-white p-25px pt-[27px]">
+      <div
+        v-if="activeTab === 'resume'"
+        class="candidate-resume-tab-text [&>div:last-child]:rounded-b-fifteen"
+      >
+        <div v-if="hasCoverLetter" class="mb-px bg-white p-25px pt-[27px]">
           <p class="mb-15px text-15px font-medium text-space">
             Сопроводительное письмо
           </p>
-          <p class="text-sm leading-150 text-slate-custom">
-            {{ candidate.coverLetter || 'Сопроводительное письмо не указано' }}
+          <p class="break-words text-sm leading-150 text-slate-custom">
+            <TextWithLinks :text="candidate.coverLetter || ''" />
           </p>
         </div>
-        <div class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Должность</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.quickInfo || '—' }}
-          </p>
-          <p class="mb-2 text-sm leading-150">
+        <div v-if="hasResumePositionBlock" class="mb-px bg-white p-25px">
+          <div
+            class="mb-15px flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+          >
+            <p class="min-w-0 flex-1 text-15px font-medium leading-normal text-space">
+              {{ candidate.quickInfo?.trim() || 'Должность' }}
+            </p>
+            <p
+              v-if="resumeSalaryLine"
+              class="shrink-0 text-right text-15px font-medium leading-normal text-space"
+            >
+              {{ resumeSalaryLine }}
+            </p>
+          </div>
+          <p class="mb-3 text-sm font-normal leading-150">
             <span class="text-slate-custom">Специализации: </span>
             <span class="text-space">{{ candidate.specializations || '—' }}</span>
           </p>
-          <p class="mb-2 text-sm leading-150">
+          <p class="mb-3 text-sm font-normal leading-150">
             <span class="text-slate-custom">Тип занятости: </span>
             <span class="text-space">{{ candidate.employment || '—' }}</span>
           </p>
-          <p class="text-sm leading-150">
+          <p class="text-sm font-normal leading-150">
             <span class="text-slate-custom">Формат работы: </span>
             <span class="text-space">{{ candidate.workFormat || candidate.work_format || '—' }}</span>
           </p>
         </div>
-        <div class="mb-px bg-white p-25px">
+        <div v-if="hasResumeExperienceBlock" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">
-            Опыт работы: {{ candidate.experience || '—' }}
+            Опыт работы: {{ experienceDisplay }}
           </p>
-          <div
-            v-for="(exp, idx) in candidate.experiences"
-            :key="exp.id ?? idx"
-            class="experience-entry border-b border-athens pb-5 pt-4 first:pt-0 last:border-b-0 last:pb-0"
-          >
-            <div class="flex gap-4">
-              <div class="experience-entry-dates w-[120px] shrink-0">
-                <p class="text-sm font-normal text-slate-custom">
-                  {{ exp.dates || [exp.start_date, exp.end_date].filter(Boolean).join(' – ') || '—' }}
-                </p>
-                <p v-if="exp.duration" class="mt-0.5 text-xs font-normal text-slate-custom">
-                  {{ exp.duration }}
-                </p>
+          <div class="space-y-5">
+            <div
+              v-for="(exp, idx) in candidate.experiences"
+              :key="exp.id ?? idx"
+              class="experience-entry"
+            >
+              <div class="flex gap-4">
+              <div class="experience-entry-dates w-[118px] shrink-0">
+                <template
+                  v-for="period in [formatExperienceWorkPeriod(exp)]"
+                  :key="'exp-period-' + (exp.id ?? idx)"
+                >
+                  <template v-if="period">
+                    <p class="text-sm font-normal leading-normal text-space">
+                      {{ period.line1 }}
+                    </p>
+                    <p class="text-sm font-normal leading-normal text-space">
+                      {{ period.line2 }}
+                    </p>
+                    <p
+                      class="mt-0.5 text-xs font-normal leading-normal text-slate-custom"
+                    >
+                      {{ period.line3 }}
+                    </p>
+                  </template>
+                  <template v-else>
+                    <p class="text-sm font-normal text-slate-custom">
+                      {{
+                        exp.dates ||
+                          [exp.start_date, exp.end_date]
+                            .filter(Boolean)
+                            .join(' – ') ||
+                          '—'
+                      }}
+                    </p>
+                    <p
+                      v-if="exp.duration"
+                      class="mt-0.5 text-xs font-normal text-slate-custom"
+                    >
+                      {{ exp.duration }}
+                    </p>
+                  </template>
+                </template>
               </div>
               <div class="experience-entry-details min-w-0 flex-1">
-                <p class="text-sm font-semibold text-space">
-                  {{ exp.company || '—' }}
-                </p>
+                <div class="flex items-start justify-between gap-3">
+                  <p class="min-w-0 flex-1 text-sm font-semibold leading-normal text-space">
+                    {{ exp.company || '—' }}
+                  </p>
+                  <button
+                    v-if="
+                      exp.description &&
+                      (expandedExperience[idx] ||
+                        experienceDescOverflow[idx] === true)
+                    "
+                    type="button"
+                    class="experience-toggle inline-flex shrink-0 items-center gap-1 pt-px text-sm font-normal leading-normal text-slate-custom hover:text-space"
+                    @click="toggleExperience(idx)"
+                  >
+                    <span>{{ expandedExperience[idx] ? 'Свернуть' : 'Развернуть' }}</span>
+                    <svg-icon
+                      name="dropdown-arrow"
+                      width="14"
+                      height="14"
+                      class="shrink-0 transition-transform duration-200"
+                      :class="{ 'rotate-180': expandedExperience[idx] }"
+                    />
+                  </button>
+                </div>
                 <p v-if="exp.location" class="mt-0.5 text-sm font-normal text-space">
                   {{ exp.location }}
                 </p>
-                <div v-if="exp.industry || exp.description" class="mt-0.5 flex items-center justify-between gap-2">
-                  <p v-if="exp.industry" class="text-sm font-normal text-space">
-                    {{ exp.industry }}
-                  </p>
-                  <button
-                    v-if="exp.description"
-                    type="button"
-                    class="experience-toggle shrink-0 text-sm font-normal text-dodger hover:underline"
-                    :class="{ 'ml-auto': !exp.industry }"
-                    @click="toggleExperience(idx)"
-                  >
-                    {{ expandedExperience[idx] ? 'Свернуть' : 'Развернуть' }}
-                  </button>
-                </div>
+                <p
+                  v-if="exp.industry"
+                  class="mt-0.5 text-sm font-normal text-space"
+                >
+                  {{ exp.industry }}
+                </p>
                 <p v-if="exp.job_title" class="mt-1.5 text-sm font-semibold text-space">
                   {{ exp.job_title }}
                 </p>
@@ -498,279 +1306,214 @@
                 </p>
                 <div
                   v-if="exp.description"
+                  :ref="(el) => setExperienceDescriptionEl(el, idx)"
                   class="mt-1.5 text-sm font-normal leading-150 text-space"
                   :class="{ 'line-clamp-2': !expandedExperience[idx] }"
                 >
-                  {{ exp.description }}
+                  <TextWithLinks :text="exp.description" />
                 </div>
               </div>
             </div>
+          </div>
           </div>
           <p
             v-if="(!candidate.experiences || candidate.experiences.length === 0) && candidate.experience"
             class="text-sm leading-150 text-slate-custom"
           >
-            {{ candidate.experience }}
+            {{ experienceDisplay }}
           </p>
         </div>
-        <div class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">
-            Краткие сведения
-          </p>
-          <p class="text-sm leading-150 text-slate-custom">
-            {{ candidate.quickInfo }}
-          </p>
-        </div>
-        <div class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Образование</p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Уровень</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.educationLevel || candidate.education || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Название заведения</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.educationInstitution || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Факультет</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.educationFaculty || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Специализация</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.educationSpecialization || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Год окончания</p>
-          <p class="text-sm font-normal leading-150 text-space">
-            {{ candidate.educationYear || '—' }}
-          </p>
-        </div>
-        <div class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">
-            Курсы повышения квалификации
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Название</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.courseName || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Проводившая организация</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.courseOrganization || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Специализация</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.courseSpecialization || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Год окончания</p>
-          <p class="text-sm font-normal leading-150 text-space">
-            {{ candidate.courseYear || '—' }}
-          </p>
-        </div>
-        <div class="mb-px bg-white p-25px">
+        <div v-if="hhSkillSetItems.length > 0" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Навыки</p>
-          <div v-if="!candidate?.skills || candidate.skills.length === 0">
-            <p class="text-sm font-normal text-slate-custom">
-              Кандидат не указал навыки
-            </p>
-          </div>
-          <div v-else class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2">
             <span
-              v-for="(skill, index) in candidate.skills"
-              :key="(typeof skill === 'object' && skill?.id) ?? index"
-              class="inline-flex items-center justify-center rounded-lg bg-athens-gray px-3 py-1.5 text-sm font-normal text-space"
+              v-for="(skill, index) in hhSkillSetItems"
+              :key="`${skill}-${index}`"
+              class="inline-flex items-center rounded-fifteen bg-athens-gray px-3 py-1.5 text-sm font-normal leading-normal text-space"
             >
-              {{ typeof skill === 'object' && skill && 'name' in skill ? skill.name : skill }}
+              {{ skill }}
             </span>
           </div>
         </div>
-        <div class="mb-px bg-white p-25px">
+        <div
+          v-if="hhNativeLanguages.length > 0 || hhOtherLanguages.length > 0"
+          class="mb-px bg-white p-25px"
+        >
           <p class="mb-15px text-15px font-medium text-space">Языки</p>
-          <p class="mb-2 text-sm leading-150">
-            <span class="text-slate-custom">Родной: </span>
-            <span class="text-space">{{ candidate.nativeLanguage || '—' }}</span>
-          </p>
-          <p class="text-sm leading-150">
-            <span class="text-slate-custom">Другие языки: </span>
-            <span class="text-space">{{ candidate.otherLanguages || '—' }}</span>
-          </p>
+          <div v-if="hhNativeLanguages.length > 0" class="mb-4">
+            <p class="mb-2 text-sm font-normal text-slate-custom">Родной</p>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="(lang, index) in hhNativeLanguages"
+                :key="`${lang.name}-native-${index}`"
+                class="inline-flex items-center rounded-fifteen bg-athens-gray px-3 py-1.5 text-sm font-normal leading-normal text-space"
+              >
+                {{ lang.name }}
+              </span>
+            </div>
+          </div>
+          <div v-if="hhOtherLanguages.length > 0">
+            <p class="mb-2 text-sm font-normal text-slate-custom">Другие языки</p>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="(lang, index) in hhOtherLanguages"
+                :key="`${lang.name}-other-${index}`"
+                class="inline-flex items-center rounded-fifteen bg-[#DFF3E8] px-3 py-1.5 text-sm font-normal leading-normal text-[#12A45C]"
+              >
+                {{ lang.name }}<span v-if="lang.level"> — {{ lang.level }}</span>
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="mb-px bg-white p-25px">
+        <div v-if="hasAboutMeText" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">
             Обо мне
           </p>
           <p class="text-sm leading-150 text-slate-custom">
-            {{ candidate.aboutMe || 'Не указано' }}
+            <TextWithLinks :text="candidate.aboutMe || ''" />
           </p>
         </div>
-        <div class="mb-px bg-white p-25px">
+        <div v-if="hhRecommendations.length > 0" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Рекомендации</p>
+          <div class="space-y-4">
+            <div
+              v-for="(rec, index) in hhRecommendations"
+              :key="`${rec.name}-${index}`"
+            >
+              <p class="text-sm font-medium leading-normal text-space">
+                {{ rec.name }}
+              </p>
+              <p
+                v-if="rec.position || rec.company"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                {{ rec.position || '—' }}<span v-if="rec.company"> · {{ rec.company }}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <div v-if="hasResumeEducationBlock" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Образование</p>
+          <p class="mb-1 text-sm font-normal text-slate-custom">Уровень</p>
+          <p
+            class="text-sm font-normal leading-150 text-space"
+            :class="
+              hhEducationPrimaryEntries.length > 0 || legacyEducationFallback ? 'mb-5' : ''
+            "
+          >
+            {{ resumeEducationLevelLabel || '—' }}
+          </p>
+          <div v-if="hhEducationPrimaryEntries.length > 0" class="space-y-5">
+            <div v-for="(edu, eduIdx) in hhEducationPrimaryEntries" :key="eduIdx">
+              <p class="text-sm font-normal leading-150 text-space">
+                {{ formatHhEducationLine1(edu) }}
+              </p>
+              <p
+                v-if="formatHhEducationLine2(edu, resumeEducationLevelLabel)"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                {{ formatHhEducationLine2(edu, resumeEducationLevelLabel) }}
+              </p>
+            </div>
+          </div>
+          <p
+            v-else-if="legacyEducationFallback"
+            class="text-sm font-normal leading-150 text-space"
+          >
+            {{ legacyEducationFallback }}
+          </p>
+        </div>
+        <div v-if="hasCourseQualificationBlock" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">
+            Курсы повышения квалификации
+          </p>
+          <div v-if="hhEducationAdditionalEntries.length > 0" class="space-y-5">
+            <div
+              v-for="(course, cIdx) in hhEducationAdditionalEntries"
+              :key="course.id || String(cIdx)"
+            >
+              <p class="text-sm font-normal leading-150 text-space">
+                {{ formatHhCourseTitleLine(course) }}
+              </p>
+              <p
+                v-if="formatHhCourseSecondaryLine(course)"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                <TextWithLinks :text="formatHhCourseSecondaryLine(course)" />
+              </p>
+            </div>
+          </div>
+          <template v-else>
+            <p class="text-sm font-normal leading-150 text-space">
+              {{ courseQualificationTitle || '—' }}
+            </p>
+            <p
+              v-if="courseQualificationDetails"
+              class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+            >
+              <TextWithLinks :text="courseQualificationDetails" />
+            </p>
+          </template>
+        </div>
+        <div v-if="hhCertificateEntries.length > 0" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Сертификаты</p>
+          <div class="space-y-5">
+            <div
+              v-for="(cert, certIdx) in hhCertificateEntries"
+              :key="certIdx"
+              class="min-w-0"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <p class="min-w-0 flex-1 text-sm font-normal leading-150 text-space">
+                  <TextWithLinks :text="cert.title" />
+                </p>
+                <a
+                  v-if="cert.url"
+                  :href="cert.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="shrink-0 text-sm font-normal text-slate-custom hover:text-dodger"
+                >
+                  Посмотреть &gt;
+                </a>
+              </div>
+              <p
+                v-if="cert.year"
+                class="mt-1 text-xs font-normal leading-normal text-slate-custom"
+              >
+                {{ cert.year }}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div v-if="hasAdditionalInfoSection" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Дополнительно</p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Желательное время в пути до работы</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.commuteTime || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Командировки</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.businessTrips || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Гражданство</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.citizenship || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Разрешение на работу</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.workPermit || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Наличие машины</p>
-          <p class="mb-3 text-sm font-normal leading-150 text-space">
-            {{ candidate.hasCar || '—' }}
-          </p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Наличие прав</p>
-          <p class="text-sm font-normal leading-150 text-space">
-            {{ candidate.hasDriverLicense || '—' }}
-          </p>
+          <ul class="list-none space-y-3 p-0">
+            <li
+              v-for="(row, rowIdx) in candidateAdditionalRowsFilled"
+              :key="rowIdx"
+              class="text-sm font-normal leading-150"
+            >
+              <span class="text-slate-custom">{{ row.label }}: </span>
+              <span class="text-space">{{ row.value }}</span>
+            </li>
+          </ul>
         </div>
       </div>
       <div v-if="activeTab === 'fields'">
-        <div class="fields-tab-block mb-px bg-white p-25px pb-[37px] pl-30px">
-          <div class="mb-22px flex items-center">
-            <p class="mr-2.5 text-lg font-bold leading-normal text-space">
-              Форма отклика
-            </p>
-            <span
-              class="rounded-fifteen bg-feta px-2.5 py-[3.5px] text-xs font-normal text-white"
-            >
-              Заполнено
-            </span>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Фамилия Имя Отчество
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ [candidate.surname, candidate.firstname, candidate.patronymic].filter(Boolean).join(' ') || '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Электронная почта
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.email || '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Телефон
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.phone || '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Заголовок
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.quickInfo || candidate.resume || '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Адрес проживания
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.location ? `г. ${candidate.location}` : '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Образование
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.education || '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Опыт работы
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.experience || '—' }}
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Фото
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              <a
-                v-if="candidate.imagePath"
-                :href="candidate.imagePath"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-dodger underline hover:no-underline"
-              >
-                {{ candidate.imagePath.split('/').pop() || 'Файл' }}
-              </a>
-              <template v-else-if="candidate.attachments?.length">
-                <a
-                  v-for="att in candidate.attachments"
-                  :key="att.id"
-                  :href="att.link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-dodger underline hover:no-underline"
-                >
-                  {{ att.link?.split('/').pop() || 'Файл' }}
-                </a>
-              </template>
-              <span v-else>—</span>
-            </p>
-          </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Загрузка резюме
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              <a
-                v-if="candidate.resumePath"
-                :href="candidate.resumePath"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-dodger underline hover:no-underline"
-              >
-                {{ candidate.resume || candidate.resumePath?.split('/').pop() || 'Резюме' }}
-              </a>
-              <span v-else>—</span>
-            </p>
-          </div>
-          <div class="fields-row flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Сопроводительное письмо
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              <a
-                v-if="candidate.coverPath"
-                :href="candidate.coverPath"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-dodger underline hover:no-underline"
-              >
-                {{ candidate.coverPath?.split('/').pop() || 'Файл' }}
-              </a>
-              <span v-else>—</span>
-            </p>
-          </div>
-        </div>
         <div class="fields-tab-block mb-px rounded-b-fifteen bg-white p-25px pl-30px">
-          <div class="mb-22px flex items-center">
-            <p class="mr-2.5 text-lg font-bold leading-normal text-space">
-              Анкета
+          <div class="mb-22px">
+            <p class="text-lg font-bold leading-normal text-space">
+              Пользовательские поля
             </p>
-            <span
-              class="rounded-fifteen bg-serenade px-2.5 py-[3.5px] text-xs font-normal text-white"
-            >
-              Отправлено, ожидает заполнения
-            </span>
+          </div>
+          <div class="fields-row mb-5 flex justify-between gap-2.5">
+            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+              Источник
+            </p>
+            <p class="text-right text-sm font-normal leading-150 text-space">
+              {{ candidate.source || '—' }}
+            </p>
           </div>
           <div class="fields-row mb-5 flex justify-between gap-2.5">
             <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
@@ -1116,6 +1859,11 @@
 </template>
 
 <style scoped>
+/* Вторичный серый текст на вкладке «Резюме» — легче по весу (перебивает font-normal на той же строке) */
+.candidate-resume-tab-text .text-slate-custom {
+  font-weight: 300 !important;
+}
+
 /* Как на вкладке «Резюме»: полоса над таблицей — тот же 1px за счёт mb-px у табов, без отдельного border */
 .considerations-block {
   border-radius: 0 0 15px 15px;
@@ -1164,3 +1912,6 @@
   color: #79869a;
 }
 </style>
+
+
+

@@ -6,6 +6,7 @@
   import UiTooltip from '@/components/ui/tooltip/Tooltip.vue';
   import UiTooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue';
   import UiTooltipContent from '@/components/ui/tooltip/TooltipContent.vue';
+  import TextWithLinks from '~/components/custom/TextWithLinks.vue';
 
   const logScrollRef = ref<HTMLDivElement | null>(null);
 
@@ -160,19 +161,29 @@
     }
   }
 
+  let eventsAbort: AbortController | null = null;
+
   async function loadEvents() {
     if (!props.candidateId) return;
+    eventsAbort?.abort();
+    const ac = new AbortController();
+    eventsAbort = ac;
+    const { signal } = ac;
     loading.value = true;
     try {
       events.value = await getCandidateEvents(
         props.candidateId,
-        props.vacancyId
+        props.vacancyId,
+        { signal }
       );
-    } catch (e) {
+    } catch (e: unknown) {
+      if (signal.aborted) return;
       console.error('Ошибка загрузки лога кандидата:', e);
       events.value = [];
     } finally {
-      loading.value = false;
+      if (eventsAbort === ac) {
+        loading.value = false;
+      }
     }
   }
 
@@ -291,7 +302,7 @@
                 v-if="event.payload?.body_preview"
                 class="mt-1 text-sm font-normal leading-150 text-[#363B44] break-words whitespace-pre-wrap"
               >
-                {{ decodeEmailPreview(event.payload.body_preview) }}
+                <TextWithLinks :text="decodeEmailPreview(event.payload.body_preview)" />
               </p>
             </div>
           </div>
@@ -335,7 +346,7 @@
                 class="mt-2 text-sm font-normal leading-150 text-[#363B44] whitespace-pre-wrap"
                 :class="{ 'line-through text-[#8a94a6]': event.payload?.completed_at }"
               >
-                {{ event.payload.content }}
+                <TextWithLinks :text="event.payload.content" />
               </p>
               <button
                 v-if="!event.payload?.completed_at"
@@ -412,7 +423,7 @@
                 v-if="event.payload?.content"
                 class="mt-2 text-sm font-normal leading-150 text-[#363B44] whitespace-pre-wrap"
               >
-                {{ event.payload.content }}
+                <TextWithLinks :text="event.payload.content" />
               </p>
             </div>
           </div>
