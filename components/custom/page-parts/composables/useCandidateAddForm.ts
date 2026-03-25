@@ -85,17 +85,21 @@ export function useCandidateAddForm(options?: {
     serverErrors.value = {}; // Очищаем предыдущие ошибки
 
     try {
+      const trimmedEmail =
+        typeof formData.email === 'string' ? formData.email.trim() : '';
       const candidateData: CandidateCreateRequest = {
         firstname: formData.firstname,
         surname: formData.surname || null,
         patronymic: formData.patronymic || null,
-        email: formData.email,
         phone:
           formData.phone && formData.phone !== '+7' ? formData.phone : null,
         resume: formData.resume || null,
         source: formData.source || null,
         vacancy_id: formData.vacancy_id || null,
       };
+      if (trimmedEmail !== '') {
+        candidateData.email = trimmedEmail;
+      }
       const response = await createCandidate(candidateData);
 
       if (response && typeof response === 'object' && response.data) {

@@ -73,7 +73,8 @@ export interface Candidate {
   firstname?: string;
   surname?: string;
   patronymic?: string | null;
-  email: string;
+  birth_date?: string | null;
+  email?: string | null;
   age?: number | null;
   /** Пол (в карточке после имени, серым через точку с возрастом) */
   gender?: string | null;
@@ -157,10 +158,18 @@ export interface Candidate {
   /** Сертификаты из HH (массив объектов в ответе API) */
   certificate?: unknown;
   source?: string | null;
+  /** Тип отклика (вкладка «Поля»): Не указан / Прямой отклик / Холодный поиск */
+  response_type?: string | null;
   isReserve?: boolean | null;
   customer?: number | null;
   vacancy_id?: number | null;
   stage?: number | null;
+  /** Выбранная причина отказа (id из справочника аккаунта) */
+  rejection_reason_id?: number | null;
+  /** Вложенный объект из API после загрузки связи */
+  rejection_reason?: { id: number; name: string } | null;
+  /** Id рекрутеров из настроек (GET /api/executors), вкладка «Поля» */
+  recruiter_ids?: number[] | null;
   attachments?: AttachmentCandidate[] | null;
   skills?: SkillCandidate[] | null;
   /** Родной язык */
@@ -250,17 +259,51 @@ export interface CandidateCreateRequest {
   firstname: string;
   surname?: string;
   patronymic?: string;
-  email: string;
+  birth_date?: string | null;
+  email?: string | null;
   vacancy_id?: number | null;
   age?: number | null;
   phone?: string; // формат: +7XXXXXXXXXX
   stage_id?: number | null;
   location?: string;
+  gender?: string | null;
+  gender_id?: 'male' | 'female' | null;
+  salaryFrom?: number | null;
+  salaryTo?: number | null;
+  currency?: string | null;
+  metro_name?: string | null;
   quickInfo?: string;
+  specializations?: string | null;
+  employment?: string | null;
+  work_format?: string | null;
+  relocation_readiness?: string | null;
+  relocation_type_id?: string | null;
+  business_trip_readiness?: string | null;
+  business_trip_readiness_id?: string | null;
+  commute_time?: string | null;
+  has_vehicle?: string | null;
+  driver_license_types?: string[] | null;
+  work_ticket?: string | null;
+  education_level_id?: string | null;
   education?: string;
+  education_primary?: HhEducationPrimaryEntry[] | null;
+  education_additional?: HhEducationAdditionalEntry[] | null;
+  courseName?: string | null;
+  courseOrganization?: string | null;
+  courseSpecialization?: string | null;
+  courseYear?: string | null;
+  nativeLanguage?: string | null;
+  otherLanguages?: string | null;
+  aboutMe?: string | null;
+  skill_set?: string[] | unknown[] | null;
+  recommendation?: unknown[] | null;
+  certificate?: unknown[] | null;
+  citizenship?: string | null;
   link?: string | null;
   experience?: string;
+  experiences?: ExperienceEntryCandidate[] | null;
   telegram?: string | null;
+  messengerMax?: string | null;
   skype?: string | null;
   icon?: string | null;
   imagePath?: string | null;
@@ -268,7 +311,15 @@ export interface CandidateCreateRequest {
   resume?: string | null;
   resumePath?: string | null;
   coverPath?: string | null;
+  coverLetter?: string | null;
+  hh_resume_id?: string | null;
+  hh_area_id?: string | null;
+  resume_created_at?: string | null;
+  resume_updated_at?: string | null;
   source?: string | null;
+  /** Тип отклика (вкладка «Поля»): Не указан / Прямой отклик / Холодный поиск */
+  response_type?: string | null;
+  isReserve?: boolean | null;
   customFields?: number | null;
   skills?: number[];
   tags?: number[];

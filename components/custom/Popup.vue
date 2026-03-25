@@ -8,8 +8,6 @@
     unref,
     type MaybeRef,
   } from 'vue';
-  import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
-
   const props = withDefaults(
     defineProps<{
       isOpen: MaybeRef<boolean>;
@@ -34,6 +32,11 @@
       noBackdrop?: boolean;
       /** true = без внешнего padding у контейнера окна (отступы только внутри слота) */
       noOuterPadding?: boolean;
+      /**
+       * true = не резервировать место справа под скролл (pr-[15px] у контента).
+       * Для коротких модалок даёт симметричные отступы слева и справа.
+       */
+      noScrollbarGutter?: boolean;
     }>(),
     {
       showCloseButton: false,
@@ -53,6 +56,7 @@
       contentPadding: true,
       noBackdrop: false,
       noOuterPadding: false,
+      noScrollbarGutter: false,
     }
   );
 
@@ -162,11 +166,14 @@
       >
         <div
           ref="scrollContainer"
-          class="h-full overflow-y-auto pr-[15px]"
-          :class="{
-            'overflow-y-auto': !allowDropdownOverflow,
-            'overflow-visible': allowDropdownOverflow,
-          }"
+          class="h-full overflow-y-auto"
+          :class="[
+            noScrollbarGutter ? 'pr-0' : 'pr-[15px]',
+            {
+              'overflow-y-auto': !allowDropdownOverflow,
+              'overflow-visible': allowDropdownOverflow,
+            },
+          ]"
           :style="{
             ...customStyles,
             maxHeight: height === 'auto' ? '100%' : height,
@@ -184,12 +191,7 @@
           >
             ✖
           </button>
-          <Suspense>
-            <template #fallback>
-              <UiDotsLoader />
-            </template>
-            <slot></slot>
-          </Suspense>
+          <slot />
         </div>
       </div>
     </div>

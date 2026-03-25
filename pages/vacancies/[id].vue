@@ -142,11 +142,11 @@
         name: 'email',
         label: 'Электронная почта',
         type: 'email',
-        placeholder: 'Введите email',
-        required: true,
+        placeholder: 'Введите email (необязательно)',
+        required: false,
         row: 3, // Третья строка
         validation: {
-          required: true,
+          required: false,
           pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
           message: 'Введите корректный email',
         },
@@ -465,18 +465,24 @@
 
   // Обработчик обновления кандидата
   const handleCandidateUpdated = async (updatedCandidate: Candidate) => {
-    if (!updatedCandidate || !updatedCandidate.id) {
+    /** До await refresh — иначе выброс сброса/гонка оставит selectedCandidate null и карточка пропадёт */
+    const persistedSelectedId = selectedCandidate.value?.id;
+
+    const idOk = (v: unknown): v is number =>
+      v != null && Number.isFinite(Number(v)) && Number(v) > 0;
+
+    if (!updatedCandidate || !idOk(updatedCandidate.id)) {
       console.error(
         '[handleCandidateUpdated] Получен некорректный кандидат:',
         updatedCandidate
       );
       await refreshCandidates();
 
-      if (selectedCandidate.value?.id) {
+      if (idOk(persistedSelectedId)) {
         try {
-          const result = await getCandidateById(selectedCandidate.value.id);
-
+          const result = await getCandidateById(Number(persistedSelectedId));
           selectedCandidate.value = result.candidateData;
+          syncCandidateToUrl(result.candidateData.id);
         } catch (error) {
           console.error('Ошибка при обновлении кандидата:', error);
         }
@@ -484,11 +490,14 @@
       return;
     }
 
+    const updatedId = Number(updatedCandidate.id);
     await refreshCandidates();
-    if (selectedCandidate.value?.id === updatedCandidate.id) {
+
+    if (idOk(persistedSelectedId) && Number(persistedSelectedId) === updatedId) {
       try {
-        const result = await getCandidateById(updatedCandidate.id);
+        const result = await getCandidateById(updatedId);
         selectedCandidate.value = result.candidateData;
+        syncCandidateToUrl(result.candidateData.id);
         logRefreshKey.value++;
       } catch (error) {
         console.error('Ошибка при обновлении кандидата:', error);
@@ -500,6 +509,8 @@
     movedCandidate: Candidate,
     newStageId?: number
   ) => {
+    const persistedIdAfterBadMove = selectedCandidate.value?.id;
+
     if (!movedCandidate || !movedCandidate.id) {
       console.error(
         '[handleCandidateMoved] Получен некорректный кандидат:',
@@ -507,10 +518,15 @@
       );
       await refreshCandidates();
 
-      if (selectedCandidate.value?.id) {
+      if (
+        persistedIdAfterBadMove != null &&
+        Number.isFinite(Number(persistedIdAfterBadMove)) &&
+        Number(persistedIdAfterBadMove) > 0
+      ) {
         try {
-          const result = await getCandidateById(selectedCandidate.value.id);
+          const result = await getCandidateById(Number(persistedIdAfterBadMove));
           selectedCandidate.value = result.candidateData;
+          syncCandidateToUrl(result.candidateData.id);
         } catch (error) {
           console.error('Ошибка при обновлении кандидата:', error);
         }
@@ -692,7 +708,22 @@
           if (sameCandidate) {
             return;
           }
-          await loadCandidate(cid, { syncStageFromCandidate: true });
+          try {
+            await loadCandidate(cid, { syncStageFromCandidate: true });
+          } catch (error) {
+            console.error(
+              '[syncRouteToState] Не удалось открыть кандидата из URL:',
+              error
+            );
+            await waitForCandidatesLoaded();
+            const list = filteredCandidatesList.value || [];
+            if (list.length > 0) {
+              await loadCandidate(list[0].id);
+            } else {
+              selectedCandidate.value = null;
+              syncCandidateToUrl(null);
+            }
+          }
           return;
         }
       }
@@ -739,7 +770,7 @@
       if (_isSyncing.value) return;
       const id = route.params.id;
       if (!route.path?.startsWith?.('/vacancies/') || !id) return;
-      syncRouteToState();
+      void syncRouteToState();
     },
     { immediate: true }
   );
@@ -753,8 +784,13 @@
       const hasRouteCandidate =
         Number.isInteger(routeCandidateId) && routeCandidateId > 0;
 
-      // Если кандидат задан в URL, не перезаписываем его автоселектом первого из списка.
-      if (hasRouteCandidate) return;
+      // Если кандидат задан в URL и уже открыт, не перезаписываем его.
+      if (
+        hasRouteCandidate &&
+        Number(selectedCandidate.value?.id) === routeCandidateId
+      ) {
+        return;
+      }
 
       if (!selectedCandidate.value) {
         await loadCandidate(newCandidates[0].id);
@@ -928,6 +964,7 @@
               @add-comment="handleAddCommentFromHeader"
               @add-task="handleAddTaskFromHeader"
               @email-sent="refreshCandidateLog"
+              @candidate-activity-refresh="refreshCandidateLog"
             />
             <BlockCandidateTabsInfo
               ref="tabsInfoRef"
@@ -936,6 +973,7 @@
               :vacancy-id="vacancy?.id"
               @comment-added="refreshCandidateLog"
               @open-email-popup="openEmailPopupFromFeed"
+              @candidate-updated="handleCandidateUpdated"
             />
           </template>
         </div>

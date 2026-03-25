@@ -2,7 +2,6 @@
   import { ref, unref, watch, computed } from 'vue';
   import Popup from '~/components/custom/Popup.vue';
   import ResponseInput from '~/components/custom/ResponseInput.vue';
-  import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
   import { getVacancies } from '@/src/api/vacancies';
   import type { MaybeRef } from 'vue';
   import type { Candidate } from '@/types/candidates';
@@ -90,79 +89,79 @@
         selectedVacancyLabel.value = '';
         loadVacancies();
       }
-    }
+    },
+    { immediate: true }
   );
 </script>
 
 <template>
   <Popup
-    :isOpen="unref(isOpen)"
+    :is-open="props.isOpen"
     @close="handleCancel"
     width="490px"
-    :showCloseButton="false"
-    :lgSize="true"
-    :parentRounded="true"
-    :contentRounded="false"
-    :contentPadding="false"
-    :allowDropdownOverflow="true"
-    :disableOverflowHidden="true"
+    :show-close-button="false"
+    :lg-size="true"
+    :parent-rounded="true"
+    :content-rounded="false"
+    :content-padding="false"
+    :allow-dropdown-overflow="true"
+    :disable-overflow-hidden="true"
   >
-    <div v-if="!loading" class="transfer-vacancy-popup flex flex-col gap-y-6 text-sm">
-      <div class="flex flex-col gap-y-2">
-        <h2
-          v-if="mode === 'copy'"
-          class="text-xl font-semibold text-space"
-        >
-          Копировать кандидата
-        </h2>
-        <h2 v-else class="text-xl font-semibold text-space">
-          Переместить кандидата
-        </h2>
-        <p class="text-sm text-slate-custom">
-          Выберите вакансию, куда нужно
-          <span v-if="mode === 'copy'">скопировать</span>
-          <span v-else>переместить</span>
-          кандидата <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>.
-        </p>
+    <div class="w-full">
+      <div class="transfer-vacancy-popup flex flex-col gap-y-6 text-sm">
+        <div class="flex flex-col gap-y-2">
+          <h2
+            v-if="mode === 'copy'"
+            class="text-xl font-semibold text-space"
+          >
+            Копировать кандидата
+          </h2>
+          <h2 v-else class="text-xl font-semibold text-space">
+            Переместить кандидата
+          </h2>
+          <p class="text-sm text-slate-custom">
+            Выберите вакансию, куда нужно
+            <span v-if="mode === 'copy'">скопировать</span>
+            <span v-else>переместить</span>
+            кандидата <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>.
+          </p>
+        </div>
+        <div class="relative z-[40] flex w-full min-w-0 flex-col gap-y-3.5 text-space">
+          <p class="text-sm font-medium text-space">Выберите вакансию</p>
+          <ResponseInput
+            class="w-full min-w-0"
+            :responses="vacancyResponseOptions"
+            :model-value="selectedVacancyLabel"
+            :show-roles="true"
+            not-found="Вакансия не найдена"
+            placeholder="Название вакансии"
+            @update:model-value="onVacancyResponseUpdate"
+          />
+        </div>
+        <div class="relative z-0 flex flex-wrap gap-x-3 gap-y-2">
+          <UiButton
+            v-if="mode === 'copy'"
+            variant="action"
+            size="semiaction"
+            :disabled="!selectedVacancyId || loading"
+            @click="handleConfirm"
+          >
+            Копировать
+          </UiButton>
+          <UiButton
+            v-else
+            variant="action"
+            size="semiaction"
+            :disabled="!selectedVacancyId || loading"
+            @click="handleConfirm"
+          >
+            Переместить
+          </UiButton>
+          <UiButton variant="back" size="second-back" @click="handleCancel">
+            Отмена
+          </UiButton>
+        </div>
       </div>
-      <div class="relative z-[40] flex w-full min-w-0 flex-col gap-y-3.5 text-space">
-        <p class="text-sm font-medium text-space">Выберите вакансию</p>
-        <ResponseInput
-          class="w-full min-w-0"
-          :responses="vacancyResponseOptions"
-          :model-value="selectedVacancyLabel"
-          :show-roles="true"
-          not-found="Вакансия не найдена"
-          placeholder="Название вакансии"
-          @update:model-value="onVacancyResponseUpdate"
-        />
-      </div>
-      <div class="relative z-0 flex flex-wrap gap-x-3 gap-y-2">
-        <UiButton
-          v-if="mode === 'copy'"
-          variant="action"
-          size="semiaction"
-          :disabled="!selectedVacancyId || loading"
-          @click="handleConfirm"
-        >
-          Копировать
-        </UiButton>
-        <UiButton
-          v-else
-          variant="action"
-          size="semiaction"
-          :disabled="!selectedVacancyId || loading"
-          @click="handleConfirm"
-        >
-          Переместить
-        </UiButton>
-        <UiButton variant="back" size="second-back" @click="handleCancel">
-          Отмена
-        </UiButton>
-      </div>
-    </div>
-    <div v-else class="py-6 text-center">
-      <UiDotsLoader />
     </div>
   </Popup>
 </template>

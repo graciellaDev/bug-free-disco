@@ -6,12 +6,15 @@ import PhoneInput from '~/components/custom/PhoneInput.vue'
 import EmailInput from '~/components/custom/EmailInput.vue'
 import MyTextarea from '~/components/custom/MyTextarea.vue'
 import MyCheckbox from '~/components/custom/MyCheckbox.vue'
+import MyToggleSwitch from '~/components/custom/MyToggleSwitch.vue'
 import MyDropdown from '~/components/custom/MyDropdown.vue'
 import MultiSelect from '~/components/custom/MultiSelect.vue'
 import UiDotsLoader from '~/components/custom/UiDotsLoader.vue'
 import UiCircleLoader from '~/components/custom/UiCircleLoader.vue'
 import Popup from '~/components/custom/Popup.vue'
 import DeleteConfirmPopup from '~/components/custom/DeleteConfirmPopup.vue'
+import CandidateDeletePopup from '~/components/custom/page-parts/candidate/popups/CandidateDeletePopup.vue'
+import type { Candidate } from '~/types/candidates'
 import UiDialog from '~/components/ui/dialog/Dialog.vue'
 import UiDialogTrigger from '~/components/ui/dialog/DialogTrigger.vue'
 import UiDialogContent from '~/components/ui/dialog/DialogContent.vue'
@@ -25,6 +28,8 @@ import BtnCalendar from '~/components/custom/BtnCalendar.vue'
 import BtnEmail from '~/components/custom/BtnEmail.vue'
 import BtnStop from '~/components/custom/BtnStop.vue'
 import Pagination from '~/components/custom/Pagination.vue'
+import PlainSingleSelectDropdown from '~/components/custom/PlainSingleSelectDropdown.vue'
+import PlainMultiSelectDropdown from '~/components/custom/PlainMultiSelectDropdown.vue'
 
 definePageMeta({
   layout: 'default',
@@ -39,18 +44,41 @@ const phoneValue = ref('')
 const dropdownValue = ref<string | null>(null)
 const departmentValue = ref<string | null>(null)
 const multiSelectValue = ref<string[]>([])
+const plainMultiSelectDemo = ref<number[]>([])
 const checkbox1 = ref(false)
 const checkbox2 = ref(true)
+const toggleSwitchDemo = ref(false)
+const toggleSwitchDemoOn = ref(true)
 const popupOpen = ref(false)
 const deleteConfirmOpen = ref(false)
+const candidateDeleteOpen = ref(false)
+const demoCandidateForDelete: Candidate = {
+  id: 0,
+  email: 'demo@example.com',
+  surname: 'Иванов',
+  firstname: 'Иван',
+}
 const dialogOpen = ref(false)
 const currentPage = ref(1)
 const selectedTab = ref('tab1')
+const plainSelectDemo = ref('')
+
+const plainSelectDemoOptions = [
+  'Минимальный без авто',
+  'Оптимальный без авто',
+  'Максимальный без авто',
+]
 
 const dropdownOptions = [
   { name: 'Вариант 1', value: 'v1' },
   { name: 'Вариант 2', value: 'v2' },
   { name: 'Вариант 3', value: 'v3' },
+]
+
+const plainMultiSelectDemoOptions = [
+  { id: 1, name: 'Вариант 1' },
+  { id: 2, name: 'Вариант 2' },
+  { id: 3, name: 'Вариант 3' },
 ]
 
 const departmentOptions = [
@@ -187,6 +215,32 @@ onMounted(async () => {
       </div>
     </section>
 
+    <!-- Редактируемые поля -->
+    <section class="mb-12">
+      <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
+        Редактируемые поля
+      </h2>
+      <p class="text-sm text-slate-custom mb-4">
+        <strong>PlainSingleSelectDropdown</strong> — выпадающий список с одним значением: без фона и обводки у триггера (как поле «Источник» на вкладке «Поля» карточки кандидата).
+      </p>
+      <div class="max-w-md rounded-fifteen border border-athens bg-white p-25px">
+        <div class="flex items-center justify-between gap-2.5">
+          <p class="min-w-[120px] shrink-0 text-sm font-normal text-space">
+            Источник
+          </p>
+          <PlainSingleSelectDropdown
+            v-model="plainSelectDemo"
+            :options="plainSelectDemoOptions"
+            placeholder="Выбрать"
+          />
+        </div>
+        <p class="mt-4 text-sm text-bali">
+          Текущее значение:
+          <span class="text-space">{{ plainSelectDemo.trim() ? plainSelectDemo : '—' }}</span>
+        </p>
+      </div>
+    </section>
+
     <!-- Текстовое поле -->
     <section class="mb-12">
       <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
@@ -221,6 +275,34 @@ onMounted(async () => {
           v-model="checkbox1"
           label="С цветом dodger"
           label-color="dodger"
+        />
+      </div>
+    </section>
+
+    <!-- Переключатель (toggle) -->
+    <section class="mb-12">
+      <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
+        4.1. Переключатель (MyToggleSwitch)
+      </h2>
+      <p class="text-sm text-slate-custom mb-4">
+        Вместо чекбокса для бинарных настроек (как в «Причины отказа»): трек в цветах проекта — <span class="text-dodger">dodger</span> при включении, <span class="text-bali">athens / серый</span> при выключении.
+      </p>
+      <div class="flex flex-col gap-4 max-w-md">
+        <MyToggleSwitch
+          id="demo-toggle-1"
+          v-model="toggleSwitchDemo"
+          label="Выключить / включить"
+        />
+        <MyToggleSwitch
+          id="demo-toggle-2"
+          v-model="toggleSwitchDemoOn"
+          label="Включено по умолчанию"
+        />
+        <MyToggleSwitch
+          id="demo-toggle-3"
+          :model-value="true"
+          label="Только просмотр (disabled)"
+          disabled
         />
       </div>
     </section>
@@ -265,6 +347,19 @@ onMounted(async () => {
       </div>
       <p v-if="multiSelectValue.length" class="text-sm text-bali mt-2">
         Выбрано: {{ multiSelectValue.join(', ') }}
+      </p>
+      <p class="text-sm text-bali mb-1 mt-6">
+        <strong>PlainMultiSelectDropdown</strong> — то же по смыслу, что MultiSelect, но стиль триггера и панели как у <strong>PlainSingleSelectDropdown</strong> (вкладка «Поля»).
+      </p>
+      <div class="max-w-xs">
+        <PlainMultiSelectDropdown
+          v-model="plainMultiSelectDemo"
+          :options="plainMultiSelectDemoOptions"
+          placeholder="Выбрать"
+        />
+      </div>
+      <p v-if="plainMultiSelectDemo.length" class="text-sm text-bali mt-2">
+        Выбраны id: {{ plainMultiSelectDemo.join(', ') }}
       </p>
     </section>
 
@@ -527,6 +622,25 @@ onMounted(async () => {
       <p v-else class="text-sm text-slate-custom">
         Загрузка списка иконок… Запустите <code class="rounded bg-athens px-1">node scripts/extract-icons.cjs</code> из корня проекта, чтобы сгенерировать иконки и список.
       </p>
+    </section>
+
+    <!-- Удаление кандидата (карточка кандидата) -->
+    <section class="mb-12">
+      <h2 class="text-lg font-semibold text-space mb-4 pb-2 border-b border-athens">
+        18. Удалить кандидата (CandidateDeletePopup)
+      </h2>
+      <p class="text-sm text-slate-custom mb-4">
+        Окно подтверждения удаления из карточки кандидата: те же отступы (<code class="rounded bg-athens px-1">p-25px</code> снаружи, без двойного padding), что и у модалок настроек причин отказа.
+      </p>
+      <UiButton variant="outline" @click="candidateDeleteOpen = true">
+        Открыть «Удалить кандидата»
+      </UiButton>
+      <CandidateDeletePopup
+        :is-open="candidateDeleteOpen"
+        :candidate="demoCandidateForDelete"
+        @close="candidateDeleteOpen = false"
+        @confirm="candidateDeleteOpen = false"
+      />
     </section>
   </div>
 </template>

@@ -3,7 +3,6 @@
   import BtnTab from '~/components/custom/BtnTab.vue';
   import TextWithLinks from '~/components/custom/TextWithLinks.vue';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
-  import PhoneInputSecond from '~/components/custom/PhoneInputSecond.vue';
   import FileUpload from '~/components/custom/FileUpload.vue';
   import MinDropdownSecond from '~/components/custom/MinDropdownSecond.vue';
   import MoreQuestions from '~/components/custom/MoreQuestions.vue';
@@ -11,6 +10,10 @@
   import ChatInput from '~/components/chat/ChatInput.vue';
   import CommentDeleteConfirmPopup from '~/components/custom/page-parts/candidate/popups/CommentDeleteConfirmPopup.vue';
   import CandidateEmailViewPopup from '~/components/custom/page-parts/candidate/popups/CandidateEmailViewPopup.vue';
+  import PlainSingleSelectDropdown from '~/components/custom/PlainSingleSelectDropdown.vue';
+  import PlainMultiSelectDropdown from '~/components/custom/PlainMultiSelectDropdown.vue';
+  import PlainInlineTextInput from '~/components/custom/PlainInlineTextInput.vue';
+  import PlainDateSelectDropdown from '~/components/custom/PlainDateSelectDropdown.vue';
   import { useForms } from '~/stores/forms';
   import { useChatStore } from '@/stores/chat';
   import {
@@ -22,10 +25,17 @@
     deleteCandidateTask,
     updateCandidateComment,
     updateCandidateTask,
+    updateCandidate,
   } from '@/src/api/candidates';
+  import {
+    getRejectionReasons,
+    type RejectionReasonRow,
+  } from '@/src/api/rejectionReasons';
+  import { getExecutors, getVacancyTeamMembers } from '@/src/api/executors';
 
   import type {
     Candidate,
+    CandidateUpdateRequest,
     CandidateConsideration,
     CandidateEvent,
     HhEducationPrimaryEntry,
@@ -93,6 +103,27 @@
   ];
 
   const dropdownOptions = ['Опция 1', 'Опция 2', 'Опция 3'];
+
+  /** Предустановленные значения поля «Источник» (свободный текст на бэке до 50 символов) */
+  const CANDIDATE_SOURCE_OPTIONS: string[] = [
+    'hh.ru',
+    'Хабр Карьера',
+    'SuperJob',
+    'Avito Работа',
+    'Работа.ru',
+    'Зарплата.ru',
+    'Telegram',
+    'LinkedIn',
+    'Сайт компании',
+    'Рекомендация',
+  ];
+
+  /** Поле «Тип отклика» — одно значение из списка (как источник) */
+  const CANDIDATE_RESPONSE_TYPE_OPTIONS: string[] = [
+    'Не указан',
+    'Прямой отклик',
+    'Холодный поиск',
+  ];
 
   // function sanitazeCandidate(data) {
   //   if (!data) return null;
@@ -167,7 +198,653 @@
   const emit = defineEmits<{
     'comment-added': [];
     'open-email-popup': [];
+    'candidate-updated': [candidate: Candidate];
   }>();
+
+  const sourceFieldSaving = ref(false);
+  const responseTypeFieldSaving = ref(false);
+
+  const rejectionReasonList = ref<RejectionReasonRow[]>([]);
+  const rejectionReasonOptions = ref<string[]>([]);
+  const rejectionReasonsLoading = ref(false);
+  const rejectionReasonFieldSaving = ref(false);
+
+  async function loadRejectionReasonsOptions() {
+    rejectionReasonsLoading.value = true;
+    try {
+      const res = await getRejectionReasons();
+      const reasons = res.data?.reasons ?? [];
+      rejectionReasonList.value = reasons;
+      rejectionReasonOptions.value = [...reasons]
+        .sort(
+          (a, b) =>
+            a.sort_order - b.sort_order ||
+            a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+        )
+        .map(r => r.name.trim())
+        .filter(Boolean);
+    } catch (e) {
+      console.error('Не удалось загрузить причины отказа:', e);
+      rejectionReasonList.value = [];
+      rejectionReasonOptions.value = [];
+    } finally {
+      rejectionReasonsLoading.value = false;
+    }
+  }
+
+  async function handleRejectionReasonFieldUpdate(selectedName: string) {
+    if (!props.candidate?.id) return;
+    const trimmed = selectedName.trim();
+    const curId = props.candidate.rejection_reason_id ?? null;
+
+    let nextId: number | null = null;
+    if (!trimmed) {
+      if (curId === null) return;
+      nextId = null;
+    } else {
+      const row = rejectionReasonList.value.find(
+        r => r.name.trim() === trimmed
+      );
+      nextId = row?.id ?? null;
+      if (nextId == null) {
+        showFieldsTabToast('Выберите причину из списка', 'error');
+        return;
+      }
+    }
+
+    if (nextId === curId) return;
+
+    rejectionReasonFieldSaving.value = true;
+    try {
+      const payload: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null &&
+        String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        source: props.candidate.source ?? undefined,
+        response_type: props.candidate.response_type ?? undefined,
+        rejection_reason_id: nextId,
+      };
+      const res = await updateCandidate(payload);
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения причины отказа:', e);
+      showFieldsTabToast('Не удалось сохранить причину отказа', 'error');
+    } finally {
+      rejectionReasonFieldSaving.value = false;
+    }
+  }
+
+  async function handleSourceFieldUpdate(next: string) {
+    if (!props.candidate?.id) return;
+    const trimmed = next.trim();
+    const current = (props.candidate.source || '').trim();
+    if (trimmed === current) return;
+
+    sourceFieldSaving.value = true;
+    try {
+      const payload: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null && String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        source: trimmed ? trimmed : null,
+      };
+      const res = await updateCandidate(payload);
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения источника:', e);
+      alert('Не удалось сохранить источник');
+    } finally {
+      sourceFieldSaving.value = false;
+    }
+  }
+
+  async function handleResponseTypeFieldUpdate(next: string) {
+    if (!props.candidate?.id) return;
+    const normalized =
+      next.trim() === '' || next.trim() === 'Не указан' ? '' : next.trim();
+    const current = (props.candidate.response_type || '').trim();
+    const currentNorm =
+      current === '' || current === 'Не указан' ? '' : current;
+    const nextNorm = normalized;
+    if (nextNorm === currentNorm) return;
+
+    responseTypeFieldSaving.value = true;
+    try {
+      const payload: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null && String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        source: props.candidate.source,
+        response_type: nextNorm ? nextNorm : null,
+      };
+      const res = await updateCandidate(payload);
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения типа отклика:', e);
+      alert('Не удалось сохранить тип отклика');
+    } finally {
+      responseTypeFieldSaving.value = false;
+    }
+  }
+
+  const surnameEdit = ref('');
+  const firstnameEdit = ref('');
+  const patronymicEdit = ref('');
+  const nameFieldsSaving = ref(false);
+
+  /** Как в CandidateController `$validUpdateFields['email']` */
+  const CANDIDATE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  /** Как в CandidateController `$validUpdateFields['phone']` */
+  const PHONE_API_REGEX = /^\+7\d{10}$/;
+
+  /** Цифры для «Желаемая зарплата»: salaryFrom, иначе salaryTo (без пробелов/₽) */
+  function candidateSalaryDigitsFromCard(c: Candidate): string {
+    const from = c.salaryFrom;
+    const to = c.salaryTo;
+    const hasFrom = typeof from === 'number' && !Number.isNaN(from);
+    const hasTo = typeof to === 'number' && !Number.isNaN(to);
+    if (!hasFrom && !hasTo) return '';
+    if (hasFrom) return String(Math.trunc(from as number));
+    return String(Math.trunc(to as number));
+  }
+
+  function parsePhoneInputToApi(input: string): string | null {
+    const d = input.replace(/\D/g, '');
+    if (d.length === 0) return null;
+    let n = d;
+    if (n.startsWith('8')) n = '7' + n.slice(1);
+    if (n.length === 10) n = '7' + n;
+    if (n.length === 11 && n.startsWith('7')) return `+${n}`;
+    return null;
+  }
+
+  function normalizeCandidatePhoneForCompare(raw: string | null | undefined): string {
+    if (raw == null || String(raw).trim() === '') return '';
+    const t = String(raw).trim();
+    if (PHONE_API_REGEX.test(t)) return t;
+    const parsed = parsePhoneInputToApi(t);
+    return parsed && PHONE_API_REGEX.test(parsed) ? parsed : '';
+  }
+
+  /** Сообщение для строки: +7 (XXX) XXX-XX-XX; иначе как пришло с API */
+  function formatCandidatePhoneDisplay(raw: string | null | undefined): string {
+    if (raw == null || String(raw).trim() === '') return '';
+    const t = String(raw).trim();
+    if (PHONE_API_REGEX.test(t)) {
+      const digits = t.slice(2);
+      return `+7 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 10)}`;
+    }
+    return t;
+  }
+
+  function emailHasAtAndDot(raw: string): boolean {
+    const t = raw.trim();
+    return t.includes('@') && t.includes('.');
+  }
+
+  function normalizeBirthDateForInput(raw: unknown): string {
+    if (raw == null) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const ru = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+    if (ru) return `${ru[3]}-${ru[2]}-${ru[1]}`;
+    return '';
+  }
+
+  const emailEdit = ref('');
+  const emailFieldSaving = ref(false);
+  /** Красный пунктир: нет @ или точки при попытке сохранить (blur) */
+  const emailLineError = ref(false);
+
+  const birthDateEdit = ref('');
+  const birthDateFieldSaving = ref(false);
+
+  const phoneEdit = ref('');
+  const phoneFieldSaving = ref(false);
+  const phoneLineError = ref(false);
+
+  const salaryDesiredEdit = ref('');
+  const salaryFieldSaving = ref(false);
+
+  const recruiterOptions = ref<{ id: number; name: string }[]>([]);
+  const recruitersListLoading = ref(false);
+  const recruiterFieldSaving = ref(false);
+  const recruiterIdsEdit = ref<number[]>([]);
+
+  async function loadRecruiterOptions() {
+    recruitersListLoading.value = true;
+    try {
+      const [executorRows, teamRows] = await Promise.all([
+        getExecutors(),
+        props.vacancyId ? getVacancyTeamMembers(props.vacancyId) : Promise.resolve([]),
+      ]);
+      const byId = new Map<number, { id: number; name: string }>();
+      for (const r of [...executorRows, ...teamRows]) {
+        const id = Number(r.id);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        const name = (r.name ?? '').trim();
+        if (!name) continue;
+        byId.set(id, { id, name });
+      }
+      recruiterOptions.value = [...byId.values()].sort((a, b) =>
+        a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+      );
+    } catch (e) {
+      console.error('Не удалось загрузить список рекрутеров:', e);
+      recruiterOptions.value = [];
+    } finally {
+      recruitersListLoading.value = false;
+    }
+  }
+
+  async function onRecruitersModelUpdate(nextIds: number[]) {
+    recruiterIdsEdit.value = nextIds;
+    await handleRecruitersFieldUpdate(nextIds);
+  }
+
+  async function handleRecruitersFieldUpdate(nextIds: number[]) {
+    if (!props.candidate?.id) return;
+    const cur = [...(props.candidate.recruiter_ids ?? [])].sort((a, b) => a - b);
+    const n = [...nextIds].sort((a, b) => a - b);
+    if (JSON.stringify(cur) === JSON.stringify(n)) return;
+
+    recruiterFieldSaving.value = true;
+    try {
+      const payload: CandidateUpdateRequest = {
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null &&
+        String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        source: props.candidate.source ?? undefined,
+        response_type: props.candidate.response_type ?? undefined,
+        recruiter_ids: n,
+      };
+      const res = await updateCandidate(payload);
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения рекрутеров:', e);
+      showFieldsTabToast('Не удалось сохранить рекрутеров', 'error');
+      recruiterIdsEdit.value = Array.isArray(props.candidate.recruiter_ids)
+        ? [...props.candidate.recruiter_ids]
+        : [];
+    } finally {
+      recruiterFieldSaving.value = false;
+    }
+  }
+
+  /** Тост в том же стиле, что уведомление об успешном перемещении кандидата (BlockCandidateInfo) */
+  const fieldsTabToast = ref<{
+    show: boolean;
+    text: string;
+    variant: 'success' | 'error';
+  }>({
+    show: false,
+    text: '',
+    variant: 'error',
+  });
+  let fieldsTabToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function showFieldsTabToast(
+    message: string,
+    variant: 'success' | 'error' = 'error'
+  ) {
+    fieldsTabToast.value = { show: true, text: message, variant };
+    if (fieldsTabToastTimer) clearTimeout(fieldsTabToastTimer);
+    fieldsTabToastTimer = setTimeout(() => {
+      fieldsTabToast.value = { show: false, text: '', variant: 'error' };
+      fieldsTabToastTimer = null;
+    }, 4000);
+  }
+
+  watch(
+    () => activeTab.value,
+    tab => {
+      if (tab === 'fields') {
+        void loadRejectionReasonsOptions();
+      }
+    },
+    { immediate: true }
+  );
+
+  /** Текст строки вкладки «Поля»; пусто → «—» (всегда показываем строку). */
+  function fieldsTabDisplay(raw: unknown): string {
+    if (raw == null) return '';
+    if (typeof raw === 'string') return raw.trim();
+    if (typeof raw === 'number' || typeof raw === 'boolean') {
+      return String(raw).trim();
+    }
+    return '';
+  }
+
+  function fieldsTabLine(raw: unknown): { text: string; isEmpty: boolean } {
+    const s = fieldsTabDisplay(raw);
+    if (s !== '') return { text: s, isEmpty: false };
+    return { text: '—', isEmpty: true };
+  }
+
+  function fieldsTabPhotoLine(c: Candidate): { text: string; isEmpty: boolean } {
+    const p = (c.imagePath || c.icon || '').trim();
+    if (p !== '') return { text: 'Загружено', isEmpty: false };
+    return { text: '—', isEmpty: true };
+  }
+
+  function fieldsTabResumeLine(c: Candidate): { text: string; isEmpty: boolean } {
+    const p = (c.resumePath || c.resume || '').trim();
+    if (p !== '') return { text: 'Загружено', isEmpty: false };
+    return { text: '—', isEmpty: true };
+  }
+
+  watch(
+    () => props.candidate,
+    c => {
+      if (!c) return;
+      surnameEdit.value = c.surname ?? '';
+      firstnameEdit.value = c.firstname ?? '';
+      patronymicEdit.value = c.patronymic ?? '';
+      emailEdit.value = c.email ?? '';
+      emailLineError.value = false;
+      birthDateEdit.value = normalizeBirthDateForInput(c.birth_date);
+      phoneEdit.value = formatCandidatePhoneDisplay(c.phone);
+      phoneLineError.value = false;
+      salaryDesiredEdit.value = candidateSalaryDigitsFromCard(c);
+      recruiterIdsEdit.value = Array.isArray(c.recruiter_ids)
+        ? [...c.recruiter_ids]
+        : [];
+    },
+    { immediate: true, deep: false }
+  );
+
+  watch(
+    () => activeTab.value === 'fields',
+    isFields => {
+      if (isFields) {
+        void loadRecruiterOptions();
+      }
+    },
+    { immediate: true }
+  );
+
+  watch(emailEdit, v => {
+    if (emailLineError.value && emailHasAtAndDot(v)) {
+      emailLineError.value = false;
+    }
+  });
+
+  watch(phoneEdit, v => {
+    if (!phoneLineError.value) return;
+    const p = parsePhoneInputToApi(v);
+    if (p && PHONE_API_REGEX.test(p)) {
+      phoneLineError.value = false;
+    }
+  });
+
+  async function flushNameFieldsFromBlur() {
+    if (!props.candidate?.id) return;
+    const f = firstnameEdit.value.trim();
+    const s = surnameEdit.value.trim();
+    const p = patronymicEdit.value.trim();
+    const cf = (props.candidate.firstname || '').trim();
+    const cs = (props.candidate.surname || '').trim();
+    const cp = (props.candidate.patronymic || '').trim();
+    if (f === cf && s === cs && p === cp) return;
+    if (f.length < 3) {
+      alert('Имя должно быть не короче 3 символов');
+      firstnameEdit.value = props.candidate.firstname ?? '';
+      return;
+    }
+    nameFieldsSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: f,
+        email: props.candidate.email,
+        phone: props.candidate.phone,
+        surname: s || null,
+        patronymic: p || null,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения ФИО:', e);
+      alert('Не удалось сохранить ФИО');
+      surnameEdit.value = props.candidate.surname ?? '';
+      firstnameEdit.value = props.candidate.firstname ?? '';
+      patronymicEdit.value = props.candidate.patronymic ?? '';
+    } finally {
+      nameFieldsSaving.value = false;
+    }
+  }
+
+  async function flushEmailFromBlur() {
+    if (!props.candidate?.id) return;
+    const next = emailEdit.value.trim();
+    const current = (props.candidate.email ?? '').trim();
+    if (next === current) {
+      emailLineError.value = false;
+      return;
+    }
+
+    if (next.length === 0) {
+      emailLineError.value = false;
+      emailFieldSaving.value = true;
+      try {
+        const res = await updateCandidate({
+          id: props.candidate.id,
+          firstname: props.candidate.firstname,
+          email: null,
+          phone: props.candidate.phone,
+          surname: props.candidate.surname,
+          patronymic: props.candidate.patronymic ?? undefined,
+        });
+        emit('candidate-updated', res.data);
+        showFieldsTabToast('Поля сохранены', 'success');
+      } catch (e) {
+        console.error('Ошибка сохранения e-mail:', e);
+        showFieldsTabToast('Не удалось сохранить e-mail');
+        emailEdit.value = props.candidate.email ?? '';
+      } finally {
+        emailFieldSaving.value = false;
+      }
+      return;
+    }
+    if (!emailHasAtAndDot(next)) {
+      emailLineError.value = true;
+      showFieldsTabToast('Введите корректный e-mail (например, user@example.ru)');
+      return;
+    }
+    if (next.length > 50 || !CANDIDATE_EMAIL_REGEX.test(next)) {
+      emailLineError.value = false;
+      showFieldsTabToast('Введите корректный e-mail (например, user@example.ru)');
+      emailEdit.value = props.candidate.email ?? '';
+      return;
+    }
+
+    emailLineError.value = false;
+    emailFieldSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: next,
+        phone: props.candidate.phone,
+        surname: props.candidate.surname,
+        patronymic: props.candidate.patronymic ?? undefined,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения e-mail:', e);
+      showFieldsTabToast('Не удалось сохранить e-mail');
+      emailEdit.value = props.candidate.email ?? '';
+    } finally {
+      emailFieldSaving.value = false;
+    }
+  }
+
+  async function flushPhoneFromBlur() {
+    if (!props.candidate?.id) return;
+    const currentCanon = normalizeCandidatePhoneForCompare(props.candidate.phone);
+    const trimmed = phoneEdit.value.trim();
+    const nextCanon = parsePhoneInputToApi(phoneEdit.value);
+
+    if (trimmed === '' && !currentCanon) {
+      phoneLineError.value = false;
+      return;
+    }
+
+    if (nextCanon && nextCanon === currentCanon) {
+      phoneLineError.value = false;
+      phoneEdit.value = formatCandidatePhoneDisplay(props.candidate.phone);
+      return;
+    }
+
+    if (trimmed === '') {
+      if (currentCanon) {
+        phoneLineError.value = false;
+        showFieldsTabToast('Телефон не может быть пустым');
+        phoneEdit.value = formatCandidatePhoneDisplay(props.candidate.phone);
+      }
+      return;
+    }
+
+    if (!nextCanon || !PHONE_API_REGEX.test(nextCanon)) {
+      phoneLineError.value = true;
+      showFieldsTabToast(
+        'Введите номер: +7 и 10 цифр (например, +7 (926) 304-46-43)'
+      );
+      phoneEdit.value = formatCandidatePhoneDisplay(props.candidate.phone);
+      return;
+    }
+
+    phoneLineError.value = false;
+    phoneFieldSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        phone: nextCanon,
+        surname: props.candidate.surname,
+        patronymic: props.candidate.patronymic ?? undefined,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения телефона:', e);
+      showFieldsTabToast('Не удалось сохранить телефон');
+      phoneEdit.value = formatCandidatePhoneDisplay(props.candidate.phone);
+    } finally {
+      phoneFieldSaving.value = false;
+    }
+  }
+
+  async function handleBirthDateFieldUpdate(nextRaw: string) {
+    if (!props.candidate?.id) return;
+    const next = normalizeBirthDateForInput(nextRaw);
+    birthDateEdit.value = next;
+    const current = normalizeBirthDateForInput(props.candidate.birth_date);
+    if (next === current) return;
+
+    birthDateFieldSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null &&
+        String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        birth_date: next || null,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения даты рождения:', e);
+      showFieldsTabToast('Не удалось сохранить дату рождения', 'error');
+      birthDateEdit.value = normalizeBirthDateForInput(props.candidate.birth_date);
+    } finally {
+      birthDateFieldSaving.value = false;
+    }
+  }
+
+  async function flushSalaryDesiredFromBlur() {
+    if (!props.candidate?.id) return;
+    const digits = salaryDesiredEdit.value.replace(/\D/g, '').slice(0, 12);
+    const cf = props.candidate.salaryFrom ?? null;
+    const ct = props.candidate.salaryTo ?? null;
+
+    let nextFrom: number | null;
+    let nextTo: number | null;
+
+    if (digits === '') {
+      nextFrom = null;
+      nextTo = null;
+      if (cf == null && ct == null) return;
+    } else {
+      const n = Number.parseInt(digits, 10);
+      if (!Number.isFinite(n) || n < 0) {
+        showFieldsTabToast('Введите корректную сумму', 'error');
+        salaryDesiredEdit.value = candidateSalaryDigitsFromCard(props.candidate);
+        return;
+      }
+      nextFrom = n;
+      nextTo = null;
+      const hadRange = cf != null && ct != null && ct !== cf;
+      if (hadRange && n === cf) {
+        return;
+      }
+    }
+
+    if ((cf ?? null) === (nextFrom ?? null) && (ct ?? null) === (nextTo ?? null)) {
+      return;
+    }
+
+    salaryFieldSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null &&
+        String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        surname: props.candidate.surname,
+        patronymic: props.candidate.patronymic ?? undefined,
+        salaryFrom: nextFrom,
+        salaryTo: nextTo,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения зарплаты:', e);
+      showFieldsTabToast('Не удалось сохранить зарплату', 'error');
+      salaryDesiredEdit.value = candidateSalaryDigitsFromCard(props.candidate);
+    } finally {
+      salaryFieldSaving.value = false;
+    }
+  }
 
   const commentToDeleteEventId = ref<number | null>(null);
   const isCommentDeletePopupOpen = ref(false);
@@ -431,6 +1108,7 @@
   );
 
   onBeforeUnmount(() => {
+    if (fieldsTabToastTimer) clearTimeout(fieldsTabToastTimer);
     experienceDescObservers.forEach((o) => o.disconnect());
     experienceDescObservers.clear();
     experienceDescEls.clear();
@@ -1507,92 +2185,287 @@
               Пользовательские поля
             </p>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Источник
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-space">
-              {{ candidate.source || '—' }}
-            </p>
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <div class="fields-tab-line__value">
+              <PlainSingleSelectDropdown
+                :model-value="candidate.source || ''"
+                :options="CANDIDATE_SOURCE_OPTIONS"
+                placeholder="Выбрать"
+                :disabled="sourceFieldSaving"
+                @update:model-value="handleSourceFieldUpdate"
+              />
+            </div>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
-              Фамилия Имя Отчество
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
-            </p>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Рекрутеры
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <div class="fields-tab-line__value">
+              <PlainMultiSelectDropdown
+                :model-value="recruiterIdsEdit"
+                :options="recruiterOptions"
+                placeholder="Выбрать"
+                :disabled="recruiterFieldSaving || recruitersListLoading"
+                @update:model-value="onRecruitersModelUpdate"
+              />
+            </div>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Тип отклика
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <div class="fields-tab-line__value">
+              <PlainSingleSelectDropdown
+                :model-value="
+                  (candidate.response_type || '').trim() === ''
+                    ? 'Не указан'
+                    : candidate.response_type || ''
+                "
+                :options="CANDIDATE_RESPONSE_TYPE_OPTIONS"
+                placeholder="Выбрать"
+                :disabled="responseTypeFieldSaving"
+                @update:model-value="handleResponseTypeFieldUpdate"
+              />
+            </div>
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Причина отказа
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <div class="fields-tab-line__value">
+              <PlainSingleSelectDropdown
+                :model-value="candidate.rejection_reason?.name?.trim() || ''"
+                :options="rejectionReasonOptions"
+                placeholder="Выбрать"
+                :disabled="
+                  rejectionReasonFieldSaving || rejectionReasonsLoading
+                "
+                @update:model-value="handleRejectionReasonFieldUpdate"
+              />
+            </div>
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Фамилия
+            </span>
+            <PlainInlineTextInput
+              v-model="surnameEdit"
+              leader-full-width
+              placeholder=""
+              autocomplete="family-name"
+              :disabled="nameFieldsSaving"
+              @blur="flushNameFieldsFromBlur"
+            />
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Имя
+            </span>
+            <PlainInlineTextInput
+              v-model="firstnameEdit"
+              leader-full-width
+              placeholder=""
+              autocomplete="given-name"
+              :disabled="nameFieldsSaving"
+              @blur="flushNameFieldsFromBlur"
+            />
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Отчество
+            </span>
+            <PlainInlineTextInput
+              v-model="patronymicEdit"
+              leader-full-width
+              placeholder=""
+              autocomplete="additional-name"
+              :disabled="nameFieldsSaving"
+              @blur="flushNameFieldsFromBlur"
+            />
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span
+              class="fields-tab-line__label text-sm font-normal transition-colors duration-150"
+              :class="emailLineError ? 'text-[#ef4444]' : 'text-bali'"
+            >
               Электронная почта
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
-            </p>
+            </span>
+            <PlainInlineTextInput
+              v-model="emailEdit"
+              leader-full-width
+              :line-error="emailLineError"
+              type="email"
+              placeholder=""
+              autocomplete="email"
+              :disabled="emailFieldSaving"
+              @blur="flushEmailFromBlur"
+            />
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Дата рождения
+            </span>
+            <PlainDateSelectDropdown
+              :model-value="birthDateEdit"
+              :disabled="birthDateFieldSaving"
+              @update:model-value="handleBirthDateFieldUpdate"
+            />
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span
+              class="fields-tab-line__label text-sm font-normal transition-colors duration-150"
+              :class="phoneLineError ? 'text-[#ef4444]' : 'text-bali'"
+            >
               Телефон
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
-            </p>
+            </span>
+            <PlainInlineTextInput
+              v-model="phoneEdit"
+              leader-full-width
+              :line-error="phoneLineError"
+              type="tel"
+              placeholder=""
+              autocomplete="tel"
+              :disabled="phoneFieldSaving"
+              @blur="flushPhoneFromBlur"
+            />
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Желаемая зарплата
+            </span>
+            <PlainInlineTextInput
+              v-model="salaryDesiredEdit"
+              leader-full-width
+              digits-only
+              type="text"
+              placeholder=""
+              autocomplete="off"
+              :disabled="salaryFieldSaving"
+              @blur="flushSalaryDesiredFromBlur"
+            />
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Заголовок
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabLine(candidate.quickInfo).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{ fieldsTabLine(candidate.quickInfo).text }}
             </p>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Адрес проживания
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabLine(
+                  candidate.address || candidate.location || ''
+                ).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{
+                fieldsTabLine(candidate.address || candidate.location || '')
+                  .text
+              }}
             </p>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Образование
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabLine(candidate.education).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{ fieldsTabLine(candidate.education).text }}
             </p>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Опыт работы
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabLine(candidate.experience).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{ fieldsTabLine(candidate.experience).text }}
             </p>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Фото
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabPhotoLine(candidate).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{ fieldsTabPhotoLine(candidate).text }}
             </p>
           </div>
-          <div class="fields-row mb-5 flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Загрузка резюме
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabResumeLine(candidate).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{ fieldsTabResumeLine(candidate).text }}
             </p>
           </div>
-          <div class="fields-row flex justify-between gap-2.5">
-            <p class="min-w-[200px] shrink-0 text-sm font-normal text-space">
+          <div class="fields-tab-line">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Сопроводительное письмо
-            </p>
-            <p class="text-right text-sm font-normal leading-150 text-slate-custom">
-              ...
+            </span>
+            <span class="fields-tab-line__dots" aria-hidden="true" />
+            <p
+              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
+              :class="
+                fieldsTabLine(candidate.coverLetter).isEmpty
+                  ? 'text-bali'
+                  : 'text-slate-custom'
+              "
+            >
+              {{ fieldsTabLine(candidate.coverLetter).text }}
             </p>
           </div>
         </div>
@@ -1856,6 +2729,22 @@
       @confirm="handleTaskDeleteConfirm"
     />
   </div>
+  <Teleport to="body">
+    <Transition name="fields-tab-toast-fade">
+      <div
+        v-if="fieldsTabToast.show"
+        class="fixed left-1/2 top-5 z-[10001] max-w-[min(90vw,420px)] -translate-x-1/2 rounded-fifteen px-6 py-3 text-center text-sm font-medium leading-150 shadow-[0_0_15px_rgba(0,0,0,0.12)]"
+        :class="
+          fieldsTabToast.variant === 'success'
+            ? 'fields-tab-success-toast'
+            : 'fields-tab-error-toast'
+        "
+        :role="fieldsTabToast.variant === 'success' ? 'status' : 'alert'"
+      >
+        {{ fieldsTabToast.text }}
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -1911,6 +2800,80 @@
 .text-bali {
   color: #79869a;
 }
+
+/* Вкладка «Поля»: одна строка на поле, пунктир у нижней кромки текста (как на макете) */
+.fields-tab-block :deep(.plain-fields-leader-shell) {
+  /* В компоненте по умолчанию min-height: 1.75rem — строки выше, чем у полей с текстом и «…» */
+  min-height: 0;
+}
+.fields-tab-block .fields-tab-line {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  width: 100%;
+  column-gap: 8px;
+}
+.fields-tab-block .fields-tab-line__label {
+  flex: 0 0 auto;
+  max-width: none;
+  white-space: nowrap;
+}
+.fields-tab-block .fields-tab-line__dots {
+  flex: 1 1 0;
+  min-width: 12px;
+  width: auto;
+  height: 0;
+  box-sizing: border-box;
+  align-self: flex-end;
+  border-bottom: 1px dotted #c5cdd5;
+  /* flex-end тянет линию к низу line-height; поднимаем к визуальной базовой линии */
+  transform: translateY(-0.28em);
+}
+/* Значение по ширине контента, выравнивание как у PlainSingleSelectDropdown (вправо) */
+.fields-tab-block .fields-tab-line__value {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  text-align: right;
+}
+.fields-tab-block .fields-tab-line__value--truncate {
+  max-width: min(360px, 42vw);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
+
+<style>
+  /* Непрозрачный розовый фон: не полагаемся на Tailwind (JIT/перекрытия), только на явные значения */
+  .fields-tab-error-toast {
+    background-color: #fce7f3 !important;
+    border: none !important;
+    color: #212936 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .fields-tab-success-toast {
+    background-color: #ffffff !important;
+    border: none !important;
+    color: #212936 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .fields-tab-toast-fade-enter-active,
+  .fields-tab-toast-fade-leave-active {
+    transition: opacity 0.3s ease;
+  }
+  .fields-tab-toast-fade-enter-from,
+  .fields-tab-toast-fade-leave-to {
+    opacity: 0;
+  }
 </style>
 
 

@@ -39,11 +39,11 @@ export const addCandidateFormConfig: FormConfig = {
       name: 'email',
       label: 'Электронная почта',
       type: 'email',
-      placeholder: 'Введите email',
-      required: true,
+      placeholder: 'Введите email (необязательно)',
+      required: false,
       row: 3, // Третья строка
       validation: {
-        required: true,
+        required: false,
         pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
         message: 'Введите корректный email',
       },

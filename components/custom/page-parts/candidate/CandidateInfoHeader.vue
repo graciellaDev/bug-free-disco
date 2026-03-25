@@ -5,12 +5,17 @@
   import DotsDropdown from '~/components/custom/DotsDropdown.vue';
   // import type { Candidate } from '@/types/candidates';
 
-  const props = defineProps<{
-    isFunnel: boolean;
-    options: string[];
-    selectedLabel: string;
-    dropdownOptions: string[];
-  }>();
+  const props = withDefaults(
+    defineProps<{
+      isFunnel: boolean;
+      options: string[];
+      selectedLabel: string;
+      dropdownOptions: string[];
+      /** Скрыть кнопку отказа (например, кандидат уже на этапе «Отказ») */
+      showRefuseButton?: boolean;
+    }>(),
+    { showRefuseButton: true }
+  );
 
   const emit = defineEmits<{
     'select-item': [item: string];
@@ -53,6 +58,7 @@
         @click="emit('email')"
       />
       <BtnIcon
+        v-if="props.showRefuseButton"
         icon="stop20"
         tooltipText="Отказать кандидату"
         classes="flex-center cursor-pointer rounded-ten border p-10.5px transition-colors"

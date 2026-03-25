@@ -35,6 +35,15 @@
             Шаблоны воронок
           </NuxtLink>
         </li>
+        <li
+          :class="{
+            active: isActive('/settings/recruiting/SettingsRejectionReasons'),
+          }"
+        >
+          <NuxtLink to="/settings/recruiting/SettingsRejectionReasons">
+            Причины отказа
+          </NuxtLink>
+        </li>
       </ul>
     </div>
 
