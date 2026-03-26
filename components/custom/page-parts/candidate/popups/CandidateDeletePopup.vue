@@ -26,6 +26,7 @@
     :parentRounded="true"
     :contentRounded="false"
     :contentPadding="false"
+    :noScrollbarGutter="true"
   >
     <div class="popup-delete-content flex flex-col gap-y-6">
       <h2 class="text-xl font-semibold text-space">

@@ -1,105 +1,183 @@
 <script setup lang="ts">
-  import { ref, unref, computed, type MaybeRef } from 'vue';
+  import { ref, unref, computed, watch, type MaybeRef } from 'vue';
   import Popup from '~/components/custom/Popup.vue';
-  import DynamicForm from '~/components/custom/DynamicForm.vue';
-  import { getRefuseFormConfig } from '../../configs/refuseFormConfig';
+  import MyDropdown from '~/components/custom/MyDropdown.vue';
+  import MyTextarea from '~/components/custom/MyTextarea.vue';
+  import { getRejectionReasons } from '@/src/api/rejectionReasons';
 
   const props = defineProps<{
     isOpen: MaybeRef<boolean>;
-    candidateName?: string;
-    vacancyName?: string;
   }>();
 
   const emit = defineEmits<{
     close: [];
-    submit: [data: { sendEmail: boolean; subject?: string; body?: string }];
+    submit: [
+      data: {
+        rejection_reason_id?: number;
+        internal_comment?: string;
+      },
+    ];
   }>();
 
-  const formData = ref<Record<string, any>>({
-    sendEmail: false,
-    subject: 'Отказ',
-    body: `<strong>Привет, ${props.candidateName}!</strong><br />
-      К сожалению, мы не можем рассмотреть Вашу кандидатуру на вакансию "${props.vacancyName}".`,
+  const reasonsLoading = ref(false);
+  const useRejectionReasons = ref(false);
+  const reasonRows = ref<{ id: number; name: string }[]>([]);
+
+  const rejectionReasonId = ref<number | null>(null);
+  const internalComment = ref('');
+  const localError = ref<string | null>(null);
+
+  const dropdownOptions = computed(() =>
+    reasonRows.value.map(r => ({ value: r.id, name: r.name }))
+  );
+
+  // Поле причины отказа должно быть доступно для заполнения,
+  // когда в аккаунте включены причины отказа (на случай пустого справочника — будет ошибка валидации).
+  const showReasonField = computed(() => useRejectionReasons.value);
+
+  const reasonRequired = computed(() => showReasonField.value);
+
+  const submitDisabled = computed(() => {
+    if (reasonsLoading.value) return true;
+    return (
+      reasonRequired.value &&
+      (rejectionReasonId.value == null || Number.isNaN(rejectionReasonId.value))
+    );
   });
 
-  const resetFormData = () => {
-    formData.value = {
-      sendEmail: false,
-      subject: '',
-      body: '',
-    };
-  };
+  async function loadRejectionSettings() {
+    reasonsLoading.value = true;
+    try {
+      const res = await getRejectionReasons();
+      const payload = res.data;
+      useRejectionReasons.value = payload?.use_rejection_reasons ?? false;
+      reasonRows.value = Array.isArray(payload?.reasons) ? payload.reasons : [];
+    } catch {
+      useRejectionReasons.value = false;
+      reasonRows.value = [];
+    } finally {
+      reasonsLoading.value = false;
+    }
+  }
 
-  const refuseFormConfig = computed(() => {
-    return getRefuseFormConfig(formData.value.sendEmail);
-  });
+  function reset() {
+    rejectionReasonId.value = null;
+    internalComment.value = '';
+    localError.value = null;
+  }
 
-  const handleCancel = () => {
-    resetFormData();
+  function handleCancel() {
+    reset();
     emit('close');
-  };
+  }
 
-  const handleSubmit = (data: Record<string, any>) => {
+  function handleSubmit() {
+    localError.value = null;
+    if (
+      reasonRequired.value &&
+      (rejectionReasonId.value == null || Number.isNaN(rejectionReasonId.value))
+    ) {
+      localError.value = 'Выберите причину отказа';
+      return;
+    }
+    const rid =
+      rejectionReasonId.value != null && !Number.isNaN(rejectionReasonId.value)
+        ? rejectionReasonId.value
+        : undefined;
     emit('submit', {
-      sendEmail: data.sendEmail || false,
-      subject: data.subject,
-      body: data.body,
+      rejection_reason_id: rid,
+      internal_comment: internalComment.value.trim() || undefined,
     });
-    resetFormData();
-  };
+    reset();
+    emit('close');
+  }
+
+  watch(rejectionReasonId, () => {
+    if (rejectionReasonId.value != null) {
+      localError.value = null;
+    }
+  });
 
   watch(
     () => unref(props.isOpen),
     isOpen => {
       if (isOpen) {
-        formData.value = {
-          sendEmail: false,
-          subject: 'Отказ',
-          body: `<strong>Привет, ${props.candidateName}!</strong><br />
-      К сожалению, мы не можем рассмотреть Вашу кандидатуру на вакансию "${props.vacancyName}".`,
-        };
+        reset();
+        void loadRejectionSettings();
       }
-    }
-  );
-
-  watch(
-    () => formData.value.sendEmail,
-    sendEmail => {
-      if (!sendEmail) {
-        formData.value.subject = 'Отказ';
-        formData.value.body = `<strong>Привет, ${props.candidateName}!</strong><br />
-      К сожалению, мы не можем рассмотреть Вашу кандидатуру на вакансию "${props.vacancyName}".`;
-      }
-    }
+    },
+    { immediate: true }
   );
 </script>
 
 <template>
   <Popup
-    :isOpen="unref(isOpen)"
+    :is-open="props.isOpen"
+    width="490px"
+    :show-close-button="false"
+    :lg-size="true"
+    :parent-rounded="true"
+    :content-rounded="false"
+    :content-padding="false"
+    :allow-dropdown-overflow="true"
+    :disable-overflow-hidden="true"
     @close="handleCancel"
-    width="790px"
-    :showCloseButton="false"
-    :lgSize="false"
   >
-    <div class="flex flex-col gap-y-25px">
-      <h2 class="text-20px font-semibold leading-normal text-space">
-        Изменение статуса резюме
-      </h2>
-      <div class="flex flex-col gap-y-15px">
-        <p class="font-semibold leading-normal text-space">
-          Перемещение на этап
-        </p>
-        <p class="w-[100%] rounded-ten bg-athens-gray px-11px py-15px">
-          Отклонённые
-        </p>
+    <div class="w-full">
+      <div class="transfer-vacancy-popup flex flex-col gap-y-6 text-sm">
+        <div class="flex flex-col gap-y-2">
+          <h2 class="text-xl font-semibold text-space">
+            Отказ кандидата
+          </h2>
+          <p class="text-sm text-slate-custom">
+            Укажите причину и при необходимости внутренний комментарий для команды.
+          </p>
+        </div>
+
+        <div
+          class="relative z-[40] flex w-full min-w-0 flex-col gap-y-3.5 text-space"
+        >
+          <template v-if="showReasonField">
+            <p class="text-sm font-medium text-space">Причина отказа</p>
+            <MyDropdown
+              v-model="rejectionReasonId"
+              :options="dropdownOptions"
+              placeholder="Выберите"
+              :error="!!localError"
+              class="w-full min-w-0"
+            />
+            <span
+              v-if="localError"
+              class="mt-1 block text-xs text-red-500"
+            >{{ localError }}</span>
+          </template>
+
+          <div>
+            <p class="text-sm font-medium text-space">
+              Внутренний комментарий по кандидату
+            </p>
+            <MyTextarea
+              v-model="internalComment"
+              placeholder="Виден только вашей команде"
+              class="mt-1.5 w-full min-w-0"
+            />
+          </div>
+        </div>
+
+        <div class="relative z-0 flex flex-wrap gap-x-3 gap-y-2">
+          <UiButton
+            variant="action"
+            size="semiaction"
+            :disabled="submitDisabled"
+            @click="handleSubmit"
+          >
+            Подтвердить
+          </UiButton>
+          <UiButton variant="back" size="second-back" @click="handleCancel">
+            Отмена
+          </UiButton>
+        </div>
       </div>
-      <DynamicForm
-        v-model="formData"
-        :config="refuseFormConfig"
-        @submit="handleSubmit"
-        @cancel="handleCancel"
-      />
     </div>
   </Popup>
 </template>

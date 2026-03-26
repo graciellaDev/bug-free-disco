@@ -206,6 +206,7 @@
           @add-comment="handleAddCommentFromHeader"
           @add-task="handleAddTaskFromHeader"
           @email-sent="refreshCandidateLog"
+          @candidate-activity-refresh="refreshCandidateLog"
         />
       </div>
       <div class="flex min-h-0 flex-col">
@@ -215,6 +216,7 @@
           :log-refresh-trigger="logRefreshKey"
           @comment-added="refreshCandidateLog"
           @open-email-popup="openEmailPopupFromFeed"
+          @candidate-updated="handleCandidateUpdated"
         />
       </div>
     </div>

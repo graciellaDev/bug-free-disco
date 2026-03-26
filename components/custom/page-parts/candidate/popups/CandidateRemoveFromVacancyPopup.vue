@@ -1,13 +1,11 @@
 <script setup lang="ts">
   import { unref } from 'vue';
   import Popup from '~/components/custom/Popup.vue';
-  import Button from '@/components/ui/button/Button.vue';
 
   import type { MaybeRef } from 'vue';
   import type { Candidate } from '@/types/candidates';
-  import type { Vacancy } from '@/types/vacancy';
 
-  const props = defineProps<{
+  defineProps<{
     isOpen: MaybeRef<boolean>;
     candidate: Candidate;
     vacancyName: string;
@@ -23,36 +21,40 @@
   <Popup
     :isOpen="unref(isOpen)"
     @close="emit('close')"
-    width="600px"
+    width="490px"
     :showCloseButton="false"
-    :lgSize="false"
+    :lgSize="true"
+    :parentRounded="true"
+    :contentRounded="false"
+    :contentPadding="false"
+    :noScrollbarGutter="true"
   >
-    <div class="flex flex-col gap-y-35px">
-      <div class="gap-y-10px flex flex-col">
-        <h2 class="text-20px font-semibold leading-normal text-space">
-          Удаление кандидата {{ candidate.surname }}
-          {{ candidate.firstname }} из вакансии "{{ vacancyName }}".
-        </h2>
-        <p class="text-sm text-slate-custom">
-          История работы с кандидатом и комментарии по этой вакансии будут
-          удалены. Карточка кандидата останется в базе.
-        </p>
-      </div>
-      <div class="flex gap-x-15px">
-        <Button
-          variant="destructive"
-          class="px-20px py-11.5px font-medium"
+    <div class="popup-delete-content flex flex-col gap-y-6">
+      <h2 class="text-xl font-semibold text-space">
+        Подтверждение открепления
+      </h2>
+      <p class="text-sm text-slate-custom">
+        Вы открепляете кандидата
+        <strong>{{ candidate.surname }} {{ candidate.firstname }}</strong>
+        от вакансии «<strong>{{ vacancyName }}</strong>». История работы с
+        кандидатом и комментарии по этой вакансии будут удалены. Карточка
+        кандидата останется в базе.
+      </p>
+      <div class="flex gap-x-3">
+        <button
+          type="button"
+          class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-red-500 hover:bg-red-600 text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold"
           @click="emit('confirm')"
         >
           Открепить
-        </Button>
-        <Button
-          variant="outline"
-          class="px-20px py-11.5px font-medium"
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-athens-gray border border-athens text-slate-custom p-border-semi-btn text-sm rounded-ten leading-normal font-medium"
           @click="emit('close')"
         >
           Отмена
-        </Button>
+        </button>
       </div>
     </div>
   </Popup>
