@@ -269,6 +269,10 @@ export interface CandidateCreateRequest {
   resumePath?: string | null;
   coverPath?: string | null;
   source?: string | null;
+  /** Привязка к платформе (таблица candidate_platform), например superjob */
+  platform?: string | null;
+  /** Внешний id резюме на платформе (SuperJob и т.п.) */
+  platform_resume_id?: number | string | null;
   customFields?: number | null;
   skills?: number[];
   tags?: number[];

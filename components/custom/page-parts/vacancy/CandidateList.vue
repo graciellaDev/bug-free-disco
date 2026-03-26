@@ -12,18 +12,9 @@
   import UiAvatarFallback from '@/components/ui/avatar/AvatarFallback.vue';
   import CardIcon from '@/components/custom/CardIcon.vue';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
+  import { getCandidateSourceLogoPath } from '@/utils/candidateSourceLogo';
 
   import type { Candidate } from '@/types/candidates';
-
-  // Карта логотипов источников (5 основных сайтов).
-  // Файлы логотипов лежат во фронтенде в /public/logos (*.svg).
-  const SOURCE_LOGO_MAP: Record<string, string> = {
-    'hh.ru': '/logos/hh.svg',
-    'superjob.ru': '/logos/superjob.svg',
-    'rabota.ru': '/logos/rabota.svg',
-    'avito.ru': '/logos/avito.svg',
-    'zarplata.ru': '/logos/zarplata.svg',
-  };
 
   const props = defineProps<{
     candidates: Candidate[];
@@ -116,10 +107,8 @@
     return value;
   };
 
-  const getSourceLogo = (candidate: Candidate): string | null => {
-    const key = candidate.source?.trim().toLowerCase() || '';
-    return SOURCE_LOGO_MAP[key] ?? null;
-  };
+  const getSourceLogo = (candidate: Candidate): string | null =>
+    getCandidateSourceLogoPath(candidate);
 </script>
 
 <template>

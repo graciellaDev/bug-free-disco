@@ -741,6 +741,12 @@ import ratesData from '~/src/data/rates-data.json'
 import { getVacancy, getVacancies, updateVacancy, resolveDriverNamesToDbIds } from '@/utils/getVacancies'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
+import { createCandidate } from '@/src/api/candidates'
+import { getReceivedResumesForVacancy } from '@/src/api/resumes'
+import {
+    mapSuperjobReceivedResumeToCandidateCreate,
+    extractSuperjobResumeExternalId,
+} from '@/utils/mapSuperjobReceivedResumeToCandidate'
 import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationToVacancy'
 import { getPublicationViewUrl } from '@/utils/publicationViewUrl'
 import { validateVacancyData, normalizeVacancyData } from '@/utils/validateVacancyData'
@@ -1895,6 +1901,36 @@ async function importPublication(publication) {
         // Перезагружаем список вакансий с платформ
         if (currentVacancyId) {
             await loadPublicationPlatforms();
+        }
+
+        // SuperJob: импорт откликнувшихся кандидатов (GET /resumes/received/{id вакансии на SJ})
+        const isSuperjobImport = platform === 'superjob.ru' || platform === 'superjob';
+        if (isSuperjobImport) {
+            const sjVacancyId = publication.id ?? publication.vacancy_id ?? publication.vacancyId;
+            if (sjVacancyId != null && sjVacancyId !== '') {
+                try {
+                    const received = await getReceivedResumesForVacancy(sjVacancyId);
+                    let importedCandidates = 0;
+                    for (const raw of received) {
+                        const extId = extractSuperjobResumeExternalId(raw);
+                        try {
+                            const candidatePayload = mapSuperjobReceivedResumeToCandidateCreate(raw, {
+                                vacancyId: createdVacancy.data.id,
+                                externalResumeId: extId,
+                            });
+                            await createCandidate(candidatePayload);
+                            importedCandidates += 1;
+                        } catch (candErr) {
+                            console.warn('Не удалось импортировать кандидата SuperJob:', candErr, raw);
+                        }
+                    }
+                    console.log(
+                        `SuperJob: импортировано кандидатов ${importedCandidates} из ${received.length} (вакансия SJ id=${sjVacancyId})`
+                    );
+                } catch (sjResErr) {
+                    console.warn('Не удалось загрузить отклики SuperJob (resumes/received):', sjResErr);
+                }
+            }
         }
         
         // Перепроверяем все публикации в списке после успешного импорта и обновления списка вакансий
