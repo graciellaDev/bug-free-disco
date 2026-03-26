@@ -36,7 +36,14 @@ import { createDecade, createYear, toDate } from 'radix-vue/date' // импор�
 import { computed, type HTMLAttributes, type Ref } from 'vue'
 
 const props = withDefaults(
-  defineProps<CalendarRootProps & { class?: HTMLAttributes['class']; compact?: boolean }>(),
+  defineProps<
+    CalendarRootProps & {
+      class?: HTMLAttributes['class']
+      compact?: boolean
+      /** Над панелью с очень высоким z-index (напр. PlainDateSelectDropdown) — поднимаем порталы месяца/года */
+      elevateSelectPopovers?: boolean
+    }
+  >(),
   {
     modelValue: undefined,
     placeholder() {
@@ -44,15 +51,20 @@ const props = withDefaults(
     },
     weekdayFormat: 'short',
     compact: false,
+    elevateSelectPopovers: false,
   }
 )
 const emits = defineEmits<CalendarRootEmits & { dateClick: [date: DateValue] }>()
 
 const delegatedProps = computed(() => {
-  const { class: _, placeholder: __, compact: ___, ...delegated } = props
+  const { class: _, placeholder: __, compact: ___, elevateSelectPopovers: ____, ...delegated } = props
 
   return delegated
 })
+
+const selectDropdownClass = computed(() =>
+  cn('max-h-[200px]', props.elevateSelectPopovers && '!z-[10050]')
+)
 
 const placeholder = useVModel(props, 'modelValue', emits, {
   passive: true,
@@ -89,7 +101,7 @@ const onDateCellClick = (date: DateValue) => {
           <SelectTrigger aria-label="Select month" class="w-[60%]">
             <SelectValue placeholder="Select month" />
           </SelectTrigger>
-          <SelectContent class="max-h-[200px]">
+          <SelectContent :class="selectDropdownClass">
             <SelectItem v-for="month in createYear({ dateObj: date })" :key="month.toString()"
               :value="month.month.toString()">
               {{ formatter.custom(toDate(month), { month: 'long' }) }}
@@ -109,7 +121,7 @@ const onDateCellClick = (date: DateValue) => {
           <SelectTrigger aria-label="Select year" class="w-[40%]">
             <SelectValue placeholder="Select year" />
           </SelectTrigger>
-          <SelectContent class="max-h-[200px]">
+          <SelectContent :class="selectDropdownClass">
             <SelectItem v-for="yearValue in createDecade({
               dateObj: date,
               startIndex: -10,

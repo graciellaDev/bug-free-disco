@@ -1,9 +1,37 @@
 import TiptapEditor from '@/components/TiptapEditor.vue';
-import type { FormConfig } from '@/types/form';
+import type { FormConfig, FormFieldConfig } from '@/types/form';
 
-export function getRefuseFormConfig(sendEmail: boolean): FormConfig {
+export type RefuseReasonOption = { id: number; name: string };
+
+export function getRefuseFormConfig(
+  sendEmail: boolean,
+  opts?: {
+    showReasonField: boolean;
+    reasonRequired: boolean;
+    reasonOptions: RefuseReasonOption[];
+  }
+): FormConfig {
+  const reasonFields: FormFieldConfig[] = [];
+  if (
+    opts?.showReasonField &&
+    opts.reasonOptions.length > 0
+  ) {
+    reasonFields.push({
+      name: 'rejection_reason_id',
+      label: 'Причина отказа',
+      type: 'select',
+      placeholder: 'Выберите причину',
+      options: opts.reasonOptions.map(r => ({ value: r.id, name: r.name })),
+      required: opts.reasonRequired,
+      validation: opts.reasonRequired
+        ? { required: true, message: 'Выберите причину отказа' }
+        : undefined,
+    });
+  }
+
   return {
     fields: [
+      ...reasonFields,
       {
         name: 'sendEmail',
         label: 'Отправить письмо кандидату',
@@ -42,3 +70,4 @@ export function getRefuseFormConfig(sendEmail: boolean): FormConfig {
     ],
   };
 }
+

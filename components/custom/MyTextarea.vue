@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 const isFocused = ref(false)
 
@@ -15,6 +15,11 @@ const props = defineProps({
   maxHeight: {
     type: Number,
     default: null,
+  },
+  /** Доп. классы для textarea (например text-base); по умолчанию размер text-sm */
+  textareaClass: {
+    type: String,
+    default: '',
   },
 })
 
@@ -32,12 +37,19 @@ const updateValue = event => {
   localValue.value = event.target.value
   emit('update:modelValue', localValue.value)
 }
+
+const textSizeClass = computed(() =>
+  props.textareaClass?.trim() ? props.textareaClass : 'text-sm'
+)
 </script>
 
 <template>
   <div class="flex">
     <textarea rows="5"
-      class="bg-athens-gray text-sm w-full p-15px border border-athens-gray rounded-ten focus:border-dodger focus:outline-none resize-none"
+      :class="[
+        'bg-athens-gray w-full p-15px border border-athens-gray rounded-ten focus:border-dodger focus:outline-none resize-none',
+        textSizeClass,
+      ]"
       @focus="isFocused = true" :placeholder="isFocused ? '' : placeholder" @blur="isFocused = false"
       :value="localValue" @input="updateValue"
       :style="{ maxHeight: maxHeight ? maxHeight + 'px' : undefined }"></textarea>

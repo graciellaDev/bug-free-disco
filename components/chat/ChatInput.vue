@@ -375,8 +375,27 @@
 
   onMounted(() => {
     document.addEventListener('mousedown', handleClickOutside)
-    // Стартовое состояние: «Чат на сайте», свёрнутое поле ввода
-    resetToInitialState()
+    // Не вызывать resetToInitialState, если родитель уже выставил формат
+    // (например «Добавить комментарий» → comment, «Новая задача» → task),
+    // иначе сброс перетирает store и снова показывается «Чат на сайте».
+    const fmt = chatStore.currentFormat || 'chat'
+    if (fmt === 'comment') {
+      message.value = ''
+      attachments.value = []
+      isFocused.value = true
+      isExpanded.value = true
+      nextTick(() => {
+        textareaRef.value?.focus()
+        emit('scroll-into-view')
+      })
+    } else if (fmt === 'task') {
+      loadTaskManagers()
+      nextTick(() => {
+        emit('scroll-into-view')
+      })
+    } else {
+      resetToInitialState()
+    }
   })
 
   onUnmounted(() => {

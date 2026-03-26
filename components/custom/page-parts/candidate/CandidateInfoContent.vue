@@ -545,11 +545,8 @@
           >
             Теги:
           </span>
-          <div class="flex min-w-0 flex-1 flex-col gap-y-1">
-            <div
-              v-if="candidateTagsList.length"
-              class="flex flex-wrap items-center gap-x-2 gap-y-1"
-            >
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span
                 v-for="tag in candidateTagsList"
                 :key="tag.id"
@@ -566,19 +563,34 @@
                   title="Удалить"
                   @click.stop="handleRemoveTag(tag)"
                 >
-                  <svg-icon
-                    name="cross15"
-                    width="12"
-                    height="12"
-                    class="block shrink-0"
+                  <span
+                    class="flex items-center justify-center text-red-500 transition-colors hover:text-red-600"
                     :class="{
                       'animate-pulse opacity-50': detachingTagId === tag.id,
                     }"
-                  />
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="block shrink-0"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"
+                      />
+                      <line x1="10" y1="11" x2="10" y2="17" />
+                      <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                  </span>
                 </button>
               </span>
-            </div>
-            <div class="flex flex-wrap items-center">
               <button
                 v-if="!isAddingTag"
                 type="button"
@@ -675,13 +687,10 @@
 }
 .tg-icon-link :deep(path) {
   fill: white;
+  transform: translateX(-2px);
 }
 
 .tag-input-inline {
   caret-color: #5898ff;
-}
-
-.tag-delete-btn :deep(svg path) {
-  fill: #f50a0a;
 }
 </style>
