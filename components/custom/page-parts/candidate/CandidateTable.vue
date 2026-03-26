@@ -7,6 +7,7 @@
   import CardIcon from '@/components/custom/CardIcon.vue';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
   import { getVacancyName } from '@/src/api/vacancies';
+  import { getCandidateSourceLogoPath } from '@/utils/candidateSourceLogo';
 
   interface Props {
     candidates: Candidate[];
@@ -82,6 +83,11 @@
   const getStageName = (candidate: Candidate) => {
     // TODO: сделать функцию определения этапа кандидата
     return 'Новый';
+  };
+
+  const getSourceLabel = (candidate: Candidate): string => {
+    const s = candidate.source?.trim();
+    return s || '—';
   };
 
   const handlerItemClick = (candidate: Candidate, index: number) => {
@@ -184,15 +190,31 @@
             </div>
           </div>
         </div>
-        <div class="px-2.5">
+        <div class="px-2.5 flex items-center gap-2 min-w-0">
           <slot name="cell-source" :candidate="candidate">
             <CardIcon
-              icon="hh"
-              :isPng="false"
-              imagePath="hh"
+              v-if="getCandidateSourceLogoPath(candidate)"
+              :icon="false"
+              :isPng="true"
+              :imagePath="getCandidateSourceLogoPath(candidate)!"
               :width="21"
               :height="21"
             />
+            <CardIcon
+              v-else-if="candidate.icon"
+              :icon="candidate.icon"
+              :isPng="candidate.isPng || false"
+              :imagePath="candidate.icon"
+              :width="21"
+              :height="21"
+            />
+            <span
+              v-else
+              class="text-sm font-normal text-slate-custom truncate max-w-[140px]"
+              :title="getSourceLabel(candidate)"
+            >
+              {{ getSourceLabel(candidate) }}
+            </span>
           </slot>
         </div>
         <div class="px-2.5 text-sm font-normal text-space">

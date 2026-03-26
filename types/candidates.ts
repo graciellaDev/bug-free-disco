@@ -181,8 +181,6 @@ export interface Candidate {
   /** Дополнительно: желательное время в пути (HH `travel_time`, в API Laravel: `commute_time`) */
   commute_time?: string | null;
   commuteTime?: string | null;
-  /** Командировки (HH `business_trip_readiness`, API: `business_trip_readiness`) */
-  business_trip_readiness?: string | null;
   businessTrips?: string | null;
   citizenship?: string | null;
   /** Разрешение на работу (HH `work_ticket`, API: `work_ticket`) */
@@ -317,6 +315,10 @@ export interface CandidateCreateRequest {
   resume_created_at?: string | null;
   resume_updated_at?: string | null;
   source?: string | null;
+  /** Привязка к платформе (таблица candidate_platform), например superjob */
+  platform?: string | null;
+  /** Внешний id резюме на платформе (SuperJob и т.п.) */
+  platform_resume_id?: number | string | null;
   /** Тип отклика (вкладка «Поля»): Не указан / Прямой отклик / Холодный поиск */
   response_type?: string | null;
   isReserve?: boolean | null;
