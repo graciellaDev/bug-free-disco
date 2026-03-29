@@ -26,6 +26,7 @@
     updateCandidateComment,
     updateCandidateTask,
     updateCandidate,
+    sendCandidateChatMessage,
   } from '@/src/api/candidates';
   import {
     getRejectionReasons,
@@ -43,6 +44,7 @@
     HhCertificateDisplayItem,
   } from '@/types/candidates';
   import { hasDisplayableCandidateEmail } from '@/utils/candidateDisplayEmail';
+  import { getCandidateChatPlatformFromSource } from '@/utils/candidateChatPlatform';
   import { formatCandidateSalaryLine } from '@/utils/candidateSalaryLine';
   import { formatCandidateExperienceForDisplay } from '@/utils/formatCandidateExperience';
   import { formatExperienceWorkPeriod } from '@/utils/formatExperienceWorkPeriod';
@@ -1016,6 +1018,28 @@
         emit('comment-added');
       } catch (e) {
         console.error('Ошибка создания/обновления задачи:', e);
+      }
+      return;
+    }
+
+    if (messageData.format === 'chat') {
+      if (!messageData.message.trim()) return;
+      const chatPlatform = getCandidateChatPlatformFromSource(props.candidate?.source);
+      if (!chatPlatform) {
+        console.warn(
+          'Чат с площадкой: укажите источник hh.ru или SuperJob у кандидата.'
+        );
+        return;
+      }
+      try {
+        await sendCandidateChatMessage(props.candidate.id, {
+          content: messageData.message,
+          vacancy_id: props.vacancyId ?? null,
+          platform: chatPlatform,
+        });
+        emit('comment-added');
+      } catch (e) {
+        console.error('Ошибка отправки сообщения в чат:', e);
       }
       return;
     }
@@ -2629,6 +2653,8 @@
             :candidate-id="candidate?.id"
             :refresh-trigger="props.logRefreshTrigger"
             :vacancy-id="props.vacancyId"
+            :candidate-source="candidate?.source ?? null"
+            :feed-active="activeTab === 'chat'"
             @delete-request="handleDeleteCommentRequest"
             @edit-comment="handleEditComment"
             @delete-task-request="handleDeleteTaskRequest"

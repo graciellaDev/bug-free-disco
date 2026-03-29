@@ -13,6 +13,8 @@ import type {
   CandidateUpdateResponse,
   CandidateConsideration,
   CandidateEvent,
+  CandidatePlatformMessage,
+  CandidateChatPlatform,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -248,6 +250,96 @@ export async function getCandidateEvents(
     signal: opts?.signal,
   });
   return Array.isArray(response.data) ? response.data : [];
+}
+
+function normalizePlatformMessage(raw: Record<string, unknown>): CandidatePlatformMessage {
+  const text =
+    typeof raw.body === 'string'
+      ? raw.body
+      : typeof raw.content === 'string'
+        ? raw.content
+        : typeof raw.text === 'string'
+          ? raw.text
+          : '';
+  const createdAt =
+    typeof raw.created_at === 'string'
+      ? raw.created_at
+      : typeof raw.createdAt === 'string'
+        ? raw.createdAt
+        : new Date().toISOString();
+  return {
+    id: raw.id ?? createdAt,
+    body: text,
+    created_at: createdAt,
+    direction: typeof raw.direction === 'string' ? raw.direction : (raw.direction as string | null) ?? null,
+    author_name:
+      typeof raw.author_name === 'string'
+        ? raw.author_name
+        : typeof raw.authorName === 'string'
+          ? raw.authorName
+          : null,
+    platform: typeof raw.platform === 'string' ? raw.platform : null,
+  };
+}
+
+function candidateMessagesPath(platform: CandidateChatPlatform, candidateId: number): string {
+  const prefix = platform === 'hh' ? 'hh' : 'superjob';
+  return `/${prefix}/candidates/${candidateId}/messages`;
+}
+
+/** Сообщения чата hh.ru / SuperJob: GET /{hh|superjob}/candidates/{id}/messages */
+export async function getCandidateMessages(
+  candidateId: number,
+  opts?: { signal?: AbortSignal; platform?: CandidateChatPlatform }
+): Promise<CandidatePlatformMessage[]> {
+  const platform = opts?.platform ?? 'hh';
+  const response = await apiGet<unknown | CandidatePlatformMessage[]>(
+    candidateMessagesPath(platform, candidateId),
+    undefined,
+    { signal: opts?.signal }
+  );
+  const d = response.data as unknown;
+  if (Array.isArray(d)) {
+    return d.map((item) =>
+      normalizePlatformMessage(
+        item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
+      )
+    );
+  }
+  if (d && typeof d === 'object') {
+    const o = d as Record<string, unknown>;
+    const arr = o.messages ?? o.items ?? o.data;
+    if (Array.isArray(arr)) {
+      return arr.map((item) =>
+        normalizePlatformMessage(
+          item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
+        )
+      );
+    }
+  }
+  return [];
+}
+
+/**
+ * Отправить сообщение кандидату в чат (hh.ru или SuperJob).
+ * POST /{hh|superjob}/candidates/{id}/messages
+ */
+export async function sendCandidateChatMessage(
+  candidateId: number,
+  payload: {
+    content: string;
+    vacancy_id?: number | null;
+    platform?: CandidateChatPlatform;
+  }
+): Promise<void> {
+  const text = payload.content.trim();
+  if (!text) return;
+  const platform = payload.platform ?? 'hh';
+  const body: Record<string, unknown> = { content: text };
+  if (payload.vacancy_id != null) {
+    body.vacancy_id = payload.vacancy_id;
+  }
+  await apiPost<unknown>(candidateMessagesPath(platform, candidateId), body);
 }
 
 /** Отправить письмо кандидату и создать событие в ленте. */
