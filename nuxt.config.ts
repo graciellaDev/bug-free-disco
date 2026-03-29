@@ -88,6 +88,10 @@ export default defineNuxtConfig({
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
       apiEmail: process.env.NUXT_PUBLIC_API_EMAIL,
       apiPassword: process.env.NUXT_PUBLIC_API_PASSWORD,
+      /** Опционально: WebSocket push чата hh.ru. Плейсхолдер {id}. */
+      wsCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_CANDIDATE_MESSAGES_URL || '',
+      /** Опционально: WebSocket push чата SuperJob. Если пусто — только polling. */
+      wsSuperjobCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_SUPERJOB_CANDIDATE_MESSAGES_URL || '',
     }
   },
   pinia: {

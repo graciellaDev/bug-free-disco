@@ -317,6 +317,8 @@ export interface CandidateCreateRequest {
   source?: string | null;
   /** Привязка к платформе (таблица candidate_platform), например superjob */
   platform?: string | null;
+  /** Внешний id кандидата/резюме на стороне платформы (импорт и т.п.) — в API: platform_id */
+  platform_id?: string | number | null;
   /** Внешний id резюме на платформе (SuperJob и т.п.) */
   platform_resume_id?: number | string | null;
   /** Тип отклика (вкладка «Поля»): Не указан / Прямой отклик / Холодный поиск */
@@ -364,6 +366,25 @@ export interface CandidateConsideration {
   updated_at: string;
   recruiters: string[];
   customers: string[];
+}
+
+/** Площадка для API чата: GET/POST .../candidates/{id}/messages */
+export type CandidateChatPlatform = 'hh' | 'superjob';
+
+/**
+ * Сообщение чата с внешней площадки (hh.ru, SuperJob и т.д.).
+ */
+export interface CandidatePlatformMessage {
+  id: string | number;
+  created_at: string;
+  /** Текст сообщения */
+  body?: string;
+  content?: string;
+  text?: string;
+  /** incoming — от кандидата, outgoing — от работодателя/рекрутера */
+  direction?: 'incoming' | 'outgoing' | string | null;
+  author_name?: string | null;
+  platform?: string | null;
 }
 
 /** Событие в логе кандидата (создание резюме, смена этапа, изменение полей и т.д.). */

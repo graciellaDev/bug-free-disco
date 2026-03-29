@@ -1,7 +1,9 @@
 <script setup lang="ts">
-  import { ref, computed, watch, nextTick } from 'vue';
+  import { ref, computed, watch, nextTick, toRef } from 'vue';
   import { getCandidateEvents } from '@/src/api/candidates';
-  import type { CandidateEvent } from '@/types/candidates';
+  import type { CandidateEvent, CandidatePlatformMessage } from '@/types/candidates';
+  import { useCandidatePlatformMessages } from '~/composables/useCandidatePlatformMessages';
+  import { getCandidateChatPlatformFromSource } from '@/utils/candidateChatPlatform';
   import UiTooltipProvider from '@/components/ui/tooltip/TooltipProvider.vue';
   import UiTooltip from '@/components/ui/tooltip/Tooltip.vue';
   import UiTooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue';
@@ -27,7 +29,32 @@
     refreshTrigger?: number;
     /** ID вакансии — события запрашиваются в контексте вакансии (смена этапа и т.д.) */
     vacancyId?: number | null;
+    /** Источник кандидата (hh.ru / SuperJob — чат с площадки) */
+    candidateSource?: string | null;
+    /** false — вкладка ленты скрыта: не опрашивать чат платформы */
+    feedActive?: boolean;
   }>();
+
+  /** hh.ru или SuperJob — для чата с площадки */
+  const chatPlatform = computed(() => getCandidateChatPlatformFromSource(props.candidateSource));
+
+  const platformMessagesEnabled = computed(
+    () =>
+      props.candidateId != null &&
+      chatPlatform.value != null &&
+      props.feedActive !== false
+  );
+
+  const candidateIdRef = computed(() => props.candidateId);
+
+  const { messages: platformMessages } = useCandidatePlatformMessages(
+    candidateIdRef,
+    platformMessagesEnabled,
+    chatPlatform,
+    {
+      refreshTick: toRef(props, 'refreshTrigger'),
+    }
+  );
 
   const events = ref<CandidateEvent[]>([]);
   const loading = ref(false);
@@ -217,28 +244,107 @@
     });
   }
 
-  watch(eventsOldestFirst, () => scrollLogToBottom(), { flush: 'post' });
+  const platformChatBrand = computed(() =>
+    chatPlatform.value === 'superjob' ? 'SuperJob' : 'HeadHunter'
+  );
+
+  /** Объединённая лента: события + сообщения чата площадки по времени. */
+  type FeedRow =
+    | { kind: 'event'; key: string; event: CandidateEvent; t: number }
+    | { kind: 'platform_message'; key: string; message: CandidatePlatformMessage; t: number };
+
+  const mergedFeed = computed<FeedRow[]>(() => {
+    const rows: FeedRow[] = [];
+    for (const event of eventsOldestFirst.value) {
+      rows.push({
+        kind: 'event',
+        key: `e-${event.id}`,
+        event,
+        t: +new Date(event.occurred_at),
+      });
+    }
+    if (platformMessagesEnabled.value) {
+      for (const message of platformMessages.value) {
+        rows.push({
+          kind: 'platform_message',
+          key: `m-${chatPlatform.value}-${message.id}`,
+          message,
+          t: +new Date(message.created_at),
+        });
+      }
+    }
+    return rows.sort((a, b) => a.t - b.t);
+  });
+
+  function platformMessageText(m: CandidatePlatformMessage): string {
+    return (m.body ?? m.content ?? m.text ?? '').trim();
+  }
+
+  function isPlatformIncoming(m: CandidatePlatformMessage): boolean {
+    const d = (m.direction ?? '').toLowerCase();
+    if (d === 'incoming' || d === 'in') return true;
+    if (d === 'outgoing' || d === 'out') return false;
+    return true;
+  }
+
+  watch(mergedFeed, () => scrollLogToBottom(), { flush: 'post' });
 </script>
 
 <template>
   <div ref="logScrollRef" class="h-full overflow-y-auto bg-athens-gray px-15px py-5">
     <UiTooltipProvider :delay-duration="0">
-    <template v-if="eventsOldestFirst.length">
+    <template v-if="mergedFeed.length">
       <div class="flex flex-col space-y-3">
+        <template v-for="row in mergedFeed" :key="row.key">
+        <!-- Сообщение чата hh.ru / SuperJob -->
         <div
-          v-for="event in eventsOldestFirst"
-          :key="event.id"
+          v-if="row.kind === 'platform_message'"
+          class="group relative flex w-full items-stretch overflow-hidden rounded-lg border border-athens-gray bg-[#FBFCFD]"
+        >
+          <div class="flex min-w-0 flex-1 gap-3 rounded-l-lg p-3">
+            <div class="relative flex shrink-0 items-start pt-0.5">
+              <svg-icon
+                v-if="chatPlatform === 'superjob'"
+                name="superjob"
+                width="20"
+                height="20"
+              />
+              <svg-icon v-else name="hh-border20" width="20" height="20" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-light leading-150 text-[#92989B]">
+                {{ formatTimestampComment(row.message.created_at) }}
+                <template v-if="isPlatformIncoming(row.message)">
+                  сообщение от кандидата ({{ platformChatBrand }})
+                  <template v-if="row.message.author_name"> · {{ row.message.author_name }}</template>
+                </template>
+                <template v-else>
+                  исходящее сообщение ({{ platformChatBrand }})
+                  <template v-if="row.message.author_name"> · {{ row.message.author_name }}</template>
+                </template>
+              </div>
+              <p
+                v-if="platformMessageText(row.message)"
+                class="mt-2 text-sm font-normal leading-150 text-[#363B44] whitespace-pre-wrap break-words"
+              >
+                <TextWithLinks :text="platformMessageText(row.message)" />
+              </p>
+            </div>
+          </div>
+        </div>
+        <div
+          v-else
           :class="
-            event.type === 'comment' || event.type === 'task' || event.type === 'email'
+            row.event.type === 'comment' || row.event.type === 'task' || row.event.type === 'email'
               ? ''
               : 'flex flex-wrap items-baseline gap-x-2 py-1.5 text-xs font-light leading-150 text-[#8a94a6]'
           "
         >
         <!-- Карточка письма -->
         <div
-          v-if="event.type === 'email'"
+          v-if="row.event.type === 'email'"
           class="group relative flex w-full cursor-pointer items-stretch overflow-hidden rounded-lg bg-[#FBFCFD]"
-          @click="emit('open-email-card', event)"
+          @click="emit('open-email-card', row.event)"
         >
           <div class="flex min-w-0 flex-1 gap-3 rounded-l-lg p-3">
             <div
@@ -246,7 +352,7 @@
               aria-hidden="true"
             >
               <img
-                v-if="event.direction === 'incoming'"
+                v-if="row.event.direction === 'incoming'"
                 src="/icons/246.svg"
                 alt=""
                 class="email-card-icon email-card-icon-incoming h-6 w-6 object-contain"
@@ -261,55 +367,55 @@
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                 <span class="min-w-0 text-xs font-light leading-150 text-[#92989B]">
-                  {{ formatTimestampComment(event.occurred_at) }}
-                  <template v-if="event.direction === 'incoming'">
-                    входящее письмо от {{ event.payload?.from_email || event.author_name || '—' }}
-                    <template v-if="event.payload?.to_email"> для {{ event.payload.to_email }}</template>
+                  {{ formatTimestampComment(row.event.occurred_at) }}
+                  <template v-if="row.event.direction === 'incoming'">
+                    входящее письмо от {{ row.event.payload?.from_email || row.event.author_name || '—' }}
+                    <template v-if="row.event.payload?.to_email"> для {{ row.event.payload.to_email }}</template>
                   </template>
                   <template v-else>
-                    исходящее письмо от {{ event.author_name || 'Работодатель' }}
-                    <template v-if="event.payload?.to_email"> для {{ event.payload.to_email }}</template>
+                    исходящее письмо от {{ row.event.author_name || 'Работодатель' }}
+                    <template v-if="row.event.payload?.to_email"> для {{ row.event.payload.to_email }}</template>
                   </template>
                 </span>
-                <UiTooltip v-if="event.direction !== 'incoming' && event.payload?.status === 'failed' && event.payload?.error_message">
+                <UiTooltip v-if="row.event.direction !== 'incoming' && row.event.payload?.status === 'failed' && row.event.payload?.error_message">
                   <UiTooltipTrigger as-child>
                     <span
                       class="min-w-0 shrink-0 cursor-help text-right text-xs leading-150"
                       :class="emailStatusClass()"
                     >
-                      {{ emailStatusText(event.payload?.status, event.payload?.read_at) }}
+                      {{ emailStatusText(row.event.payload?.status, row.event.payload?.read_at) }}
                     </span>
                   </UiTooltipTrigger>
                   <UiTooltipContent>
-                    {{ event.payload?.error_message }}
+                    {{ row.event.payload?.error_message }}
                   </UiTooltipContent>
                 </UiTooltip>
                 <span
-                  v-else-if="event.direction !== 'incoming'"
+                  v-else-if="row.event.direction !== 'incoming'"
                   class="min-w-0 shrink-0 text-right text-xs leading-150"
                   :class="emailStatusClass()"
                 >
-                  {{ emailStatusText(event.payload?.status, event.payload?.read_at) }}
+                  {{ emailStatusText(row.event.payload?.status, row.event.payload?.read_at) }}
                 </span>
               </div>
               <p
-                v-if="event.payload?.subject"
+                v-if="row.event.payload?.subject"
                 class="mt-2 text-sm font-normal leading-150 text-[#363B44] underline"
               >
-                {{ event.payload.subject }}
+                {{ row.event.payload.subject }}
               </p>
               <p
-                v-if="event.payload?.body_preview"
+                v-if="row.event.payload?.body_preview"
                 class="mt-1 text-sm font-normal leading-150 text-[#363B44] break-words whitespace-pre-wrap"
               >
-                <TextWithLinks :text="decodeEmailPreview(event.payload.body_preview)" />
+                <TextWithLinks :text="decodeEmailPreview(row.event.payload.body_preview)" />
               </p>
             </div>
           </div>
         </div>
         <!-- Карточка задачи -->
         <div
-          v-if="event.type === 'task'"
+          v-if="row.event.type === 'task'"
           class="group relative flex w-full items-stretch overflow-hidden rounded-lg bg-[#FBFCFD]"
         >
           <div class="flex min-w-0 flex-1 items-start gap-3 rounded-l-lg p-3">
@@ -317,9 +423,9 @@
             <div
               class="task-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full p-1.5"
               :class="{
-                'bg-[#E8F5E9]': taskIconState(event) === 'completed',
-                'bg-[#E3F2FD]': taskIconState(event) === 'assigned',
-                'bg-[#FCE4EC]': taskIconState(event) === 'overdue',
+                'bg-[#E8F5E9]': taskIconState(row.event) === 'completed',
+                'bg-[#E3F2FD]': taskIconState(row.event) === 'assigned',
+                'bg-[#FCE4EC]': taskIconState(row.event) === 'overdue',
               }"
             >
               <img
@@ -327,32 +433,32 @@
                 alt=""
                 class="task-icon h-6 w-6 object-contain"
                 :class="{
-                  'task-icon-completed': taskIconState(event) === 'completed',
-                  'task-icon-assigned': taskIconState(event) === 'assigned',
-                  'task-icon-overdue': taskIconState(event) === 'overdue',
+                  'task-icon-completed': taskIconState(row.event) === 'completed',
+                  'task-icon-assigned': taskIconState(row.event) === 'assigned',
+                  'task-icon-overdue': taskIconState(row.event) === 'overdue',
                 }"
               >
             </div>
             <div class="min-w-0 flex-1">
               <div class="text-xs font-light leading-150 text-[#92989B]">
-                <span :class="taskIconState(event) === 'overdue' ? 'text-red-600' : ''">
-                  {{ formatTimestampComment(event.occurred_at) }}
+                <span :class="taskIconState(row.event) === 'overdue' ? 'text-red-600' : ''">
+                  {{ formatTimestampComment(row.event.occurred_at) }}
                 </span>
                 для пользователя
-                {{ event.payload?.assignee_name ?? event.author_name ?? '—' }}
+                {{ row.event.payload?.assignee_name ?? row.event.author_name ?? '—' }}
               </div>
               <p
-                v-if="event.payload?.content"
+                v-if="row.event.payload?.content"
                 class="mt-2 text-sm font-normal leading-150 text-[#363B44] whitespace-pre-wrap"
-                :class="{ 'line-through text-[#8a94a6]': event.payload?.completed_at }"
+                :class="{ 'line-through text-[#8a94a6]': row.event.payload?.completed_at }"
               >
-                <TextWithLinks :text="event.payload.content" />
+                <TextWithLinks :text="row.event.payload.content" />
               </p>
               <button
-                v-if="!event.payload?.completed_at"
+                v-if="!row.event.payload?.completed_at"
                 type="button"
                 class="mt-2 text-xs font-normal text-dodger hover:underline"
-                @click="emit('complete-task', event.id)"
+                @click="emit('complete-task', row.event.id)"
               >
                 Выполнить
               </button>
@@ -369,7 +475,7 @@
                 type="button"
                 class="group/btn flex items-center gap-0.5 rounded text-xs font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
                 title="Удалить"
-                @click="emit('delete-task-request', event.id)"
+                @click="emit('delete-task-request', row.event.id)"
               >
                 <span class="flex h-6 w-6 items-center justify-center text-red-500 transition-colors group-hover/btn:text-red-600">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -384,7 +490,7 @@
                 type="button"
                 class="group/btn flex items-center gap-0.5 rounded text-xs font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
                 title="Изменить"
-                @click="emit('edit-task', event.id, event.payload?.content ?? '')"
+                @click="emit('edit-task', row.event.id, row.event.payload?.content ?? '')"
               >
                 <span class="flex h-6 w-6 items-center justify-center text-dodger transition-colors group-hover/btn:text-dodger">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -398,7 +504,7 @@
         </div>
         <!-- Карточка комментария (заметки): синяя иконка на голубом фоне, как у почты -->
         <div
-          v-else-if="event.type === 'comment'"
+          v-else-if="row.event.type === 'comment'"
           class="group relative flex w-full items-stretch overflow-hidden rounded-lg bg-[#FBFCFD]"
         >
           <div class="flex min-w-0 flex-1 gap-3 rounded-l-lg p-3">
@@ -415,15 +521,15 @@
               <div
                 class="text-xs font-light leading-150 text-[#92989B]"
               >
-                {{ formatTimestampComment(event.occurred_at) }}
-                <span v-if="event.author_name">{{ event.author_name }}</span>
+                {{ formatTimestampComment(row.event.occurred_at) }}
+                <span v-if="row.event.author_name">{{ row.event.author_name }}</span>
                 оставил комментарий
               </div>
               <p
-                v-if="event.payload?.content"
+                v-if="row.event.payload?.content"
                 class="mt-2 text-sm font-normal leading-150 text-[#363B44] whitespace-pre-wrap"
               >
-                <TextWithLinks :text="event.payload.content" />
+                <TextWithLinks :text="row.event.payload.content" />
               </p>
             </div>
           </div>
@@ -438,7 +544,7 @@
                 type="button"
                 class="group/btn flex items-center gap-0.5 rounded text-xs font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
                 title="Удалить"
-                @click="emit('delete-request', event.id)"
+                @click="emit('delete-request', row.event.id)"
               >
                 <span class="flex h-6 w-6 items-center justify-center text-red-500 transition-colors group-hover/btn:text-red-600">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -453,7 +559,7 @@
                 type="button"
                 class="group/btn flex items-center gap-0.5 rounded text-xs font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
                 title="Изменить"
-                @click="emit('edit-comment', event.id, event.payload?.content ?? '')"
+                @click="emit('edit-comment', row.event.id, row.event.payload?.content ?? '')"
               >
                 <span class="flex h-6 w-6 items-center justify-center text-dodger transition-colors group-hover/btn:text-dodger">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -466,11 +572,12 @@
           </div>
         </div>
         <!-- Обычная строка лога (система, чат и т.д.) -->
-        <template v-else-if="event.type !== 'comment' && event.type !== 'task' && event.type !== 'email'">
-          <span class="shrink-0 text-xs font-light leading-150 text-[#8a94a6]">{{ formatTimestamp(event.occurred_at) }}</span>
-          <span class="text-xs font-light leading-150 text-[#8a94a6]">{{ eventDescription(event) }}</span>
+        <template v-else-if="row.event.type !== 'comment' && row.event.type !== 'task' && row.event.type !== 'email'">
+          <span class="shrink-0 text-xs font-light leading-150 text-[#8a94a6]">{{ formatTimestamp(row.event.occurred_at) }}</span>
+          <span class="text-xs font-light leading-150 text-[#8a94a6]">{{ eventDescription(row.event) }}</span>
         </template>
         </div>
+        </template>
       </div>
     </template>
     </UiTooltipProvider>

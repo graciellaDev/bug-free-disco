@@ -159,7 +159,8 @@ export function mapSuperjobReceivedResumeToCandidateCreate(
   if (options.externalResumeId != null && options.externalResumeId !== '') {
     const n = Number(options.externalResumeId);
     body.platform = 'superjob';
-    body.platform_resume_id = Number.isFinite(n) ? n : String(options.externalResumeId);
+    const extId = Number.isFinite(n) ? n : String(options.externalResumeId);
+    body.platform_id = extId;
   }
 
   return body;
