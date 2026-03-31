@@ -21,7 +21,6 @@
     loading: boolean;
     selected: Record<number, boolean>;
     showCheckboxes: boolean;
-    allSelected: boolean;
     /** ID кандидата, открытого в правой панели — для подсветки строки */
     activeCandidateId?: number | null;
     /** Есть ли ещё страницы (infinite на странице вакансии) */
@@ -31,7 +30,6 @@
   const emit = defineEmits<{
     'item-click': [candidate: Candidate, index: number];
     'selection-change': [selected: Record<number, boolean>];
-    'select-all': [isSelected: boolean];
     'load-more': [];
   }>();
 
@@ -96,10 +94,6 @@
     emit('selection-change', newSelected);
   };
 
-  const handlerSelectAll = (isSelected: boolean) => {
-    emit('select-all', isSelected);
-  };
-
   const getPositionTitle = (candidate: Candidate): string | null => {
     const value = candidate.quickInfo?.trim();
     if (!value) return null;
@@ -124,16 +118,6 @@
       class="candidate-list relative"
       :class="{ 'candidate-list--refreshing': props.loading }"
     >
-      <div v-if="showCheckboxes" class="list-header">
-        <MyCheckbox
-          id="select-all"
-          :label="''"
-          :model-value="allSelected"
-          @update:model-value="handlerSelectAll"
-          :empty-label="true"
-        />
-      </div>
-
       <!-- Список элементов -->
       <div
         v-for="(candidate, index) in candidates"
@@ -230,15 +214,6 @@
     gap: 0;
     /* background-color: white;
     border-radius: 8px; */
-  }
-
-  .list-header {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    padding: 12px 16px;
-    border-bottom: 1px solid #f4f6f8;
-    background-color: #ffffff;
   }
 
   .candidate-item {

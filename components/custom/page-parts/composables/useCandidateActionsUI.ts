@@ -26,6 +26,8 @@ export function useCandidateActionsUI(
     onMoveToVacancy?: () => void;
     onRemoveFromVacancy?: () => void;
     onRefuse?: () => void;
+    /** Лента событий + чат на сайте (страница вакансии); иначе переход на /candidates/:id */
+    onSendSiteChat?: () => void;
   }
 ) {
   const router = useRouter();
@@ -88,20 +90,15 @@ export function useCandidateActionsUI(
   };
 
   /**
-   * Отправить сообщение
+   * Отправить сообщение (чат на сайте)
    */
   const handleSendMessage = () => {
+    if (callbacks?.onSendSiteChat) {
+      callbacks.onSendSiteChat();
+      return;
+    }
     const currentCandidate = getCandidate();
-
     router.push(`/candidates/${currentCandidate.id}?tab=chat`);
-  };
-
-  /**
-   * Отправить на оценку
-   */
-  const handleSendForEvaluation = () => {
-    // TODO: Открыть диалог выбора получателя оценки
-    console.log('Отправить на оценку');
   };
 
   /**
@@ -123,9 +120,6 @@ export function useCandidateActionsUI(
         break;
       case 'Отправить сообщение':
         handleSendMessage();
-        break;
-      case 'Отправить на оценку {-}':
-        handleSendForEvaluation();
         break;
       case 'Удалить':
         callbacks?.onDelete?.();
@@ -184,7 +178,6 @@ export function useCandidateActionsUI(
     handleCopyToVacancy,
     handleRemoveFromVacancy,
     handleSendMessage,
-    handleSendForEvaluation,
     handleSelectItem,
     handleClickAddComment,
     handleClickEmail,

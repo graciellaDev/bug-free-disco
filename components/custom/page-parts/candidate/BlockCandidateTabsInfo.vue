@@ -1,5 +1,12 @@
 <script setup lang="ts">
-  import { ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
+  import {
+    ref,
+    watch,
+    nextTick,
+    computed,
+    onBeforeUnmount,
+    provide,
+  } from 'vue';
   import BtnTab from '~/components/custom/BtnTab.vue';
   import TextWithLinks from '~/components/custom/TextWithLinks.vue';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
@@ -10,6 +17,10 @@
   import ChatInput from '~/components/chat/ChatInput.vue';
   import CommentDeleteConfirmPopup from '~/components/custom/page-parts/candidate/popups/CommentDeleteConfirmPopup.vue';
   import CandidateEmailViewPopup from '~/components/custom/page-parts/candidate/popups/CandidateEmailViewPopup.vue';
+  import CandidateAddCustomFieldPopup from '~/components/custom/page-parts/candidate/popups/CandidateAddCustomFieldPopup.vue';
+  import CandidateEditCustomFieldPopup from '~/components/custom/page-parts/candidate/popups/CandidateEditCustomFieldPopup.vue';
+  import CandidateLocalCustomFieldRow from '~/components/custom/page-parts/candidate/CandidateLocalCustomFieldRow.vue';
+  import draggable from 'vuedraggable';
   import PlainSingleSelectDropdown from '~/components/custom/PlainSingleSelectDropdown.vue';
   import PlainMultiSelectDropdown from '~/components/custom/PlainMultiSelectDropdown.vue';
   import PlainInlineTextInput from '~/components/custom/PlainInlineTextInput.vue';
@@ -42,10 +53,34 @@
     HhEducationAdditionalEntry,
     HhCertificateDisplayItem,
   } from '@/types/candidates';
+  import type {
+    LocalCandidateCustomField,
+    CandidateCustomFieldEditorKind,
+    LocalCustomFieldValuesRow,
+  } from '@/types/candidateLocalCustomFields';
+  import {
+    mergeDefinitionWithValues,
+    valuesRowFromFull,
+  } from '@/types/candidateLocalCustomFields';
+  import {
+    buildMergedFieldsForCandidate,
+    persistMergedCustomFields,
+    pruneCustomFieldValuesForLocalId,
+    loadDefinitions,
+    saveDefinitions,
+  } from '@/utils/accountCustomFieldsStorage';
+  import {
+    fetchAccountCustomFields,
+    createAccountCustomField,
+    updateAccountCustomField,
+    reorderAccountCustomFields,
+    deleteAccountCustomField,
+  } from '@/src/api/accountCustomFields';
   import { hasDisplayableCandidateEmail } from '@/utils/candidateDisplayEmail';
   import { formatCandidateSalaryLine } from '@/utils/candidateSalaryLine';
   import { formatCandidateExperienceForDisplay } from '@/utils/formatCandidateExperience';
   import { formatExperienceWorkPeriod } from '@/utils/formatExperienceWorkPeriod';
+  import { useJoblyToastTopStyle } from '@/composables/useJoblyToastTopStyle';
   // import type { TimelineGroup }
 
   const newName = ref('');
@@ -199,7 +234,444 @@
     'comment-added': [];
     'open-email-popup': [];
     'candidate-updated': [candidate: Candidate];
+    /** Перезагрузить ленту (системные события после сохранения пользовательских полей и т.п.) */
+    'candidate-activity-refresh': [];
   }>();
+
+  const localCandidateCustomFields = ref<LocalCandidateCustomField[]>([]);
+  /** Не давать Sortable начинать drag с контролов (как в воронке настроек). */
+  const LOCAL_CF_SORTABLE_FILTER = [
+    'input',
+    'textarea',
+    'button',
+    'select',
+    'a[href]',
+    '[contenteditable="true"]',
+    'label',
+    '[role="switch"]',
+    '[role="menu"]',
+    '[role="menuitem"]',
+    '[role="listbox"]',
+    '[role="option"]',
+    '[role="combobox"]',
+  ].join(', ');
+  /** Не показывать тост при подгрузке из storage / смене кандидата */
+  const isHydratingLocalCustomFields = ref(false);
+  /** Схема полей загружена с API (аккаунт); иначе — только localStorage. */
+  const serverAccountCustomFieldsReady = ref(false);
+  let localCustomFieldsSaveToastTimer: ReturnType<typeof setTimeout> | null =
+    null;
+  let accountCustomFieldValuesSaveTimer: ReturnType<typeof setTimeout> | null =
+    null;
+  let hydrateLocalCustomFieldsSeq = 0;
+
+  const isAddCustomFieldPopupOpen = ref(false);
+  const editingLocalCustomField = ref<LocalCandidateCustomField | null>(
+    null
+  );
+  /** Ручка DnD + карандаш; «Сохранить» в строке заголовка — выход из режима */
+  const isLocalCustomFieldsLayoutEditMode = ref(false);
+  const localCustomFieldPendingDelete = ref<LocalCandidateCustomField | null>(
+    null
+  );
+
+  const localCustomFieldDeleteDescription = computed(() => {
+    const f = localCustomFieldPendingDelete.value;
+    const n = (f?.name ?? '').trim() || 'поле';
+    return `Удалить общее поле «${n}»? Оно исчезнет у всех кандидатов, данные по этому полю у каждого кандидата будут безвозвратно потеряны.`;
+  });
+
+  function onLocalCustomFieldDeleteRequest(field: LocalCandidateCustomField) {
+    localCustomFieldPendingDelete.value = field;
+  }
+
+  function closeLocalCustomFieldDeleteConfirm() {
+    localCustomFieldPendingDelete.value = null;
+  }
+
+  function confirmLocalCustomFieldDelete() {
+    const f = localCustomFieldPendingDelete.value;
+    localCustomFieldPendingDelete.value = null;
+    if (f) {
+      onLocalCustomFieldDeleted(f.localId);
+    }
+  }
+
+  function scheduleLocalCustomFieldsSavedToast() {
+    if (!props.candidate?.id) return;
+    if (isHydratingLocalCustomFields.value) return;
+    if (localCustomFieldsSaveToastTimer) {
+      clearTimeout(localCustomFieldsSaveToastTimer);
+      localCustomFieldsSaveToastTimer = null;
+    }
+    localCustomFieldsSaveToastTimer = setTimeout(() => {
+      localCustomFieldsSaveToastTimer = null;
+      showFieldsTabToast('Поля сохранены', 'success');
+    }, 450);
+  }
+
+  function parseAccountCustomFieldValueJson(
+    raw?: string
+  ): Partial<LocalCustomFieldValuesRow> {
+    if (!raw || !raw.trim()) return {};
+    try {
+      const o = JSON.parse(raw) as unknown;
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
+      return o as Partial<LocalCustomFieldValuesRow>;
+    } catch {
+      return {};
+    }
+  }
+
+  function buildAccountCustomFieldValuesPayload(
+    fields: LocalCandidateCustomField[]
+  ): Record<string, string> {
+    const m: Record<string, string> = {};
+    for (const f of fields) {
+      const id = Number(f.localId);
+      if (!Number.isInteger(id) || id <= 0) continue;
+      m[String(id)] = JSON.stringify(valuesRowFromFull(f));
+    }
+    return m;
+  }
+
+  function scheduleAccountCustomFieldValuesSave() {
+    if (!props.candidate?.id || !serverAccountCustomFieldsReady.value) return;
+    if (isHydratingLocalCustomFields.value) return;
+    if (accountCustomFieldValuesSaveTimer) {
+      clearTimeout(accountCustomFieldValuesSaveTimer);
+      accountCustomFieldValuesSaveTimer = null;
+    }
+    accountCustomFieldValuesSaveTimer = setTimeout(() => {
+      accountCustomFieldValuesSaveTimer = null;
+      void flushAccountCustomFieldValuesSave();
+    }, 550);
+  }
+
+  async function flushAccountCustomFieldValuesSave() {
+    const id = props.candidate?.id;
+    if (!id || !serverAccountCustomFieldsReady.value) return;
+    const payload = buildAccountCustomFieldValuesPayload(
+      localCandidateCustomFields.value
+    );
+    try {
+      const res = await updateCandidate({
+        id,
+        account_custom_field_values: payload,
+      } as CandidateUpdateRequest);
+      emit('candidate-updated', res.data as Candidate);
+      emit('candidate-activity-refresh');
+    } catch (e) {
+      console.error('Ошибка сохранения пользовательских полей:', e);
+      showFieldsTabToast('Не удалось сохранить пользовательские поля', 'error');
+    }
+  }
+
+  async function hydrateLocalCandidateCustomFields() {
+    const id = props.candidate?.id;
+    hydrateLocalCustomFieldsSeq += 1;
+    const seq = hydrateLocalCustomFieldsSeq;
+    isHydratingLocalCustomFields.value = true;
+    serverAccountCustomFieldsReady.value = false;
+    if (accountCustomFieldValuesSaveTimer) {
+      clearTimeout(accountCustomFieldValuesSaveTimer);
+      accountCustomFieldValuesSaveTimer = null;
+    }
+    if (!id) {
+      localCandidateCustomFields.value = [];
+      void nextTick(() => {
+        isHydratingLocalCustomFields.value = false;
+      });
+      return;
+    }
+    try {
+      let rows = await fetchAccountCustomFields();
+      if (seq !== hydrateLocalCustomFieldsSeq) return;
+
+      if (rows.length === 0 && typeof localStorage !== 'undefined') {
+        const localDefs = loadDefinitions();
+        if (localDefs.length > 0) {
+          for (const d of localDefs) {
+            await createAccountCustomField({
+              name: d.name,
+              field_kind: d.fieldKind,
+              options: d.options,
+            });
+            if (seq !== hydrateLocalCustomFieldsSeq) return;
+          }
+          saveDefinitions([]);
+          rows = await fetchAccountCustomFields();
+          if (seq !== hydrateLocalCustomFieldsSeq) return;
+        }
+      } else if (rows.length > 0 && typeof localStorage !== 'undefined') {
+        saveDefinitions([]);
+      }
+
+      serverAccountCustomFieldsReady.value = true;
+      const valueMap = props.candidate?.accountCustomFieldValues ?? {};
+      localCandidateCustomFields.value = rows.map(row =>
+        mergeDefinitionWithValues(
+          {
+            localId: String(row.id),
+            name: row.name,
+            fieldKind: row.field_kind as CandidateCustomFieldEditorKind,
+            options: Array.isArray(row.options) ? row.options : [],
+          },
+          parseAccountCustomFieldValueJson(valueMap[String(row.id)])
+        )
+      );
+    } catch (e) {
+      console.warn(
+        'Пользовательские поля: API недоступен, используется localStorage',
+        e
+      );
+      if (seq !== hydrateLocalCustomFieldsSeq) return;
+      serverAccountCustomFieldsReady.value = false;
+      try {
+        localCandidateCustomFields.value = buildMergedFieldsForCandidate(id);
+      } catch {
+        localCandidateCustomFields.value = [];
+      }
+    } finally {
+      if (seq === hydrateLocalCustomFieldsSeq) {
+        void nextTick(() => {
+          isHydratingLocalCustomFields.value = false;
+        });
+      }
+    }
+  }
+
+  function persistLocalCandidateCustomFields() {
+    const id = props.candidate?.id;
+    if (!id || typeof localStorage === 'undefined') return;
+    persistMergedCustomFields(id, localCandidateCustomFields.value);
+  }
+
+  watch(
+    () => props.candidate?.id,
+    () => {
+      isLocalCustomFieldsLayoutEditMode.value = false;
+      void hydrateLocalCandidateCustomFields();
+    },
+    { immediate: true }
+  );
+
+  /** Подтянуть значения с сервера, если карточка обновилась с тем же id (без повторной загрузки схемы). */
+  watch(
+    () =>
+      props.candidate?.id != null
+        ? JSON.stringify({
+            id: props.candidate.id,
+            values: props.candidate.accountCustomFieldValues ?? {},
+          })
+        : null,
+    (cur, prev) => {
+      if (cur == null || prev == null || cur === prev) return;
+      let parsedCur: { id: number; values: Record<string, string> };
+      let parsedPrev: { id: number; values: Record<string, string> };
+      try {
+        parsedCur = JSON.parse(cur) as { id: number; values: Record<string, string> };
+        parsedPrev = JSON.parse(prev) as { id: number; values: Record<string, string> };
+      } catch {
+        return;
+      }
+      if (parsedCur.id !== parsedPrev.id) return;
+      if (!serverAccountCustomFieldsReady.value) return;
+      if (isHydratingLocalCustomFields.value) return;
+      const valueMap = parsedCur.values;
+      const next = localCandidateCustomFields.value.map(f => {
+        const fid = Number(f.localId);
+        if (!Number.isInteger(fid) || fid <= 0) return f;
+        const raw = valueMap[String(fid)];
+        if (raw === undefined) return f;
+        return mergeDefinitionWithValues(
+          {
+            localId: f.localId,
+            name: f.name,
+            fieldKind: f.fieldKind,
+            options: f.options,
+          },
+          parseAccountCustomFieldValueJson(raw)
+        );
+      });
+      isHydratingLocalCustomFields.value = true;
+      localCandidateCustomFields.value = next;
+      void nextTick(() => {
+        isHydratingLocalCustomFields.value = false;
+      });
+    }
+  );
+
+  watch(
+    localCandidateCustomFields,
+    () => {
+      if (isHydratingLocalCustomFields.value) return;
+      if (serverAccountCustomFieldsReady.value) {
+        scheduleAccountCustomFieldValuesSave();
+      } else {
+        persistLocalCandidateCustomFields();
+      }
+      scheduleLocalCustomFieldsSavedToast();
+    },
+    { deep: true }
+  );
+
+  async function onLocalCustomFieldAdded(field: LocalCandidateCustomField) {
+    if (serverAccountCustomFieldsReady.value) {
+      try {
+        const row = await createAccountCustomField({
+          name: field.name,
+          field_kind: field.fieldKind,
+          options: field.options,
+        });
+        const def = {
+          localId: String(row.id),
+          name: row.name,
+          fieldKind: row.field_kind as CandidateCustomFieldEditorKind,
+          options: Array.isArray(row.options) ? row.options : [],
+        };
+        localCandidateCustomFields.value = [
+          ...localCandidateCustomFields.value,
+          mergeDefinitionWithValues(def, valuesRowFromFull(field)),
+        ];
+      } catch (e) {
+        console.error(e);
+        showFieldsTabToast('Не удалось создать поле', 'error');
+      }
+      return;
+    }
+    localCandidateCustomFields.value = [
+      ...localCandidateCustomFields.value,
+      field,
+    ];
+  }
+
+  function openEditLocalCustomField(field: LocalCandidateCustomField) {
+    editingLocalCustomField.value = field;
+  }
+
+  function closeEditLocalCustomField() {
+    editingLocalCustomField.value = null;
+  }
+
+  async function onLocalCustomFieldUpdated(field: LocalCandidateCustomField) {
+    const i = localCandidateCustomFields.value.findIndex(
+      f => f.localId === field.localId
+    );
+    if (i < 0) return;
+    if (serverAccountCustomFieldsReady.value) {
+      const fid = Number(field.localId);
+      if (Number.isInteger(fid) && fid > 0) {
+        try {
+          await updateAccountCustomField(fid, {
+            name: field.name,
+            field_kind: field.fieldKind,
+            options: field.options,
+          });
+        } catch (e) {
+          console.error(e);
+          showFieldsTabToast('Не удалось сохранить поле', 'error');
+          return;
+        }
+      }
+    }
+    const next = [...localCandidateCustomFields.value];
+    next[i] = field;
+    localCandidateCustomFields.value = next;
+  }
+
+  async function onLocalCustomFieldDeleted(localId: string) {
+    if (editingLocalCustomField.value?.localId === localId) {
+      editingLocalCustomField.value = null;
+    }
+    if (serverAccountCustomFieldsReady.value) {
+      const fid = Number(localId);
+      if (Number.isInteger(fid) && fid > 0) {
+        try {
+          await deleteAccountCustomField(fid);
+        } catch (e) {
+          console.error(e);
+          showFieldsTabToast('Не удалось удалить поле', 'error');
+          return;
+        }
+      }
+    } else {
+      pruneCustomFieldValuesForLocalId(localId);
+    }
+    localCandidateCustomFields.value =
+      localCandidateCustomFields.value.filter(f => f.localId !== localId);
+    if (localCandidateCustomFields.value.length === 0) {
+      isLocalCustomFieldsLayoutEditMode.value = false;
+    }
+  }
+
+  async function finishLocalCustomFieldsLayoutEdit() {
+    if (!serverAccountCustomFieldsReady.value) {
+      persistLocalCandidateCustomFields();
+    } else {
+      const ids = localCandidateCustomFields.value
+        .map(f => Number(f.localId))
+        .filter(n => Number.isInteger(n) && n > 0);
+      if (
+        ids.length > 0 &&
+        ids.length === localCandidateCustomFields.value.length
+      ) {
+        try {
+          await reorderAccountCustomFields(ids);
+        } catch (e) {
+          console.error(e);
+          showFieldsTabToast('Не удалось сохранить порядок полей', 'error');
+        }
+      }
+      await flushAccountCustomFieldValuesSave();
+    }
+    if (localCustomFieldsSaveToastTimer) {
+      clearTimeout(localCustomFieldsSaveToastTimer);
+      localCustomFieldsSaveToastTimer = null;
+    }
+    if (props.candidate?.id) {
+      showFieldsTabToast('Поля сохранены', 'success');
+    }
+    isLocalCustomFieldsLayoutEditMode.value = false;
+  }
+
+  /** Блок «Пользовательские поля»: подпись и значение из API `customFields` */
+  const candidateCustomFieldRows = computed(() => {
+    const raw = props.candidate?.customFields;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    const rows: { id: number; label: string; text: string }[] = [];
+    for (const item of raw) {
+      const o = item as Record<string, unknown>;
+      const id = Number(o.id);
+      if (!Number.isFinite(id)) continue;
+      const nameFromObj =
+        typeof o.name === 'string' ? o.name.trim() : '';
+      const pivot = o.pivot as Record<string, unknown> | undefined;
+      const nameFromPivot =
+        pivot && typeof pivot.name === 'string'
+          ? String(pivot.name).trim()
+          : '';
+      const label = nameFromObj || nameFromPivot || `Поле ${id}`;
+      const valueTop = typeof o.value === 'string' ? o.value.trim() : '';
+      const valuePivot =
+        pivot && typeof pivot.value === 'string'
+          ? String(pivot.value).trim()
+          : '';
+      const text = valueTop || valuePivot || '—';
+      rows.push({ id, label, text });
+    }
+    return rows;
+  });
+
+  const hasAnyCustomFields = computed(() => {
+    if (serverAccountCustomFieldsReady.value) {
+      return localCandidateCustomFields.value.length > 0;
+    }
+    return (
+      candidateCustomFieldRows.value.length > 0 ||
+      localCandidateCustomFields.value.length > 0
+    );
+  });
 
   const sourceFieldSaving = ref(false);
   const responseTypeFieldSaving = ref(false);
@@ -422,6 +894,14 @@
   const salaryDesiredEdit = ref('');
   const salaryFieldSaving = ref(false);
 
+  /** Город (из резюме / поле `location` в API) */
+  const cityEdit = ref('');
+  const cityFieldSaving = ref(false);
+
+  /** Гражданство (из резюме / поле `citizenship` в API) */
+  const citizenshipEdit = ref('');
+  const citizenshipFieldSaving = ref(false);
+
   const recruiterOptions = ref<{ id: number; name: string }[]>([]);
   const recruitersListLoading = ref(false);
   const recruiterFieldSaving = ref(false);
@@ -504,6 +984,10 @@
   });
   let fieldsTabToastTimer: ReturnType<typeof setTimeout> | null = null;
 
+  const fieldsTabToastFixedStyle = useJoblyToastTopStyle(
+    computed(() => fieldsTabToast.value.show)
+  );
+
   function showFieldsTabToast(
     message: string,
     variant: 'success' | 'error' = 'error'
@@ -516,6 +1000,8 @@
     }, 4000);
   }
 
+  provide('showFieldsTabToast', showFieldsTabToast);
+
   watch(
     () => activeTab.value,
     tab => {
@@ -525,34 +1011,6 @@
     },
     { immediate: true }
   );
-
-  /** Текст строки вкладки «Поля»; пусто → «—» (всегда показываем строку). */
-  function fieldsTabDisplay(raw: unknown): string {
-    if (raw == null) return '';
-    if (typeof raw === 'string') return raw.trim();
-    if (typeof raw === 'number' || typeof raw === 'boolean') {
-      return String(raw).trim();
-    }
-    return '';
-  }
-
-  function fieldsTabLine(raw: unknown): { text: string; isEmpty: boolean } {
-    const s = fieldsTabDisplay(raw);
-    if (s !== '') return { text: s, isEmpty: false };
-    return { text: '—', isEmpty: true };
-  }
-
-  function fieldsTabPhotoLine(c: Candidate): { text: string; isEmpty: boolean } {
-    const p = (c.imagePath || c.icon || '').trim();
-    if (p !== '') return { text: 'Загружено', isEmpty: false };
-    return { text: '—', isEmpty: true };
-  }
-
-  function fieldsTabResumeLine(c: Candidate): { text: string; isEmpty: boolean } {
-    const p = (c.resumePath || c.resume || '').trim();
-    if (p !== '') return { text: 'Загружено', isEmpty: false };
-    return { text: '—', isEmpty: true };
-  }
 
   watch(
     () => props.candidate,
@@ -567,6 +1025,8 @@
       phoneEdit.value = formatCandidatePhoneDisplay(c.phone);
       phoneLineError.value = false;
       salaryDesiredEdit.value = candidateSalaryDigitsFromCard(c);
+      cityEdit.value = c.location ?? '';
+      citizenshipEdit.value = c.citizenship ?? '';
       recruiterIdsEdit.value = Array.isArray(c.recruiter_ids)
         ? [...c.recruiter_ids]
         : [];
@@ -755,6 +1215,84 @@
       phoneEdit.value = formatCandidatePhoneDisplay(props.candidate.phone);
     } finally {
       phoneFieldSaving.value = false;
+    }
+  }
+
+  async function flushCityFromBlur() {
+    if (!props.candidate?.id) return;
+    const trimmed = cityEdit.value.trim();
+    const current = (props.candidate.location ?? '').trim();
+    if (trimmed === current) {
+      cityEdit.value = props.candidate.location ?? '';
+      return;
+    }
+    if (trimmed.length > 100) {
+      showFieldsTabToast('Город не длиннее 100 символов', 'error');
+      cityEdit.value = props.candidate.location ?? '';
+      return;
+    }
+
+    cityFieldSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null &&
+        String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        surname: props.candidate.surname,
+        patronymic: props.candidate.patronymic ?? undefined,
+        location: trimmed === '' ? null : trimmed,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения города:', e);
+      showFieldsTabToast('Не удалось сохранить город', 'error');
+      cityEdit.value = props.candidate.location ?? '';
+    } finally {
+      cityFieldSaving.value = false;
+    }
+  }
+
+  async function flushCitizenshipFromBlur() {
+    if (!props.candidate?.id) return;
+    const trimmed = citizenshipEdit.value.trim();
+    const current = (props.candidate.citizenship ?? '').trim();
+    if (trimmed === current) {
+      citizenshipEdit.value = props.candidate.citizenship ?? '';
+      return;
+    }
+    if (trimmed.length > 255) {
+      showFieldsTabToast('Гражданство не длиннее 255 символов', 'error');
+      citizenshipEdit.value = props.candidate.citizenship ?? '';
+      return;
+    }
+
+    citizenshipFieldSaving.value = true;
+    try {
+      const res = await updateCandidate({
+        id: props.candidate.id,
+        firstname: props.candidate.firstname,
+        email: props.candidate.email,
+        ...(props.candidate.phone != null &&
+        String(props.candidate.phone).trim() !== ''
+          ? { phone: props.candidate.phone }
+          : {}),
+        surname: props.candidate.surname,
+        patronymic: props.candidate.patronymic ?? undefined,
+        citizenship: trimmed === '' ? null : trimmed,
+      });
+      emit('candidate-updated', res.data);
+      showFieldsTabToast('Поля сохранены', 'success');
+    } catch (e) {
+      console.error('Ошибка сохранения гражданства:', e);
+      showFieldsTabToast('Не удалось сохранить гражданство', 'error');
+      citizenshipEdit.value = props.candidate.citizenship ?? '';
+    } finally {
+      citizenshipFieldSaving.value = false;
     }
   }
 
@@ -959,6 +1497,17 @@
     });
   };
 
+  /** Вкладка «Лента событий» + режим «Чат на сайте» и фокус поля (как «Отправить сообщение» в шапке). */
+  const openChatAndFocus = () => {
+    activeTab.value = 'chat';
+    chatStore.setCurrentFormat('chat');
+    nextTick(() => {
+      nextTick(() => {
+        chatInputRef.value?.focusInput?.();
+      });
+    });
+  };
+
   const openTaskAndFocus = () => {
     activeTab.value = 'chat';
     chatStore.setCurrentFormat('task');
@@ -979,7 +1528,12 @@
     });
   };
 
-  defineExpose({ openCommentAndFocus, openTaskAndFocus, eventFeedRef });
+  defineExpose({
+    openCommentAndFocus,
+    openChatAndFocus,
+    openTaskAndFocus,
+    eventFeedRef,
+  });
 
   const handleChatSend = async (
     messageData: ChatMessage & {
@@ -1109,6 +1663,10 @@
 
   onBeforeUnmount(() => {
     if (fieldsTabToastTimer) clearTimeout(fieldsTabToastTimer);
+    if (localCustomFieldsSaveToastTimer) {
+      clearTimeout(localCustomFieldsSaveToastTimer);
+      localCustomFieldsSaveToastTimer = null;
+    }
     experienceDescObservers.forEach((o) => o.disconnect());
     experienceDescObservers.clear();
     experienceDescEls.clear();
@@ -2179,10 +2737,12 @@
         </div>
       </div>
       <div v-if="activeTab === 'fields'">
-        <div class="fields-tab-block mb-px rounded-b-fifteen bg-white p-25px pl-30px">
+        <div
+          class="fields-tab-block mb-px rounded-b-fifteen bg-white py-25px px-30px"
+        >
           <div class="mb-22px">
             <p class="text-lg font-bold leading-normal text-space">
-              Пользовательские поля
+              Системные поля
             </p>
           </div>
           <div class="fields-tab-line mb-5">
@@ -2250,6 +2810,11 @@
                 @update:model-value="handleRejectionReasonFieldUpdate"
               />
             </div>
+          </div>
+          <div class="mb-22px mt-30px">
+            <p class="text-lg font-bold leading-normal text-space">
+              Информация
+            </p>
           </div>
           <div class="fields-tab-line mb-5">
             <span class="fields-tab-line__label text-sm font-normal text-bali">
@@ -2338,6 +2903,34 @@
           </div>
           <div class="fields-tab-line mb-5">
             <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Город
+            </span>
+            <PlainInlineTextInput
+              v-model="cityEdit"
+              leader-full-width
+              type="text"
+              placeholder=""
+              autocomplete="address-level2"
+              :disabled="cityFieldSaving"
+              @blur="flushCityFromBlur"
+            />
+          </div>
+          <div class="fields-tab-line mb-5">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
+              Гражданство
+            </span>
+            <PlainInlineTextInput
+              v-model="citizenshipEdit"
+              leader-full-width
+              type="text"
+              placeholder=""
+              autocomplete="off"
+              :disabled="citizenshipFieldSaving"
+              @blur="flushCitizenshipFromBlur"
+            />
+          </div>
+          <div class="fields-tab-line">
+            <span class="fields-tab-line__label text-sm font-normal text-bali">
               Желаемая зарплата
             </span>
             <PlainInlineTextInput
@@ -2351,129 +2944,174 @@
               @blur="flushSalaryDesiredFromBlur"
             />
           </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Заголовок
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
+          <div
+            class="mb-22px mt-30px flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2"
+          >
             <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabLine(candidate.quickInfo).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
+              class="min-w-0 pr-2 text-lg font-bold leading-normal text-space"
             >
-              {{ fieldsTabLine(candidate.quickInfo).text }}
+              Пользовательские поля
             </p>
+            <div
+              v-if="localCandidateCustomFields.length > 0"
+              class="flex shrink-0 items-center gap-3"
+            >
+              <button
+                v-if="!isLocalCustomFieldsLayoutEditMode"
+                type="button"
+                class="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-normal leading-normal text-dodger transition-opacity hover:opacity-85"
+                @click="isLocalCustomFieldsLayoutEditMode = true"
+              >
+                <svg
+                  class="local-cf-header-stroke-icon shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+                  />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                Настроить
+              </button>
+              <button
+                v-else
+                type="button"
+                class="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-normal leading-normal text-dodger transition-opacity hover:opacity-85"
+                @click="finishLocalCustomFieldsLayoutEdit"
+              >
+                <svg
+                  class="local-cf-header-stroke-icon shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+                  />
+                  <path d="M17 21v-8H7v8" />
+                  <path d="M7 3v8h8" />
+                </svg>
+                Сохранить
+              </button>
+            </div>
           </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Адрес проживания
+          <!-- Старый вывод customFields с API (только текст) — не показываем вместе с полями аккаунта с сервера, иначе дубль -->
+          <template
+            v-if="
+              candidateCustomFieldRows.length && !serverAccountCustomFieldsReady
+            "
+          >
+            <div
+              v-for="row in candidateCustomFieldRows"
+              :key="'api-cf-' + row.id"
+              :class="[
+                'fields-tab-line mb-5',
+                localCandidateCustomFields.length > 0 &&
+                  isLocalCustomFieldsLayoutEditMode &&
+                  'fields-tab-line--cf-pencil-gap',
+              ]"
+            >
+              <span class="fields-tab-line__label text-sm font-normal text-bali">
+                {{ row.label }}
+              </span>
+              <span class="fields-tab-line__dots" aria-hidden="true" />
+              <p
+                class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150 text-slate-custom"
+              >
+                {{ row.text }}
+              </p>
+            </div>
+          </template>
+          <ClientOnly>
+            <draggable
+              v-if="isLocalCustomFieldsLayoutEditMode"
+              v-model="localCandidateCustomFields"
+              item-key="localId"
+              :animation="200"
+              easing="cubic-bezier(0.25, 1, 0.5, 1)"
+              ghost-class="local-cf-sortable-ghost"
+              chosen-class="local-cf-sortable-chosen"
+              drag-class="local-cf-sortable-drag"
+              :filter="LOCAL_CF_SORTABLE_FILTER"
+              :prevent-on-filter="false"
+            >
+              <template #item="{ element }">
+                <CandidateLocalCustomFieldRow
+                  :key="element.localId"
+                  :field="element"
+                  :layout-edit-mode="true"
+                  @edit="openEditLocalCustomField"
+                  @delete-request="onLocalCustomFieldDeleteRequest"
+                />
+              </template>
+            </draggable>
+            <template v-else>
+              <CandidateLocalCustomFieldRow
+                v-for="field in localCandidateCustomFields"
+                :key="field.localId"
+                :field="field"
+                :layout-edit-mode="false"
+                @edit="openEditLocalCustomField"
+                @delete-request="onLocalCustomFieldDeleteRequest"
+              />
+            </template>
+            <template #fallback>
+              <CandidateLocalCustomFieldRow
+                v-for="field in localCandidateCustomFields"
+                :key="field.localId"
+                :field="field"
+                :layout-edit-mode="false"
+                @edit="openEditLocalCustomField"
+                @delete-request="onLocalCustomFieldDeleteRequest"
+              />
+            </template>
+          </ClientOnly>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 text-dodger transition-opacity hover:opacity-85"
+            :class="hasAnyCustomFields ? 'mt-2' : ''"
+            @click="isAddCustomFieldPopupOpen = true"
+          >
+            <span
+              class="inline-flex h-[16.25px] w-[16.25px] shrink-0 items-center justify-center rounded-full bg-dodger text-white"
+              aria-hidden="true"
+            >
+              <svg
+                class="block h-[8.125px] w-[8.125px]"
+                viewBox="0 0 12 12"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M6 2.25v7.5M2.25 6h7.5"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+              </svg>
             </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabLine(
-                  candidate.address || candidate.location || ''
-                ).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
-            >
-              {{
-                fieldsTabLine(candidate.address || candidate.location || '')
-                  .text
-              }}
-            </p>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Образование
+            <span class="text-[13px] font-normal leading-normal">
+              Добавить
             </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabLine(candidate.education).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
-            >
-              {{ fieldsTabLine(candidate.education).text }}
-            </p>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Опыт работы
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabLine(candidate.experience).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
-            >
-              {{ fieldsTabLine(candidate.experience).text }}
-            </p>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Фото
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabPhotoLine(candidate).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
-            >
-              {{ fieldsTabPhotoLine(candidate).text }}
-            </p>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Загрузка резюме
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabResumeLine(candidate).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
-            >
-              {{ fieldsTabResumeLine(candidate).text }}
-            </p>
-          </div>
-          <div class="fields-tab-line">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Сопроводительное письмо
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <p
-              class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150"
-              :class="
-                fieldsTabLine(candidate.coverLetter).isEmpty
-                  ? 'text-bali'
-                  : 'text-slate-custom'
-              "
-            >
-              {{ fieldsTabLine(candidate.coverLetter).text }}
-            </p>
-          </div>
+          </button>
         </div>
-        <!-- Секция "Пользовательские поля" скрыта по макету
+        <!-- Секция «Информация» скрыта по макету
         <div class="bg-white p-25px pl-30px">
           <div class="mb-26px flex items-center">
             <p class="mr-2.5 text-lg font-bold leading-normal text-space">
-              Пользовательские поля
+              Информация
             </p>
             <span
               class="h-fit rounded-fifteen bg-athens-gray px-2.5 py-[3.5px] text-xs font-normal"
@@ -2709,6 +3347,17 @@
         </div>
       </div>
     </div>
+    <CandidateAddCustomFieldPopup
+      :is-open="isAddCustomFieldPopupOpen"
+      @close="isAddCustomFieldPopupOpen = false"
+      @submit="onLocalCustomFieldAdded"
+    />
+    <CandidateEditCustomFieldPopup
+      :is-open="editingLocalCustomField != null"
+      :field="editingLocalCustomField"
+      @close="closeEditLocalCustomField"
+      @submit="onLocalCustomFieldUpdated"
+    />
     <CandidateEmailViewPopup
       :is-open="isEmailViewOpen"
       :email-event="selectedEmailEvent"
@@ -2728,12 +3377,19 @@
       @close="handleTaskDeleteClose"
       @confirm="handleTaskDeleteConfirm"
     />
+    <CommentDeleteConfirmPopup
+      :is-open="localCustomFieldPendingDelete != null"
+      :description="localCustomFieldDeleteDescription"
+      @close="closeLocalCustomFieldDeleteConfirm"
+      @confirm="confirmLocalCustomFieldDelete"
+    />
   </div>
   <Teleport to="body">
     <Transition name="fields-tab-toast-fade">
       <div
         v-if="fieldsTabToast.show"
-        class="fixed left-1/2 top-5 z-[10001] max-w-[min(90vw,420px)] -translate-x-1/2 rounded-fifteen px-6 py-3 text-center text-sm font-medium leading-150 shadow-[0_0_15px_rgba(0,0,0,0.12)]"
+        class="fixed right-4 z-[10001] max-w-[min(90vw,420px)] rounded-fifteen px-6 py-3 text-center text-sm font-medium leading-150 text-space shadow-[0_0_15px_rgba(0,0,0,0.15)] sm:right-6"
+        :style="fieldsTabToastFixedStyle"
         :class="
           fieldsTabToast.variant === 'success'
             ? 'fields-tab-success-toast'
@@ -2806,19 +3462,26 @@
   /* В компоненте по умолчанию min-height: 1.75rem — строки выше, чем у полей с текстом и «…» */
   min-height: 0;
 }
-.fields-tab-block .fields-tab-line {
+/* «Настроить» / «Сохранить»: высота иконки = кегль подписи; толщина штриха подбирается к font-normal */
+.fields-tab-block :deep(.local-cf-header-stroke-icon) {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+/* :deep — строки локальных полей в CandidateLocalCustomFieldRow */
+.fields-tab-block :deep(.fields-tab-line) {
   display: flex;
   flex-wrap: nowrap;
   align-items: flex-end;
   width: 100%;
   column-gap: 8px;
 }
-.fields-tab-block .fields-tab-line__label {
+.fields-tab-block :deep(.fields-tab-line__label) {
   flex: 0 0 auto;
   max-width: none;
   white-space: nowrap;
 }
-.fields-tab-block .fields-tab-line__dots {
+.fields-tab-block :deep(.fields-tab-line__dots) {
   flex: 1 1 0;
   min-width: 12px;
   width: auto;
@@ -2830,7 +3493,7 @@
   transform: translateY(-0.28em);
 }
 /* Значение по ширине контента, выравнивание как у PlainSingleSelectDropdown (вправо) */
-.fields-tab-block .fields-tab-line__value {
+.fields-tab-block :deep(.fields-tab-line__value) {
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -2840,11 +3503,35 @@
   margin: 0;
   text-align: right;
 }
-.fields-tab-block .fields-tab-line__value--truncate {
+.fields-tab-block :deep(.fields-tab-line__value--truncate) {
   max-width: min(360px, 42vw);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* vuedraggable / Sortable: остальные строки сдвигаются, место вставки — «призрак» */
+.fields-tab-block :deep(.local-cf-sortable-ghost) {
+  opacity: 0.42;
+  background: rgba(30, 144, 255, 0.07);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.fields-tab-block :deep(.local-cf-sortable-chosen) {
+  cursor: grabbing;
+}
+.fields-tab-block :deep(.local-cf-sortable-drag) {
+  opacity: 0.96;
+}
+/* Только строки API: запас под две иконки h-6 (как в CandidateLog) */
+.fields-tab-block :deep(.fields-tab-line.fields-tab-line--cf-pencil-gap::after) {
+  content: '';
+  flex-shrink: 0;
+  align-self: flex-end;
+  width: 3.5rem;
+  box-sizing: border-box;
+  padding-left: 0.25rem;
+  transform: translateY(-2px);
+  pointer-events: none;
 }
 </style>
 

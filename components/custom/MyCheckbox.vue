@@ -4,14 +4,24 @@
             <!-- Скрытый чекбокс -->
             <input type="checkbox" :id="id" :checked="isChecked === 'on'" @change="handleChange" class="hidden" />
             <!-- Визуальный элемент чекбокса -->
-            <div class="w-5 h-5 flex items-center justify-center border rounded-md check-item" :class="{
-                'bg-dodger border-dodger': isChecked == 'on',
-                'border-athens bg-athens-gray': isChecked != 'on',
-                'mr-0': emptyLabel,
-                'mr-2.5': !emptyLabel,
-                'mr-5': twentyGap,
-            }">
-                <svg v-if="isChecked == 'on'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" viewBox="0 0 20 20"
+            <div
+                class="flex items-center justify-center border rounded-md check-item"
+                :class="{
+                    'h-4 w-4': compact,
+                    'h-5 w-5': !compact,
+                    'bg-dodger border-dodger': isChecked == 'on',
+                    'border-athens bg-athens-gray': isChecked != 'on',
+                    'mr-0': emptyLabel,
+                    'mr-2.5': !emptyLabel,
+                    'mr-5': twentyGap,
+                }"
+            >
+                <svg
+                    v-if="isChecked == 'on'"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="text-white"
+                    :class="compact ? 'h-3 w-3' : 'h-4 w-4'"
+                    viewBox="0 0 20 20"
                   fill="currentColor">
                     <path fill-rule="evenodd"
                       d="M16.704 5.293a1 1 0 00-1.408 0L7.5 12.086 4.704 9.293a1 1 0 00-1.408 1.414l3.5 3.5a1 1 0 001.408 0l8-8a1 1 0 000-1.414z"
@@ -65,7 +75,12 @@ const props = defineProps({
         fontSize: {
             type: String,
             default: "sm",
-        }
+        },
+        /** Квадрат 16×16 px (по умолчанию 20×20) */
+        compact: {
+            type: Boolean,
+            default: false,
+        },
 })
 
 const isChecked = ref(props.modelValue ? 'on' : 'off')

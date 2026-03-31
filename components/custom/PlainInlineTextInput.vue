@@ -25,6 +25,8 @@
       clearable?: boolean;
       /** Только цифры (напр. зарплата): ввод/вставка фильтруются */
       digitsOnly?: boolean;
+      /** Классы цвета/оформления текста (по умолчанию text-space); для ссылки — text-dodger */
+      inputTextClass?: string;
     }>(),
     {
       placeholder: '…',
@@ -35,6 +37,7 @@
       lineError: false,
       clearable: true,
       digitsOnly: false,
+      inputTextClass: undefined,
     }
   );
 
@@ -255,8 +258,14 @@
     }
   );
 
-  const inputClassBase =
-    'plain-inline-text-input m-0 border-0 bg-transparent p-0 text-right text-sm font-normal leading-normal text-space shadow-none outline-none ring-0 placeholder:text-bali focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60';
+  const inputClassBase = computed(
+    () =>
+      [
+        'plain-inline-text-input m-0 border-0 bg-transparent p-0 text-right text-sm font-normal leading-normal',
+        props.inputTextClass ?? 'text-space',
+        'shadow-none outline-none ring-0 placeholder:text-bali focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60',
+      ].join(' ')
+  );
 </script>
 
 <template>
