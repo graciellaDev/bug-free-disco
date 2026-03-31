@@ -7,10 +7,16 @@
       options: string[];
       placeholder?: string;
       disabled?: boolean;
+      /** Показывать первую строку меню «placeholder» (сброс на пустое). false — только реальные опции */
+      showPlaceholderInMenu?: boolean;
+      /** Узкое меню: без колонки ✓, ширина по тексту, меньше горизонтальных отступов */
+      compactMenu?: boolean;
     }>(),
     {
       placeholder: 'Выбрать',
       disabled: false,
+      showPlaceholderInMenu: true,
+      compactMenu: false,
     }
   );
 
@@ -99,42 +105,68 @@
     <Transition name="psd-fade">
       <div
         v-if="open"
-        class="plain-select-panel absolute right-0 top-full z-[100] mt-1 max-h-[min(280px,50vh)] w-max min-w-[min(100%,260px)] max-w-[min(100vw-32px,320px)] overflow-y-auto rounded-fifteen bg-white py-1 shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+        class="plain-select-panel absolute right-0 top-full z-[100] mt-1 max-h-[min(280px,50vh)] overflow-y-auto rounded-fifteen bg-white py-1 shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+        :class="
+          compactMenu
+            ? 'w-max max-w-[min(100vw-32px,420px)]'
+            : 'w-max min-w-[min(100%,260px)] max-w-[min(100vw-32px,320px)]'
+        "
         @click.stop
       >
         <button
+          v-if="showPlaceholderInMenu"
           type="button"
-          class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-normal leading-normal transition-colors"
-          :class="
+          class="flex w-full items-center text-left text-sm font-normal leading-normal transition-colors"
+          :class="[
+            compactMenu ? 'gap-0 px-2.5 py-2.5' : 'gap-2 px-3 py-2.5',
             isEmpty
               ? 'bg-athens-gray text-space'
-              : 'text-slate-custom hover:bg-catskill'
-          "
+              : 'text-slate-custom hover:bg-catskill',
+          ]"
           @click="selectClear"
         >
-          <span class="flex w-4 shrink-0 justify-center">
+          <span
+            v-if="!compactMenu"
+            class="flex w-4 shrink-0 justify-center"
+          >
             <span v-if="isEmpty" class="text-sm leading-none text-space">✓</span>
           </span>
-          <span class="min-w-0 truncate">{{ placeholder }}</span>
+          <span
+            class="min-w-0"
+            :class="compactMenu ? 'whitespace-nowrap' : 'truncate'"
+            >{{ placeholder }}</span
+          >
         </button>
         <button
           v-for="opt in menuOptions"
           :key="opt"
           type="button"
-          class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-normal leading-normal transition-colors"
+          class="flex w-full items-center text-left text-sm font-normal leading-normal transition-colors"
           :class="
-            opt === displayValue
-              ? 'bg-athens-gray text-space'
-              : 'text-slate-custom hover:bg-catskill'
+            [
+              compactMenu ? 'gap-0 px-2.5 py-2.5' : 'gap-2 px-3 py-2.5',
+              opt === displayValue
+                ? 'bg-athens-gray text-space'
+                : 'text-slate-custom hover:bg-catskill',
+            ]
           "
           @click="selectOption(opt)"
         >
-          <span class="flex w-4 shrink-0 justify-center">
-            <span v-if="opt === displayValue" class="text-sm leading-none text-space"
+          <span
+            v-if="!compactMenu"
+            class="flex w-4 shrink-0 justify-center"
+          >
+            <span
+              v-if="opt === displayValue"
+              class="text-sm leading-none text-space"
               >✓</span
             >
           </span>
-          <span class="min-w-0 flex-1 truncate">{{ opt }}</span>
+          <span
+            class="min-w-0"
+            :class="compactMenu ? 'whitespace-nowrap' : 'flex-1 truncate'"
+            >{{ opt }}</span
+          >
         </button>
       </div>
     </Transition>

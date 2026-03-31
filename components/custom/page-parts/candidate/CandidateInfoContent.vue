@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+  import { ref, computed, nextTick, onBeforeUnmount } from 'vue';
   import { createTag, findTag } from '@/src/api/tags';
   import { detachCandidateTag, updateCandidate } from '@/src/api/candidates';
   import type {
@@ -13,6 +13,7 @@
     hasDisplayableCandidateEmail,
   } from '@/utils/candidateDisplayEmail';
   import { formatCandidateSalaryLine } from '@/utils/candidateSalaryLine';
+  import { useJoblyToastTopStyle } from '@/composables/useJoblyToastTopStyle';
 
   const props = defineProps<{
     candidate: Candidate;
@@ -27,6 +28,29 @@
   }>();
 
   const DEFAULT_AVATAR_SRC = '/img/default-avatar.png';
+
+  const contactToast = ref<{
+    show: boolean;
+    text: string;
+    variant: 'success' | 'error';
+  }>({ show: false, text: '', variant: 'error' });
+  let contactToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const contactToastTopStyle = useJoblyToastTopStyle(
+    computed(() => contactToast.value.show)
+  );
+
+  function showContactToast(
+    message: string,
+    variant: 'success' | 'error' = 'error'
+  ) {
+    contactToast.value = { show: true, text: message, variant };
+    if (contactToastTimer) clearTimeout(contactToastTimer);
+    contactToastTimer = setTimeout(() => {
+      contactToast.value = { show: false, text: '', variant: 'error' };
+      contactToastTimer = null;
+    }, 4000);
+  }
 
   const candidatePhotoSrc = computed(
     () => props.candidate.imagePath?.trim() || DEFAULT_AVATAR_SRC
@@ -43,51 +67,44 @@
   const tagInputRef = ref<HTMLInputElement | null>(null);
   const detachingTagId = ref<number | null>(null);
 
-  type FieldKey = 'phone' | 'email' | null;
-  const openDropdown = ref<FieldKey>(null);
-  const editingField = ref<FieldKey>(null);
-  const editPhoneValue = ref('');
-  const editEmailValue = ref('');
-  const dropdownRoot = ref<HTMLElement | null>(null);
-
-  const showCandidateEmailRow = computed(
-    () =>
-      hasDisplayableCandidateEmail(props.candidate.email) ||
-      editingField.value === 'email'
+  const showCandidateEmailRow = computed(() =>
+    hasDisplayableCandidateEmail(props.candidate.email)
   );
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // fallback
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+  function emailHasAtAndDot(raw: string): boolean {
+    const t = raw.trim();
+    return t.includes('@') && t.includes('.');
+  }
+
+  async function handleCopyEmail() {
+    const value = displayCandidateEmailOrEmpty(props.candidate.email);
+    if (!value) {
+      showContactToast('Нет адреса для копирования', 'error');
+      return;
     }
-    openDropdown.value = null;
-  };
+    try {
+      await navigator.clipboard.writeText(value);
+      showContactToast('Скопировано', 'success');
+    } catch {
+      showContactToast('Не удалось скопировать', 'error');
+    }
+  }
 
-  const openFieldDropdown = (field: 'phone' | 'email', e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openDropdown.value = field;
-  };
-
-  const closeDropdown = () => {
-    openDropdown.value = null;
-  };
-
-  const handleCopy = (field: 'phone' | 'email') => {
-    const value =
-      field === 'phone'
-        ? (formattedPhone.value || props.candidate.phone || '')
-        : displayCandidateEmailOrEmpty(props.candidate.email);
-    copyToClipboard(value);
-  };
+  function handleWriteEmail() {
+    const t = displayCandidateEmailOrEmpty(props.candidate.email);
+    if (!t) {
+      showContactToast('Введите адрес e-mail', 'error');
+      return;
+    }
+    if (!emailHasAtAndDot(t)) {
+      showContactToast(
+        'Введите корректный e-mail (например, user@example.ru)',
+        'error'
+      );
+      return;
+    }
+    emit('write-email');
+  }
 
   /** Как в PhoneInput: только цифры, макс 11, 8→7, 10 цифр → 7 в начало */
   const getPhoneDigits = (s: string): string => {
@@ -97,52 +114,8 @@
     return d;
   };
 
-  const startEdit = (field: 'phone' | 'email') => {
-    openDropdown.value = null;
-    editingField.value = field;
-    if (field === 'phone') editPhoneValue.value = props.candidate.phone || '';
-    else
-      editEmailValue.value = displayCandidateEmailOrEmpty(
-        props.candidate.email
-      );
-  };
-
-  const handleWriteEmail = () => {
-    openDropdown.value = null;
-    emit('write-email');
-  };
-
-  const cancelEdit = () => {
-    editingField.value = null;
-    editPhoneValue.value = '';
-    editEmailValue.value = '';
-  };
-
-  const saveEdit = async () => {
-    if (!editingField.value) return;
-    const payload: CandidateUpdateRequest = {
-      id: props.candidate.id,
-      firstname: props.candidate.firstname,
-      email: editingField.value === 'email' ? editEmailValue.value : props.candidate.email,
-      phone: editingField.value === 'phone' ? phoneToApi(editPhoneValue.value) || props.candidate.phone : props.candidate.phone,
-    };
-    try {
-      const res = await updateCandidate(payload);
-      if (res?.data) emit('candidate-updated', res.data);
-      cancelEdit();
-    } catch (err) {
-      console.error('[CandidateInfoContent] Ошибка сохранения:', err);
-    }
-  };
-
-  const handleClickOutside = (e: MouseEvent) => {
-    if (dropdownRoot.value && !dropdownRoot.value.contains(e.target as Node)) {
-      openDropdown.value = null;
-    }
-  };
-
   onBeforeUnmount(() => {
-    document.removeEventListener('click', handleClickOutside);
+    if (contactToastTimer) clearTimeout(contactToastTimer);
   });
 
   /** Маска: +7 (XXX) XXX XX XX. На вход — строка цифр (макс 11), как в PhoneInput. */
@@ -162,11 +135,23 @@
 
   const formattedPhone = computed(() => formatPhoneMask(getPhoneDigits(props.candidate.phone || '')));
 
-  /** Для сохранения в API: +7 и 10 цифр */
-  const phoneToApi = (digits: string): string => {
-    const d = getPhoneDigits(digits);
-    return d.length === 11 ? '+7' + d.slice(1) : '';
-  };
+  async function handleCopyPhone() {
+    const value = (
+      formattedPhone.value ||
+      props.candidate.phone ||
+      ''
+    ).trim();
+    if (!value) {
+      showContactToast('Нет номера для копирования', 'error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      showContactToast('Скопировано', 'success');
+    } catch {
+      showContactToast('Не удалось скопировать', 'error');
+    }
+  }
 
   const telegramPhoneLink = computed(() => {
     const digits = getPhoneDigits(props.candidate.phone || '');
@@ -368,9 +353,6 @@
     }
   };
 
-  onMounted(() => {
-    document.addEventListener('click', handleClickOutside);
-  });
 </script>
 
 <template>
@@ -416,69 +398,65 @@
           {{ sourceBadgeText }}
         </span>
       </div>
-      <div ref="dropdownRoot" class="space-between relative flex flex-col gap-y-[5px]">
-        <div v-if="candidate.phone || editingField === 'phone'" class="flex items-center leading-[1.5]">
+      <div class="relative flex flex-col gap-y-[5px]">
+        <div v-if="candidate.phone" class="flex items-center leading-[1.5]">
           <div
             class="mb-5px mr-[45px] min-w-[70px] text-sm font-normal leading-150 text-space"
           >
             Телефон:
           </div>
-          <div class="relative mr-2.5 flex items-center leading-[1.5]">
-            <template v-if="editingField === 'phone'">
-              <input
-                v-model="editPhoneValue"
-                type="tel"
-                inputmode="tel"
-                class="rounded-ten border border-athens bg-white px-2.5 py-1.5 text-sm text-space focus:border-dodger focus:outline-none"
-                placeholder="+7 900 123 45 67"
-              />
-            </template>
-            <template v-else>
-              <button
-                type="button"
-                class="mr-1.5 text-left text-sm font-medium text-space"
-                @click="openFieldDropdown('phone', $event)"
-              >
-                {{ formattedPhone }}
-              </button>
-            </template>
-            <a
-              v-if="telegramPhoneLink && editingField !== 'phone'"
-              :href="telegramPhoneLink"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="tg-icon-link ml-0.5 inline-flex shrink-0 items-center justify-center rounded-full"
-              title="Написать в Telegram"
+          <div
+            class="relative inline-flex items-center gap-0.5 leading-[1.5]"
+          >
+            <span class="text-sm font-medium text-space">
+              {{ formattedPhone }}
+            </span>
+            <span
+              v-if="(formattedPhone || candidate.phone) || telegramPhoneLink"
+              class="inline-flex items-center gap-0"
             >
-              <svg-icon
-                class="pointer-events-none [&_use]:pointer-events-none block"
-                name="tg20"
-                width="21"
-                height="21"
-              />
-            </a>
-            <Transition name="slide-fade">
-              <div
-                v-if="openDropdown === 'phone'"
-                class="absolute left-0 top-full z-10 mt-1 min-w-[140px] rounded-ten border border-athens bg-white py-1 shadow-shadow-droplist"
-                @click.stop
+              <button
+                v-if="formattedPhone || candidate.phone"
+                type="button"
+                class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-slate-custom transition-opacity hover:opacity-80 hover:text-space focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-dodger"
+                aria-label="Копировать номер"
+                title="Копировать"
+                @click.stop="handleCopyPhone"
               >
-                <button
-                  type="button"
-                  class="w-full px-15px py-2 text-left text-sm text-slate-custom hover:bg-zumthor hover:text-space"
-                  @click="handleCopy('phone')"
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
                 >
-                  Копировать
-                </button>
-                <button
-                  type="button"
-                  class="w-full px-15px py-2 text-left text-sm text-slate-custom hover:bg-zumthor hover:text-space"
-                  @click="startEdit('phone')"
-                >
-                  Редактировать
-                </button>
-              </div>
-            </Transition>
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                  <path
+                    d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                  />
+                </svg>
+              </button>
+              <a
+                v-if="telegramPhoneLink"
+                :href="telegramPhoneLink"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="tg-icon-link inline-flex shrink-0 items-center justify-center rounded-full"
+                title="Написать в Telegram"
+              >
+                <svg-icon
+                  class="pointer-events-none [&_use]:pointer-events-none block"
+                  name="tg20"
+                  width="21"
+                  height="21"
+                />
+              </a>
+            </span>
           </div>
         </div>
         <div
@@ -490,58 +468,74 @@
           >
             Почта:
           </span>
-          <div class="relative">
-            <template v-if="editingField === 'email'">
-              <input
-                v-model="editEmailValue"
-                type="email"
-                class="rounded-ten border border-athens bg-white px-2.5 py-1.5 text-sm text-space focus:border-dodger focus:outline-none"
-                :style="{ minWidth: `${Math.max(28, (editEmailValue.length || 1) + 1)}ch` }"
-                placeholder="email@example.com"
-              />
-            </template>
+          <div
+            class="relative inline-flex flex-wrap items-center gap-0.5 leading-[1.5]"
+          >
             <button
-              v-else
               type="button"
               class="text-left text-sm font-medium text-space"
-              @click="openFieldDropdown('email', $event)"
+              @click="handleWriteEmail"
             >
               {{ candidate.email }}
             </button>
-            <Transition name="slide-fade">
-              <div
-                v-if="openDropdown === 'email'"
-                class="absolute left-0 top-full z-10 mt-1 min-w-[140px] rounded-ten border border-athens bg-white py-1 shadow-shadow-droplist"
-                @click.stop
+            <span
+              v-if="hasDisplayableCandidateEmail(candidate.email)"
+              class="inline-flex items-center gap-0"
+            >
+              <button
+                type="button"
+                class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-slate-custom transition-opacity hover:opacity-80 hover:text-space focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-dodger"
+                aria-label="Копировать e-mail"
+                title="Копировать"
+                @click.stop="handleCopyEmail"
               >
-                <button
-                  type="button"
-                  class="w-full px-15px py-2 text-left text-sm text-slate-custom hover:bg-zumthor hover:text-space"
-                  @click="handleCopy('email')"
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
                 >
-                  Копировать
-                </button>
-                <button
-                  type="button"
-                  class="w-full px-15px py-2 text-left text-sm text-slate-custom hover:bg-zumthor hover:text-space"
-                  @click="startEdit('email')"
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                  <path
+                    d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-slate-custom transition-opacity hover:opacity-80 hover:text-space focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-dodger"
+                aria-label="Написать письмо"
+                title="Написать"
+                @click.stop="handleWriteEmail"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
                 >
-                  Редактировать
-                </button>
-                <button
-                  type="button"
-                  class="w-full px-15px py-2 text-left text-sm text-slate-custom hover:bg-zumthor hover:text-space"
-                  @click="handleWriteEmail"
-                >
-                  Написать письмо
-                </button>
-              </div>
-            </Transition>
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <path d="m3 7 9 6 9-6" />
+                </svg>
+              </button>
+            </span>
           </div>
         </div>
-        <div class="flex items-start">
+        <div class="flex items-start leading-[1.5]">
           <span
-            class="mr-[45px] min-w-[70px] shrink-0 self-start text-sm font-normal leading-normal text-space"
+            class="mb-5px mr-[45px] min-w-[70px] shrink-0 self-start text-sm font-normal leading-150 text-space"
           >
             Теги:
           </span>
@@ -635,25 +629,6 @@
             </div>
           </div>
         </div>
-        <div
-          v-if="editingField"
-          class="mt-3 flex items-center gap-2.5 border-t border-athens pt-3"
-        >
-          <button
-            type="button"
-            class="rounded-ten bg-dodger px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            @click="saveEdit"
-          >
-            Сохранить
-          </button>
-          <button
-            type="button"
-            class="rounded-ten border border-athens bg-white px-4 py-2 text-sm font-medium text-slate-custom hover:bg-athens-gray"
-            @click="cancelEdit"
-          >
-            Отменить
-          </button>
-        </div>
       </div>
     </div>
     <div
@@ -667,19 +642,26 @@
       />
     </div>
   </div>
+  <Teleport to="body">
+    <Transition name="contact-toast-fade">
+      <div
+        v-if="contactToast.show"
+        class="fixed right-4 z-[10001] max-w-[min(90vw,420px)] rounded-fifteen px-6 py-3 text-center text-sm font-medium leading-150 text-space shadow-[0_0_15px_rgba(0,0,0,0.15)] sm:right-6"
+        :style="contactToastTopStyle"
+        :class="
+          contactToast.variant === 'success'
+            ? 'contact-toast-success'
+            : 'contact-toast-error'
+        "
+        :role="contactToast.variant === 'success' ? 'status' : 'alert'"
+      >
+        {{ contactToast.text }}
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
-.slide-fade-enter-active,
-.slide-fade-leave-active {
-  transition: all 0.15s ease-out;
-}
-.slide-fade-enter-from,
-.slide-fade-leave-to {
-  transform: translateY(-2px);
-  opacity: 0;
-}
-
 /* Иконка Telegram: белый самолёт на светло-синем круге (как на скриншоте) */
 .tg-icon-link :deep(circle),
 .tg-icon-link :deep(rect) {
@@ -693,4 +675,29 @@
 .tag-input-inline {
   caret-color: #5898ff;
 }
+</style>
+
+<style>
+  .contact-toast-error {
+    background-color: #fce7f3 !important;
+    border: none !important;
+    color: #212936 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .contact-toast-success {
+    background-color: #ffffff !important;
+    border: none !important;
+    color: #212936 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .contact-toast-fade-enter-active,
+  .contact-toast-fade-leave-active {
+    transition: opacity 0.3s ease;
+  }
+  .contact-toast-fade-enter-from,
+  .contact-toast-fade-leave-to {
+    opacity: 0;
+  }
 </style>

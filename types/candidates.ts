@@ -194,6 +194,10 @@ export interface Candidate {
   hasDriverLicense?: string | null;
   tags?: TagCandidate[] | number[] | null;
   customFields?: CustomFieldCandidate[] | null;
+  /**
+   * Пользовательские поля аккаунта: id поля → JSON (`LocalCustomFieldValuesRow`) для строки редактора.
+   */
+  accountCustomFieldValues?: Record<string, string>;
   /** Дата обновления резюме на HH */
   resume_updated_at?: string | null;
   created_at?: string;

@@ -138,7 +138,10 @@
           class="relative z-[40] flex w-full min-w-0 flex-col gap-y-3.5 text-space"
         >
           <template v-if="showReasonField">
-            <p class="text-sm font-medium text-space">Причина отказа</p>
+            <p class="text-sm font-medium text-space">
+              <span class="text-red-custom">*</span>
+              Причина отказа
+            </p>
             <MyDropdown
               v-model="rejectionReasonId"
               :options="dropdownOptions"

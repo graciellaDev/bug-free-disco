@@ -1,6 +1,11 @@
 <script setup lang="ts">
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-  import { parseDate, type DateValue } from '@internationalized/date';
+  import {
+    getLocalTimeZone,
+    parseDate,
+    today,
+    type DateValue,
+  } from '@internationalized/date';
   import CalendarBarStatic from '@/components/custom/CalendarBarStatic.vue';
 
   const props = withDefaults(
@@ -8,10 +13,13 @@
       modelValue: string | null | undefined;
       placeholder?: string;
       disabled?: boolean;
+      /** Календарь + список времени (шаг 15 мин); значение `DD.MM.YYYY HH:mm` */
+      withTime?: boolean;
     }>(),
     {
       placeholder: '',
       disabled: false,
+      withTime: false,
     }
   );
 
@@ -22,7 +30,12 @@
   const open = ref(false);
   const rootRef = ref<HTMLElement | null>(null);
   const panelRef = ref<HTMLElement | null>(null);
+  const timeListRef = ref<HTMLElement | null>(null);
+  const calWrapRef = ref<HTMLElement | null>(null);
   const inputRef = ref<HTMLInputElement | null>(null);
+  /** Высота колонки времени = высота календаря (список со скроллом). */
+  const datetimeTimeColPx = ref<number | null>(null);
+  let datetimeCalResizeObserver: ResizeObserver | null = null;
   const draft = ref('');
   const isEmpty = computed(() => !draft.value.trim());
   const textReservePx = ref(6);
@@ -60,6 +73,53 @@
     return `${m[3]}.${m[2]}.${m[1]}`;
   }
 
+  /** Разбор `DD.MM.YYYY HH:mm` (время необязательно — тогда 00:00). */
+  function parseRuDatetimeFull(s: string): { iso: string; hm: string } | null {
+    const t = s.trim();
+    if (!t) return null;
+    const m =
+      /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(t);
+    if (!m) return null;
+    const [, dd, mm, yyyy, gh, gmn] = m;
+    const iso = `${yyyy}-${mm}-${dd}`;
+    if (!isValidIsoDate(iso)) return null;
+    if (gh === undefined || gmn === undefined) {
+      return { iso, hm: '00:00' };
+    }
+    const h = Number(gh);
+    const mn = Number(gmn);
+    if (!Number.isFinite(h) || !Number.isFinite(mn)) return null;
+    if (h < 0 || h > 23 || mn < 0 || mn > 59) return null;
+    return {
+      iso,
+      hm: `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`,
+    };
+  }
+
+  function displayDatetimeFromIsoHm(iso: string, hm: string): string {
+    const disp = displayFromIso(iso);
+    if (!disp) return '';
+    return `${disp} ${hm}`;
+  }
+
+  function canonicalRuDatetime(raw: string): string {
+    const p = parseRuDatetimeFull(raw);
+    if (!p) return '';
+    return displayDatetimeFromIsoHm(p.iso, p.hm);
+  }
+
+  const TIME_SLOTS_15: string[] = (() => {
+    const a: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      for (const m of [0, 15, 30, 45]) {
+        a.push(
+          `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+        );
+      }
+    }
+    return a;
+  })();
+
   function isValidIsoDate(iso: string): boolean {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
     if (!m) return false;
@@ -84,16 +144,30 @@
     return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
   }
 
-  const normalizedValue = computed(() => isoFromRaw(String(props.modelValue ?? '')));
+  /** Дата + время из цифр: ДДММГГГГ затем ЧЧММ */
+  function formatDigitsAsRuDatetime(raw: string): string {
+    const digits = raw.replace(/\D/g, '').slice(0, 12);
+    if (!digits) return '';
+    const d8 = digits.slice(0, 8);
+    let datePart = '';
+    if (d8.length <= 2) datePart = d8;
+    else if (d8.length <= 4)
+      datePart = `${d8.slice(0, 2)}.${d8.slice(2)}`;
+    else datePart = `${d8.slice(0, 2)}.${d8.slice(2, 4)}.${d8.slice(4)}`;
+    if (digits.length <= 8) return datePart;
+    const t4 = digits.slice(8, 12);
+    if (t4.length <= 2) return `${datePart} ${t4}`;
+    return `${datePart} ${t4.slice(0, 2)}:${t4.slice(2)}`;
+  }
 
-  const parsedPlaceholder = computed(() => {
-    const iso = normalizedValue.value;
-    if (!iso) return undefined;
-    try {
-      return parseDate(iso);
-    } catch {
-      return undefined;
-    }
+  const normalizedDatetimeValue = computed(() =>
+    props.withTime ? canonicalRuDatetime(String(props.modelValue ?? '')) : ''
+  );
+
+  const activeTimeHm = computed(() => {
+    if (!props.withTime) return '';
+    const p = parseRuDatetimeFull(draft.value);
+    return p?.hm ?? '';
   });
 
   function measureTextReserve() {
@@ -120,9 +194,29 @@
   watch(
     () => props.modelValue,
     value => {
-      const iso = isoFromRaw(String(value ?? ''));
-      draft.value = iso ? displayFromIso(iso) : '';
-      calendarValue.value = iso ? parseDate(iso) : undefined;
+      const str = String(value ?? '');
+      if (props.withTime) {
+        const p = parseRuDatetimeFull(str);
+        if (!str.trim()) {
+          draft.value = '';
+          calendarValue.value = undefined;
+        } else if (p) {
+          draft.value = displayDatetimeFromIsoHm(p.iso, p.hm);
+          try {
+            calendarValue.value = parseDate(p.iso);
+          } catch {
+            calendarValue.value = undefined;
+          }
+        } else {
+          draft.value = str;
+          const isoOnly = isoFromRaw(str);
+          calendarValue.value = isoOnly ? parseDate(isoOnly) : undefined;
+        }
+      } else {
+        const iso = isoFromRaw(str);
+        draft.value = iso ? displayFromIso(iso) : '';
+        calendarValue.value = iso ? parseDate(iso) : undefined;
+      }
       nextTick(() => measureTextReserve());
     },
     { immediate: true }
@@ -138,13 +232,24 @@
   });
 
   function commitDraft() {
-    const iso = isoFromRaw(draft.value);
     if (!draft.value.trim()) {
       emit('update:modelValue', '');
       return;
     }
+    if (props.withTime) {
+      const can = canonicalRuDatetime(draft.value);
+      if (!can) {
+        const fb = normalizedDatetimeValue.value;
+        draft.value = fb || draft.value;
+        return;
+      }
+      draft.value = can;
+      emit('update:modelValue', can);
+      return;
+    }
+    const iso = isoFromRaw(draft.value);
     if (!iso) {
-      const fallbackIso = normalizedValue.value;
+      const fallbackIso = isoFromRaw(String(props.modelValue ?? ''));
       draft.value = fallbackIso ? displayFromIso(fallbackIso) : '';
       return;
     }
@@ -154,7 +259,9 @@
 
   function onInput(e: Event) {
     const el = e.target as HTMLInputElement;
-    draft.value = formatDigitsAsRuDate(el.value);
+    draft.value = props.withTime
+      ? formatDigitsAsRuDatetime(el.value)
+      : formatDigitsAsRuDate(el.value);
     nextTick(() => measureTextReserve());
   }
 
@@ -186,12 +293,54 @@
     }
   }
 
+  function currentHmForDatetime(): string {
+    const p = parseRuDatetimeFull(draft.value);
+    if (p) return p.hm;
+    return '00:00';
+  }
+
   function onCalendarUpdate(date: DateValue) {
     if (!date) return;
     const iso = String(date.toString());
+    calendarValue.value = date;
+    if (props.withTime) {
+      const hm = currentHmForDatetime();
+      const next = displayDatetimeFromIsoHm(iso, hm);
+      draft.value = next;
+      emit('update:modelValue', next);
+      return;
+    }
     draft.value = displayFromIso(iso);
     emit('update:modelValue', iso);
-    calendarValue.value = date;
+    open.value = false;
+  }
+
+  function onTimeSlotPick(hm: string) {
+    if (!props.withTime) return;
+    let iso: string | null = null;
+    try {
+      if (calendarValue.value) {
+        iso = String(calendarValue.value.toString());
+      }
+    } catch {
+      /* */
+    }
+    if (!iso) {
+      const p = parseRuDatetimeFull(draft.value);
+      iso = p?.iso ?? null;
+    }
+    if (!iso || !isValidIsoDate(iso)) {
+      try {
+        const td = today(getLocalTimeZone());
+        iso = String(td.toString());
+        calendarValue.value = td;
+      } catch {
+        return;
+      }
+    }
+    const next = displayDatetimeFromIsoHm(iso, hm);
+    draft.value = next;
+    emit('update:modelValue', next);
     open.value = false;
   }
 
@@ -199,16 +348,37 @@
     if (!open.value || !rootRef.value) return;
     const anchor = rootRef.value.getBoundingClientRect();
     const panel = panelRef.value;
-    const panelWidth = panel?.offsetWidth ?? 320;
-    const panelHeight = panel?.offsetHeight ?? 360;
+    const measuredW = panel?.offsetWidth ?? 0;
+    const measuredH = panel?.offsetHeight ?? 0;
+    const panelWidth = measuredW > 0 ? measuredW : 320;
+    const panelHeight = measuredH > 0 ? measuredH : 360;
     const gap = 6;
+    const margin = 8;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
 
     let left = anchor.right - panelWidth;
-    left = Math.max(8, Math.min(left, window.innerWidth - panelWidth - 8));
+    left = Math.max(margin, Math.min(left, vw - panelWidth - margin));
 
-    let top = anchor.bottom + gap;
-    if (top + panelHeight > window.innerHeight - 8) {
-      top = Math.max(8, anchor.top - panelHeight - gap);
+    const belowTop = anchor.bottom + gap;
+    const aboveTop = anchor.top - panelHeight - gap;
+    const fitsBelow = belowTop + panelHeight <= vh - margin;
+    const fitsAbove = aboveTop >= margin;
+
+    let top: number;
+    if (fitsBelow) {
+      top = belowTop;
+    } else if (fitsAbove) {
+      top = aboveTop;
+    } else {
+      const roomBelow = vh - margin - belowTop;
+      const roomAbove = anchor.top - margin - gap;
+      if (roomBelow >= roomAbove) {
+        top = Math.min(belowTop, vh - margin - panelHeight);
+      } else {
+        top = Math.max(margin, aboveTop);
+      }
+      top = Math.max(margin, Math.min(top, vh - margin - panelHeight));
     }
 
     panelStyle.value = {
@@ -227,13 +397,78 @@
     window.removeEventListener('scroll', updatePanelPosition, true);
   }
 
+  function syncDatetimeTimeColumnHeight() {
+    if (!props.withTime) return;
+    const wrap = calWrapRef.value;
+    if (!wrap) return;
+    const h = Math.ceil(wrap.getBoundingClientRect().height);
+    if (h > 0) datetimeTimeColPx.value = h;
+  }
+
+  function unbindDatetimeCalObserver() {
+    datetimeCalResizeObserver?.disconnect();
+    datetimeCalResizeObserver = null;
+  }
+
+  function bindDatetimeCalObserver() {
+    if (!props.withTime) return;
+    unbindDatetimeCalObserver();
+    const el = calWrapRef.value;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    datetimeCalResizeObserver = new ResizeObserver(() => {
+      syncDatetimeTimeColumnHeight();
+      requestAnimationFrame(() => updatePanelPosition());
+    });
+    datetimeCalResizeObserver.observe(el);
+    syncDatetimeTimeColumnHeight();
+  }
+
+  const datetimeTimeColStyle = computed(() => {
+    if (!props.withTime) return {} as Record<string, string>;
+    const h = datetimeTimeColPx.value;
+    if (h == null || h < 1) return { minHeight: '0' };
+    return {
+      height: `${h}px`,
+      maxHeight: `${h}px`,
+      minHeight: '0',
+    };
+  });
+
+  function scrollActiveTimeIntoView() {
+    if (!props.withTime) return;
+    const active = timeListRef.value?.querySelector<HTMLElement>(
+      '[data-time-active="true"]'
+    );
+    active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
   watch(open, async isOpen => {
     if (isOpen) {
       await nextTick();
       updatePanelPosition();
       bindFloatingListeners();
+      if (props.withTime) {
+        await nextTick();
+        bindDatetimeCalObserver();
+        requestAnimationFrame(() => {
+          syncDatetimeTimeColumnHeight();
+          updatePanelPosition();
+          requestAnimationFrame(() => {
+            syncDatetimeTimeColumnHeight();
+            updatePanelPosition();
+            scrollActiveTimeIntoView();
+          });
+        });
+      } else {
+        requestAnimationFrame(() => {
+          updatePanelPosition();
+          requestAnimationFrame(() => updatePanelPosition());
+        });
+      }
     } else {
       unbindFloatingListeners();
+      unbindDatetimeCalObserver();
+      datetimeTimeColPx.value = null;
     }
   });
 
@@ -285,6 +520,7 @@
     document.removeEventListener('mousedown', onDocClick)
   );
   onBeforeUnmount(() => unbindFloatingListeners());
+  onBeforeUnmount(() => unbindDatetimeCalObserver());
 </script>
 
 <template>
@@ -296,7 +532,7 @@
         :value="draft"
         type="text"
         inputmode="numeric"
-        maxlength="10"
+        :maxlength="withTime ? 16 : 10"
         :placeholder="placeholder"
         :disabled="disabled"
         class="plain-date-input border-0 bg-transparent p-0 text-right text-sm font-normal leading-normal text-space outline-none placeholder:text-bali disabled:cursor-not-allowed disabled:opacity-60"
@@ -338,17 +574,49 @@
         <div
           v-if="open"
           ref="panelRef"
-          class="plain-date-overlay fixed z-[10020] w-[254px]"
+          class="plain-date-overlay fixed z-[10020]"
+          :class="
+            withTime
+              ? 'plain-date-overlay--datetime flex w-auto max-w-[min(100vw-16px,380px)] items-start overflow-hidden rounded-[15px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]'
+              : 'w-[254px]'
+          "
           :style="panelStyle"
           @click.stop
           @mousedown.stop
         >
-          <CalendarBarStatic
-            class="plain-date-calendar"
-            :model-value="calendarValue"
-            elevate-select-popovers
-            @date-click="onCalendarUpdate"
-          />
+          <div ref="calWrapRef" class="plain-date-datetime-cal-wrap shrink-0">
+            <CalendarBarStatic
+              class="plain-date-calendar"
+              :model-value="calendarValue"
+              elevate-select-popovers
+              @date-click="onCalendarUpdate"
+            />
+          </div>
+          <div
+            v-if="withTime"
+            class="plain-date-datetime-time-col flex min-h-0 w-[88px] shrink-0 flex-col overflow-hidden border-l border-athens bg-athens-gray"
+            :style="datetimeTimeColStyle"
+          >
+            <div
+              ref="timeListRef"
+              class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+              role="listbox"
+              aria-label="Время"
+            >
+              <button
+                v-for="slot in TIME_SLOTS_15"
+                :key="slot"
+                type="button"
+                role="option"
+                :data-time-active="slot === activeTimeHm ? 'true' : undefined"
+                class="w-full border-0 border-b border-athens/80 bg-transparent px-2 py-2.5 text-left text-sm font-normal leading-normal text-space outline-none last:border-b-0 hover:bg-white/90 focus-visible:bg-white/90"
+                :class="slot === activeTimeHm ? 'bg-white font-medium' : ''"
+                @click="onTimeSlotPick(slot)"
+              >
+                {{ slot }}
+              </button>
+            </div>
+          </div>
         </div>
       </Transition>
     </Teleport>
@@ -399,7 +667,16 @@
     margin-left: 4px;
   }
 
-  .plain-date-overlay :deep(.plain-date-calendar .calendar-wrapper) {
+  /* Одна общая панель: без второй «карточки» у календаря */
+  .plain-date-overlay--datetime :deep(.plain-date-calendar) {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+  .plain-date-overlay:not(.plain-date-overlay--datetime)
+    :deep(.plain-date-calendar.calendar-wrapper) {
     margin: 0;
     border-radius: 15px;
     overflow: hidden;

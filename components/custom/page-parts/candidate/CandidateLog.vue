@@ -176,7 +176,10 @@
     if (event.type === 'comment') return '';
     if (event.type === 'task') return '';
     if (event.type === 'email') return '';
-    if (event.payload?.content) return event.payload.content;
+    const payloadContent = event.payload?.content;
+    if (typeof payloadContent === 'string' && payloadContent.trim() !== '') {
+      return payloadContent.trim();
+    }
     const author = event.author_name ? `${event.author_name} ` : '';
     switch (event.type) {
       case 'system':

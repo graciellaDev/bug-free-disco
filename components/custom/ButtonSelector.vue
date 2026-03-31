@@ -59,20 +59,22 @@
 </script>
 
 <template>
-  <div class="relative flex h-fit items-center text-left" ref="btnSelector">
+  <div class="relative inline-flex h-fit items-stretch text-left" ref="btnSelector">
     <!-- Кнопка подтверждения -->
     <button
       @click="confirmTransfer"
-      class="rounded-l-ten border-r border-pattens bg-zumthor px-3.5 py-2.5 text-sm font-medium text-dodger"
+      type="button"
+      class="inline-flex items-center rounded-l-ten border-r border-pattens bg-zumthor px-3.5 py-2.5 text-sm !font-medium !leading-none text-[#589BFF]"
     >
       Перенести на “{{ selectedLabel }}”
     </button>
 
     <!-- Выпадающий список -->
-    <div class="relative inline-block">
+    <div class="relative flex shrink-0">
       <button
+        type="button"
         @click="toggleDropdown"
-        class="rounded-r-ten bg-zumthor px-9px py-2.5 text-dodger"
+        class="inline-flex h-full min-h-0 items-center justify-center rounded-r-ten bg-zumthor px-9px py-2.5 text-[#589BFF]"
       >
         <svg-icon name="ai-arrow" width="20" height="20" />
       </button>
