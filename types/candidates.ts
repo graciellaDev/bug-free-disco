@@ -319,6 +319,8 @@ export interface CandidateCreateRequest {
   resume_created_at?: string | null;
   resume_updated_at?: string | null;
   source?: string | null;
+  /** Внешний id вакансии/публикации на площадке (учёт откликов по конкретной публикации) */
+  platform_publication_id?: string | null;
   /** Привязка к платформе (таблица candidate_platform), например superjob */
   platform?: string | null;
   /** Внешний id резюме на платформе (SuperJob и т.п.) */
@@ -370,9 +372,19 @@ export interface CandidateConsideration {
   customers: string[];
 }
 
+/** Вакансия в строке ленты событий (если событие привязано к вакансии). */
+export interface ActivityFeedVacancyRow {
+  id: number;
+  name?: string | null;
+}
+
 /** Событие в логе кандидата (создание резюме, смена этапа, изменение полей и т.д.). */
 export interface CandidateEvent {
   id: number;
+  /** Появляется в ответе API с бэкенда с версии общей ленты; в карточке кандидата может отсутствовать. */
+  candidate_id?: number;
+  vacancy_id?: number | null;
+  vacancy?: ActivityFeedVacancyRow | null;
   type: string;
   occurred_at: string;
   author_name?: string | null;
@@ -382,4 +394,42 @@ export interface CandidateEvent {
     content?: string;
     [key: string]: unknown;
   };
+}
+
+/** Кандидат в строке общей ленты активности (`GET /activity/events`). */
+export interface ActivityFeedCandidateRow {
+  id: number;
+  firstname?: string | null;
+  surname?: string | null;
+  patronymic?: string | null;
+  quickInfo?: string | null;
+  imagePath?: string | null;
+}
+
+export interface ActivityFeedMeta {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+/** Параметры фильтрации `GET /activity/events` (страница «Лента активности»). */
+export interface ActivityFeedApiFilters {
+  occurred_from?: string;
+  occurred_to?: string;
+  author?: string;
+  entity?: 'task' | 'candidate';
+  kinds?: string;
+  value_before?: string;
+  value_after?: string;
+  /** @deprecated используйте vacancy_ids */
+  vacancy_id?: number;
+  /** Список id вакансий через запятую в query */
+  vacancy_ids?: string;
+}
+
+/** Одна строка общей ленты: событие + снимок кандидата. */
+export interface ActivityFeedItem extends CandidateEvent {
+  candidate_id: number;
+  candidate: ActivityFeedCandidateRow;
 }

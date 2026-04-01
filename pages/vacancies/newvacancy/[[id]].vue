@@ -121,6 +121,8 @@
 
   function switchTab(tabName: TabKey) {
     currentTab.value = tabName;
+    const nextQuery = { ...route.query, tab: tabName } as Record<string, string | string[] | undefined>;
+    void router.replace({ path: route.path, query: nextQuery });
   }
 
   async function onSaveAndContinue() {

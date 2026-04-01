@@ -97,7 +97,12 @@ function buildLink(raw: Record<string, unknown>, externalResumeId: string | numb
  */
 export function mapSuperjobReceivedResumeToCandidateCreate(
   raw: Record<string, unknown>,
-  options: { vacancyId: number; externalResumeId?: string | number | null }
+  options: {
+    vacancyId: number;
+    externalResumeId?: string | number | null;
+    /** ID вакансии на SuperJob (публикация), для счётчика откликов */
+    platformPublicationId?: string | null;
+  }
 ): CandidateCreateRequest {
   let firstname =
     pickString(raw, 'firstname', 'first_name', 'firstName') || 'Кандидат';
@@ -144,6 +149,10 @@ export function mapSuperjobReceivedResumeToCandidateCreate(
     phone,
     vacancy_id: options.vacancyId,
     source: 'superjob.ru',
+    platform_publication_id:
+      options.platformPublicationId != null && String(options.platformPublicationId).trim() !== ''
+        ? String(options.platformPublicationId).trim().substring(0, 64)
+        : undefined,
     location: townTitle(raw)?.substring(0, 100),
     resume: resumeTitle ?? undefined,
     quickInfo,

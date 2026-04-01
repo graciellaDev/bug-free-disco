@@ -86,6 +86,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      /** Origin Laravel без /api (тот же хост, что NUXT_PUBLIC_API_BACKEND у прокси). Нужен браузеру для OAuth /api/code-* в обход прокси. */
+      apiBackend: process.env.NUXT_PUBLIC_API_BACKEND || '',
       apiEmail: process.env.NUXT_PUBLIC_API_EMAIL,
       apiPassword: process.env.NUXT_PUBLIC_API_PASSWORD,
     }
@@ -102,6 +104,7 @@ export default defineNuxtConfig({
     '/applications/**': { ssr: false },
     '/reports/**': { ssr: false },
     '/settings/**': { ssr: false },
+    '/activity/**': { ssr: false },
     // Проксирование /api/* на Laravel
     '/api/**': {
       proxy: (process.env.NUXT_PUBLIC_API_BACKEND || 'http://127.0.0.1:8000') + '/api/**',

@@ -269,9 +269,23 @@
     commitDraft();
   }
 
+  /** Не открываем по focus — иначе автофокус диалога/формы сразу раскрывает календарь. */
   function onInputFocus() {
+    nextTick(() => measureTextReserve());
+  }
+
+  function onInputClick() {
     if (props.disabled) return;
     open.value = true;
+  }
+
+  /** Открытие с клавиатуры без Enter — Enter оставлен для commit (onEnter). */
+  function onInputKeydownOpen(e: KeyboardEvent) {
+    if (props.disabled) return;
+    if (e.key === ' ' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      open.value = true;
+    }
   }
 
   function onEnter() {
@@ -477,6 +491,13 @@
 
     const target = e.target as Node | null;
 
+    const path: EventTarget[] = e.composedPath ? e.composedPath() : [];
+    const insideFloatingPlainDate = path.some(node => {
+      if (!(node instanceof HTMLElement)) return false;
+      return node.classList?.contains('plain-date-overlay');
+    });
+    if (insideFloatingPlainDate) return;
+
     // Клик внутри инпута/триггера — не закрываем
     if (target && rootRef.value?.contains(target)) return;
 
@@ -500,7 +521,6 @@
     }
 
     // Дополнительно: composedPath() проверяем на radix-атрибуты
-    const path: EventTarget[] = e.composedPath ? e.composedPath() : [];
     const inSelectPortal = path.some(node => {
       if (!(node instanceof HTMLElement)) return false;
       const role = node.getAttribute('role');
@@ -538,6 +558,8 @@
         class="plain-date-input border-0 bg-transparent p-0 text-right text-sm font-normal leading-normal text-space outline-none placeholder:text-bali disabled:cursor-not-allowed disabled:opacity-60"
         @input="onInput"
         @focus="onInputFocus"
+        @click="onInputClick"
+        @keydown="onInputKeydownOpen"
         @blur="onBlur"
         @keydown.enter.prevent="onEnter"
         @mousedown.stop

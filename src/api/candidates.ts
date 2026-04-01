@@ -13,6 +13,9 @@ import type {
   CandidateUpdateResponse,
   CandidateConsideration,
   CandidateEvent,
+  ActivityFeedApiFilters,
+  ActivityFeedItem,
+  ActivityFeedMeta,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -250,6 +253,48 @@ export async function getCandidateEvents(
   return Array.isArray(response.data) ? response.data : [];
 }
 
+/** Общая лента событий по всем кандидатам заказчика (страница «Лента активности»). */
+export async function getActivityFeed(opts?: {
+  page?: number;
+  per_page?: number;
+  filters?: Partial<ActivityFeedApiFilters>;
+  signal?: AbortSignal;
+}): Promise<{ items: ActivityFeedItem[]; meta: ActivityFeedMeta }> {
+  const query: Record<string, string | number> = {
+    page: opts?.page ?? 1,
+    per_page: opts?.per_page ?? 100,
+  };
+  const f = opts?.filters;
+  if (f?.occurred_from) query.occurred_from = f.occurred_from;
+  if (f?.occurred_to) query.occurred_to = f.occurred_to;
+  if (f?.author) query.author = f.author;
+  if (f?.entity) query.entity = f.entity;
+  if (f?.kinds) query.kinds = f.kinds;
+  if (f?.value_before) query.value_before = f.value_before;
+  if (f?.value_after) query.value_after = f.value_after;
+  if (f?.vacancy_ids && f.vacancy_ids.length > 0) {
+    query.vacancy_ids = f.vacancy_ids;
+  } else if (f?.vacancy_id != null && f.vacancy_id > 0) {
+    query.vacancy_id = f.vacancy_id;
+  }
+
+  const response = await apiGet<{ items: ActivityFeedItem[]; meta: ActivityFeedMeta }>(
+    '/activity/events',
+    query,
+    { signal: opts?.signal }
+  );
+  const raw = response.data;
+  return {
+    items: Array.isArray(raw?.items) ? raw.items : [],
+    meta: raw?.meta ?? {
+      current_page: 1,
+      last_page: 1,
+      per_page: 100,
+      total: 0,
+    },
+  };
+}
+
 /** Отправить письмо кандидату и создать событие в ленте. */
 export async function sendCandidateEmail(
   candidateId: number,
@@ -365,6 +410,28 @@ export async function attachCandidateToVacancy(
   await apiPost<null>(`/candidates/${candidateId}/attach-vacancy`, {
     vacancy_id: vacancyId,
   });
+}
+
+/** Число кандидатов по вакансии и (опционально) внешнему id публикации на площадке */
+export async function getPublicationResponsesCount(
+  vacancyId: number,
+  platformPublicationId?: string | null
+): Promise<number> {
+  try {
+    const query: Record<string, string | number> = { vacancy_id: vacancyId };
+    if (platformPublicationId != null && String(platformPublicationId).trim() !== '') {
+      query.platform_publication_id = String(platformPublicationId).trim();
+    }
+    const response = await apiGet<{ count: number }>(
+      '/candidates/publication-responses-count',
+      query,
+      { skipLoader: true }
+    );
+    return Number(response.data?.count) || 0;
+  } catch (error) {
+    console.error('Ошибка при подсчёте откликов по публикации:', error);
+    return 0;
+  }
 }
 
 export async function getCandidatesByVacancy(vacancyId: number, page = 1) {

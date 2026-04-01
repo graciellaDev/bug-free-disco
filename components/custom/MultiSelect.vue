@@ -25,11 +25,11 @@
     </div>
     <transition name="slide-fade">
       <div
-        class="options-wrapper absolute z-50 w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14"
+        class="options-wrapper flex max-h-[min(340px,55vh)] flex-col overflow-hidden absolute z-50 w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14"
         v-if="isDropDownVisible">
         <div
           v-if="searchable"
-          class="border-b border-athens p-2"
+          class="shrink-0 border-b border-athens p-2"
           @click.stop
         >
           <input
@@ -41,7 +41,7 @@
         </div>
         <div
           v-if="showSelectAll"
-          class="option border-b border-athens text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer"
+          class="option shrink-0 border-b border-athens text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer"
           @click.stop="toggleSelectAll"
         >
           <label class="flex items-start w-full cursor-pointer gap-[6px]">
@@ -61,26 +61,31 @@
           </label>
         </div>
         <div
-          class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer first:rounded-t-ten last:rounded-b-ten"
-          v-for="(option, index) in filteredOptions" :key="getOptionValue(option) || index"
-          @click.stop="toggleOptionSelect(option)">
-          <label class="flex items-start w-full cursor-pointer gap-[6px]">
-            <!-- Скрытый чекбокс -->
-            <input type="checkbox" :checked="isSelected(option)" class="hidden" @click.stop />
-            <!-- Кастомный чекбокс — по верху, не сжимается -->
-            <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center border rounded-md check-item mt-0.5" :class="{
-              'bg-dodger border-dodger': isSelected(option),
-              'border-athens bg-athens-gray': !isSelected(option)
-            }">
-              <svg v-if="isSelected(option)" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
-                viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd"
-                  d="M16.704 5.293a1 1 0 00-1.408 0L7.5 12.086 4.704 9.293a1 1 0 00-1.408 1.414l3.5 3.5a1 1 0 001.408 0l8-8a1 1 0 000-1.414z"
-                  clip-rule="evenodd" />
-              </svg>
-            </div>
-            <span class="min-w-0 flex-1">{{ getOptionLabel(option) }}</span>
-          </label>
+          class="multi-select-options-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          @wheel.stop
+        >
+          <div
+            class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer first:rounded-t-ten last:rounded-b-ten"
+            v-for="(option, index) in filteredOptions" :key="getOptionValue(option) || index"
+            @click.stop="toggleOptionSelect(option)">
+            <label class="flex items-start w-full cursor-pointer gap-[6px]">
+              <!-- Скрытый чекбокс -->
+              <input type="checkbox" :checked="isSelected(option)" class="hidden" @click.stop />
+              <!-- Кастомный чекбокс — по верху, не сжимается -->
+              <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center border rounded-md check-item mt-0.5" :class="{
+                'bg-dodger border-dodger': isSelected(option),
+                'border-athens bg-athens-gray': !isSelected(option)
+              }">
+                <svg v-if="isSelected(option)" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
+                  viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd"
+                    d="M16.704 5.293a1 1 0 00-1.408 0L7.5 12.086 4.704 9.293a1 1 0 00-1.408 1.414l3.5 3.5a1 1 0 001.408 0l8-8a1 1 0 000-1.414z"
+                    clip-rule="evenodd" />
+                </svg>
+              </div>
+              <span class="min-w-0 flex-1">{{ getOptionLabel(option) }}</span>
+            </label>
+          </div>
         </div>
       </div>
     </transition>

@@ -41,6 +41,8 @@
   currentResponse.value = props.modelValue
   const filteredResponses = ref(props.responses)
   const isFocused = ref(false)
+  /** Список только после клика/ввода/стрелок — не при программном focus (модалки и т.п.). */
+  const showSuggestions = ref(false)
   const emit = defineEmits({'update:modelValue': [String | null, Number | null], 'input:modelValue': [String | null], 'blur': [], 'focus': []})
 
   const filterResponses = () => {
@@ -57,6 +59,7 @@
   const clearResponse = () => {
     currentResponse.value = ''
     filteredResponses.value = props.responses
+    showSuggestions.value = false
     emit('update:modelValue', '', null)
   }
 
@@ -64,7 +67,38 @@
     currentResponse.value = response.name
     filteredResponses.value = []
     isFocused.value = false
+    showSuggestions.value = false
     emit('update:modelValue', response.name, response.id, response.email)
+  }
+
+  const openSuggestions = () => {
+    showSuggestions.value = true
+    filterResponses()
+  }
+
+  const onInputFocus = () => {
+    isFocused.value = true
+    filterResponses()
+    emit('focus')
+  }
+
+  const onInputBlur = () => {
+    isFocused.value = false
+    showSuggestions.value = false
+    emit('blur')
+  }
+
+  const onInput = () => {
+    showSuggestions.value = true
+    filterResponses()
+  }
+
+  const onInputKeydown = e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      if (filteredResponses.value.length) {
+        showSuggestions.value = true
+      }
+    }
   }
 
   watch(() => props.modelValue, (val) => {
@@ -83,9 +117,11 @@
         <input
           type="text"
           v-model="currentResponse"
-          @input="filterResponses"
-          @focus="isFocused = true; filterResponses(); emit('focus')"
-          @blur="isFocused = false; emit('blur')"
+          @mousedown="openSuggestions"
+          @input="onInput"
+          @focus="onInputFocus"
+          @blur="onInputBlur"
+          @keydown="onInputKeydown"
           :placeholder="isFocused ? '' : placeholder"
           :class="[
             'response-input w-full py-[9px] pr-[42px] text-ellipsis border rounded-ten text-sm font-normal text-[#2F353D] focus:outline-none focus:border focus:border-dodger',
@@ -105,7 +141,7 @@
 
       <transition name="slide-fade">
         <ul
-          v-if="filteredResponses.length && isFocused"
+          v-if="filteredResponses.length && showSuggestions"
           class="responses-list absolute w-full bg-white rounded-plus shadow-shadow-droplist top-12 z-10 max-h-[240px] overflow-y-auto"
         >
           <li
@@ -128,7 +164,7 @@
         </ul>
 
         <div
-          v-else-if="currentResponse && isFocused"
+          v-else-if="currentResponse && showSuggestions && !filteredResponses.length"
           class="no-reponse absolute w-full bg-white rounded-plus shadow-shadow-droplist top-12 z-10"
         >
           <div class="text-slate-custom text-sm font-normal py-10px px-15px">
