@@ -247,9 +247,14 @@
     });
   }
 
-  const platformChatBrand = computed(() =>
-    chatPlatform.value === 'superjob' ? 'SuperJob' : 'HeadHunter'
-  );
+  const platformChatBrand = computed(() => {
+    switch (chatPlatform.value) {
+      case 'superjob': return 'SuperJob';
+      case 'avito': return 'Авито';
+      case 'rabota': return 'Rabota.ru';
+      default: return 'HeadHunter';
+    }
+  });
 
   /** Объединённая лента: события + сообщения чата площадки по времени. */
   type FeedRow =
@@ -309,6 +314,18 @@
               <svg-icon
                 v-if="chatPlatform === 'superjob'"
                 name="superjob"
+                width="20"
+                height="20"
+              />
+              <svg-icon
+                v-else-if="chatPlatform === 'avito'"
+                name="avito"
+                width="20"
+                height="20"
+              />
+              <svg-icon
+                v-else-if="chatPlatform === 'rabota'"
+                name="rabota-ru"
                 width="20"
                 height="20"
               />

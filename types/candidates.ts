@@ -372,8 +372,8 @@ export interface CandidateConsideration {
   customers: string[];
 }
 
-/** Площадка для API чата: GET/POST .../candidates/{id}/messages */
-export type CandidateChatPlatform = 'hh' | 'superjob';
+/** Площадка для API чата: GET/POST .../{platform}/candidates/{id}/messages */
+export type CandidateChatPlatform = 'hh' | 'superjob' | 'avito' | 'rabota';
 
 /**
  * Сообщение чата с внешней площадки (hh.ru, SuperJob и т.д.).

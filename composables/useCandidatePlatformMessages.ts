@@ -92,8 +92,15 @@ export function useCandidatePlatformMessages(
 
     const wsHh = runtimeConfig.public.wsCandidateMessagesUrl as string | undefined;
     const wsSj = runtimeConfig.public.wsSuperjobCandidateMessagesUrl as string | undefined;
-    const wsTemplate =
-      p === 'hh' ? wsHh : wsSj?.trim() ? wsSj : undefined;
+    const wsAvito = runtimeConfig.public.wsAvitoCandidateMessagesUrl as string | undefined;
+    const wsRabota = runtimeConfig.public.wsRabotaCandidateMessagesUrl as string | undefined;
+    const wsMap: Record<string, string | undefined> = {
+      hh: wsHh,
+      superjob: wsSj,
+      avito: wsAvito,
+      rabota: wsRabota,
+    };
+    const wsTemplate = wsMap[p]?.trim() ? wsMap[p] : undefined;
     if (!wsTemplate?.trim()) return;
 
     const url = wsTemplate.replace(/\{id\}/g, String(candidateId.value));

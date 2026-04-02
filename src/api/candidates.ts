@@ -283,8 +283,13 @@ function normalizePlatformMessage(raw: Record<string, unknown>): CandidatePlatfo
 }
 
 function candidateMessagesPath(platform: CandidateChatPlatform, candidateId: number): string {
-  const prefix = platform === 'hh' ? 'hh' : 'superjob';
-  return `/${prefix}/candidates/${candidateId}/messages`;
+  const prefixMap: Record<CandidateChatPlatform, string> = {
+    hh: 'hh',
+    superjob: 'superjob',
+    avito: 'avito',
+    rabota: 'rabota',
+  };
+  return `/${prefixMap[platform]}/candidates/${candidateId}/messages`;
 }
 
 /** Сообщения чата hh.ru / SuperJob: GET /{hh|superjob}/candidates/{id}/messages */
