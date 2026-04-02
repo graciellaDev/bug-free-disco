@@ -367,8 +367,11 @@
         </button>
       </div>
 
-      <!-- Filter Tabs -->
-      <div class="flex items-center gap-[10px] rounded-b-[15px] bg-catskill px-[25px] py-[15px]">
+      <!-- Filter Tabs: без закругления снизу, если ниже открыта панель сортировки/фильтров -->
+      <div
+        class="flex items-center gap-[10px] bg-catskill px-[25px] py-[15px] transition-[border-bottom-left-radius,border-bottom-right-radius] duration-300 ease-out"
+        :class="!showSortPanel && !showFilterPanel ? 'rounded-b-[15px]' : 'rounded-b-none'"
+      >
         <div class="flex flex-1 items-center gap-[10px]">
           <button
             v-for="tab in filterTabs"
