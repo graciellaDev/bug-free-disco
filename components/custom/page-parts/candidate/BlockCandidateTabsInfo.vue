@@ -1581,7 +1581,7 @@
       const chatPlatform = getCandidateChatPlatformFromSource(props.candidate?.source);
       if (!chatPlatform) {
         console.warn(
-          'Чат с площадкой: укажите источник hh.ru или SuperJob у кандидата.'
+          'Чат с площадкой: укажите источник (hh.ru, SuperJob, Авито, Rabota.ru) у кандидата.'
         );
         return;
       }

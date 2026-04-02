@@ -243,15 +243,14 @@ const handleClickOutside = (event) => {
   // Объединяем проверки: клик внутри календаря, CalendarHeader или внутри SelectContent
   const clickedInside = clickedInsideCalendar || clickedInsideRealTarget || isInsideSelectContent;
 
-  // Проверяем, был ли клик на кнопке выбора даты
-  const clickedOnButton = path.some(element => {
-    if (!element || typeof element === 'string' || !(element instanceof Node)) {
-      return false;
-    }
-    
-    // Проверяем, является ли элемент частью кнопки выбора даты
-    return element.classList && element.classList.contains('dropdown-selected-option');
-  });
+  // Проверяем, был ли клик на кнопке выбора даты ЭТОГО экземпляра
+  const clickedOnButton = dataPicker.value
+    ? path.some(element => {
+        if (!element || typeof element === 'string' || !(element instanceof Node)) return false;
+        return dataPicker.value && dataPicker.value.contains(element) &&
+          element.classList && element.classList.contains('dropdown-selected-option');
+      })
+    : false;
 
   // Закрываем календарь только если клик был вне календаря и не на кнопке
   if (!clickedInside && !clickedOnButton) {

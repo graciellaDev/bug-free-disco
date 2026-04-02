@@ -92,6 +92,10 @@ export default defineNuxtConfig({
       wsCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_CANDIDATE_MESSAGES_URL || '',
       /** Опционально: WebSocket push чата SuperJob. Если пусто — только polling. */
       wsSuperjobCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_SUPERJOB_CANDIDATE_MESSAGES_URL || '',
+      /** Опционально: WebSocket push чата Avito. Если пусто — только polling. */
+      wsAvitoCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_AVITO_CANDIDATE_MESSAGES_URL || '',
+      /** Опционально: WebSocket push чата Rabota.ru. Если пусто — только polling. */
+      wsRabotaCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_RABOTA_CANDIDATE_MESSAGES_URL || '',
     }
   },
   pinia: {
@@ -106,6 +110,8 @@ export default defineNuxtConfig({
     '/applications/**': { ssr: false },
     '/reports/**': { ssr: false },
     '/settings/**': { ssr: false },
+    '/activity/**': { ssr: false },
+    '/tasks/**': { ssr: false },
     // Проксирование /api/* на Laravel
     '/api/**': {
       proxy: (process.env.NUXT_PUBLIC_API_BACKEND || 'http://127.0.0.1:8000') + '/api/**',

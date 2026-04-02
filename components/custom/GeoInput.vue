@@ -21,6 +21,19 @@
       type: Boolean,
       default: false,
     },
+    /**
+     * Список строк для подсказок (как город из API), без геосаджеста.
+     * Если передан (в т.ч. пустой массив) — режим «список из пропса», а не дефолтные города.
+     */
+    suggestions: {
+      type: Array,
+      default: undefined,
+    },
+    /** Текст при отсутствии совпадений в списке подсказок */
+    noMatchText: {
+      type: String,
+      default: 'Город не найден',
+    },
   })
 
   const emit = defineEmits(['update:modelValue', 'blur'])
@@ -44,7 +57,25 @@
   const filteredCities = ref([])
   const isLoadingSuggest = ref(false)
 
+  function dedupeSortedNames(list) {
+    const seen = new Set()
+    return list
+      .map((s) => (typeof s === 'string' ? s.trim() : String(s ?? '').trim()))
+      .filter((name) => name && !seen.has(name) && (seen.add(name), true))
+      .sort((a, b) => a.localeCompare(b, 'ru'))
+  }
+
+  watch(
+    () => props.suggestions,
+    (list) => {
+      if (list === undefined) return
+      cities.value = Array.isArray(list) && list.length > 0 ? dedupeSortedNames(list) : []
+    },
+    { immediate: true, deep: true }
+  )
+
   onMounted(async () => {
+    if (props.suggestions !== undefined) return
     if (props.useApiCities) {
       const result = await getAreas()
       const data = result?.data
@@ -68,7 +99,8 @@
       filteredCities.value = []
       return
     }
-    if (props.useApiCities) {
+    const staticListMode = props.useApiCities || props.suggestions !== undefined
+    if (staticListMode) {
       filteredCities.value = cities.value.filter((c) => c.toLowerCase().includes(input)).slice(0, 50)
       if (!filteredCities.value.length) emit('update:modelValue', currentCity.value)
       return
@@ -159,7 +191,7 @@
           class="no-cities absolute w-full bg-white border border-athens rounded-plus shadow-shadow-droplist top-12 z-10"
         >
           <div class="text-slate-custom text-sm font-normal py-10px px-15px">
-            Город не найден
+            {{ noMatchText }}
           </div>
         </div>
       </transition>
