@@ -26,8 +26,9 @@
   import FormAuthPlatform from '~/components/custom/page-parts/FormAuthPlatform.vue'
   import ConnectedPlatform from '~/components/custom/page-parts/ConnectedPlatform.vue'
   import CardPlatform from '@/components/custom/page-parts/CardPlatform.vue'
-  import { getProfile as profileHh, auth as authHh, getAvailableTypes as typesHh } from '@/utils/hhAccount'
+  import { getProfile as profileHh, getAvailableTypes as typesHh } from '@/utils/hhAccount'
   import { capitalize } from '@/helpers/handlers'
+  import { resolveOAuthApiPrefix } from '@/utils/resolveOAuthApiPrefix'
 
   import { useCartStore } from '@/stores/cart'
   import { onMounted, ref, onBeforeUnmount } from 'vue'
@@ -218,8 +219,10 @@
       const config = useRuntimeConfig();
       const tokenCookie = useCookie('auth_user');
       setCookie('process_auth', 'true', 1);
-      window.location.href = config.public.apiBase
-        + `/code-hh?customerToken=${tokenCookie.value}`
+      const apiPrefix = await resolveOAuthApiPrefix(config);
+      const tokenEnc = encodeURIComponent(tokenCookie.value || '');
+      const returnEnc = encodeURIComponent(returnUrl);
+      window.location.href = `${apiPrefix}/code-hh?customerToken=${tokenEnc}&return=${returnEnc}`;
     } else {
       errorAuthPlatform.value = `Платформа ${capitalize(platform)} пока неподдерживается :(`
     }
@@ -357,18 +360,35 @@ onMounted(async () => {
     const returnUrlCookie = useCookie('auth_return_url')
     let shouldRedirect = false
     let redirectUrl = null
-    
-    if (query.popup_account === 'true' && query.platform == 'hh' && query.message === 'success') {
-        const hhId = useCookie('process_auth')
-        if (hhId != undefined && hhId.value) {
-            const response = await authHh()
-            if (!error) {
-                platforms[0].isAuthenticated = true
-                platforms[0].data = response.data
-                shouldRedirect = true
+
+    // После /api/code-hh бэкенд ставит status_auth и текст в message (не литерал «success»)
+    const hhOAuthDone =
+        query.popup_account === 'true' &&
+        query.platform === 'hh' &&
+        (query.status_auth === 'true' || query.message === 'success')
+    if (hhOAuthDone) {
+        const processAuth = useCookie('process_auth')
+        if (processAuth.value) {
+            if (query.status_auth === 'false') {
+                errorAuthPlatform.value = typeof query.message === 'string'
+                    ? decodeURIComponent(String(query.message).replace(/\+/g, ' '))
+                    : 'Ошибка авторизации hh.ru'
             } else {
-                errorAuthPlatform.value = error
+                const profile = await profileHh()
+                if (profile && !profile.error && profile.data?.data) {
+                    const p = profile.data.data
+                    platforms.value[0].isAuthenticated = true
+                    platforms.value[0].data = {
+                        email: p.email,
+                        employer_id: p.employer_id,
+                        manager_id: p.manager_id,
+                    }
+                    shouldRedirect = true
+                } else {
+                    errorAuthPlatform.value = profile?.error || 'Не удалось загрузить профиль hh.ru'
+                }
             }
+            setCookie('process_auth', '', -1)
         }
     }
     

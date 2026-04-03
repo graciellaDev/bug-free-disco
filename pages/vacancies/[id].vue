@@ -1318,9 +1318,17 @@
         }
       }
 
-      // 3. Нет ни candidate, ни stage — сброс
-      selectedCandidate.value = null;
-      syncCandidateToUrl(null);
+      // 3. Нет ни candidate, ни stage — открываем первого в ленте (в т.ч. переход с /activity по ссылке на вакансию)
+      await waitForCandidatesLoaded();
+      const listNoQuery = filteredCandidatesList.value || [];
+      if (listNoQuery.length > 0) {
+        await loadCandidate(listNoQuery[0].id, {
+          syncStageFromCandidate: false,
+        });
+      } else {
+        selectedCandidate.value = null;
+        syncCandidateToUrl(null);
+      }
     } finally {
       // Держим флаг ещё 2 тика, чтобы watch не сработал на наше же изменение URL
       await nextTick();

@@ -399,6 +399,12 @@ export interface CandidatePlatformMessage {
     platform?: string | null;
 }
 
+/** Вакансия в строке ленты событий (если событие привязано к вакансии). */
+export interface ActivityFeedVacancyRow {
+  id: number;
+  name?: string | null;
+}
+
 /** Событие в логе кандидата (создание резюме, смена этапа, изменение полей и т.д.). */
 export interface CandidateEvent {
     id: number;

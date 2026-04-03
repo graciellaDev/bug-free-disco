@@ -469,3 +469,38 @@ export async function resolveDriverNamesToDbIds(
   }
   return result;
 }
+
+/** Сохранить просмотры и число импортированных откликов в vacancy_platform (быстрый показ после перезагрузки). */
+export type PublicationStatsCacheItem = {
+  vacancy_id: number;
+  platform_id: number;
+  views?: number | null;
+  imported_responses?: number | null;
+};
+
+export async function postPublicationPlatformStatsCache(
+  items: PublicationStatsCacheItem[]
+): Promise<void> {
+  if (!items.length) {
+    return;
+  }
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return;
+  }
+  await $fetch<{ message: string }>('/vacancies/publication-stats-cache', {
+    method: 'POST',
+    baseURL: config.public.apiBase as string,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${serverToken}`,
+      'X-Auth-User': userToken as string,
+    },
+    body: { items },
+  });
+}

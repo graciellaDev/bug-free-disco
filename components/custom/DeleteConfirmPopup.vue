@@ -16,12 +16,15 @@
       cancelLabel?: string;
       /** Кнопка подтверждения в состоянии загрузки */
       loading?: boolean;
+      /** Текст на кнопке при loading (по умолчанию «Удаление...») */
+      loadingLabel?: string;
     }>(),
     {
       title: 'Подтверждение удаления',
       confirmLabel: 'Удалить',
       cancelLabel: 'Отмена',
       loading: false,
+      loadingLabel: 'Удаление...',
     }
   );
 
@@ -59,7 +62,7 @@
           :disabled="loading"
           @click="emit('confirm')"
         >
-          {{ loading ? 'Удаление...' : confirmLabel }}
+          {{ loading ? loadingLabel : confirmLabel }}
         </button>
         <button
           type="button"

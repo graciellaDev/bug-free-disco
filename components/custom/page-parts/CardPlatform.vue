@@ -9,13 +9,16 @@
     <div class="w-full h-[1px] bg-athens mb-3.5"></div>
     <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
     <div
-      class="flex items-center gap-2.5 bg-feta py-11px px-15px rounded-ten mb-15px min-w-0"
+      class="flex min-w-0 items-center gap-2.5 rounded-ten bg-feta px-15px py-11px mb-15px"
     >
-      <div>
+      <div class="shrink-0">
         <svg-icon name="green-circle" width="11" height="11" />
       </div>
-      <p class="truncate text-sm font-medium text-space leading-normal">
-        {{ platform.data.email }}
+      <p
+        class="min-w-0 truncate text-sm font-medium text-space leading-normal"
+        :title="platform.data?.email?.trim() || undefined"
+      >
+        {{ platform.data?.email?.trim() || '—' }}
       </p>
     </div>
 </template>

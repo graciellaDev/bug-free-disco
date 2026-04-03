@@ -8,6 +8,16 @@ export const dateStringToDots = (dateString: string) => {
     return  date.toLocaleString('ru', options)
 }
 
+/** Дата в формате ДД.ММ без года (колонка «Истекает» и т.п.). */
+export const dateStringToDayMonth = (dateString: string | null | undefined): string => {
+    if (dateString == null || dateString === '') return '—'
+    const date = new Date(dateString)
+    if (Number.isNaN(date.getTime())) return '—'
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    return `${day}.${month}`
+}
+
 export const formatDate = (dateString: string) => {
       const date = new Date(dateString);
       const day = String(date.getDate()).padStart(2, '0');

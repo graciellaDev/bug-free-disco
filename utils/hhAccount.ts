@@ -1,4 +1,4 @@
-import { createAuthHeaders, getAuthTokens, handle401Error, type ApiHhResult } from "@/helpers/authToken";
+import { createAuthHeaders, getAuthTokens, getFetchErrorMeta, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
 
 export const getProfile = async () => {
@@ -17,17 +17,25 @@ export const getProfile = async () => {
     });
 
     result.value.data = response;
-  } catch (err: any) {
-    if (err.response?.status === 404) {
-      result.value.error = err.response._data.message;
-    }
-    if (err.response?.status === 401) {
+  } catch (err: unknown) {
+    const { status, message } = getFetchErrorMeta(err);
+    if (status === 404) {
+      result.value.error = message ?? 'Пользователь еще не авторизован';
+    } else if (status === 401) {
       handle401Error(true);
     }
   } finally {
     return result.value;
   }
 };
+
+/** Laravel: { message, data } — data это ответ HH /me */
+export function hhProfileIndicatesConnected(res: ApiHhResult | null): boolean {
+  if (!res || res.error || !res.data) return false;
+  const d = res.data;
+  if (d.data != null) return true;
+  return d.message === 'Success';
+}
 
 export const auth = async () => {
   const authTokens = getAuthTokens();
@@ -45,11 +53,12 @@ export const auth = async () => {
     });
 
     result.value.data = response;
-  } catch (err: any) {
-    if (err.response?.status === 401) {
+  } catch (err: unknown) {
+    const { status, message } = getFetchErrorMeta(err);
+    if (status === 401) {
       handle401Error(true);
     } else {
-      result.value.error = err.response._data.message;
+      result.value.error = message ?? 'Ошибка авторизации hh.ru';
     }
   } finally {
     return result.value;
@@ -72,11 +81,12 @@ export const unlinkProfile = async () => {
     });
 
     result.value.data = response;
-  } catch (err: any) {
-    if (err.response?.status === 401) {
+  } catch (err: unknown) {
+    const { status, message } = getFetchErrorMeta(err);
+    if (status === 401) {
       handle401Error(true);
     } else {
-      result.value.error = err.response?._data?.message || 'Ошибка при отвязке профиля';
+      result.value.error = message ?? 'Ошибка при отвязке профиля';
     }
   } finally {
     return result.value;
@@ -1108,4 +1118,67 @@ export const getVacancyResponses = async (id: string) => {
     } finally {
       return result.value;
     }
+};
+
+/** Объект resume из элемента списка GET /negotiations/response (HH). */
+export function extractHhResumeFromNegotiationItem(
+  item: Record<string, unknown>
+): Record<string, unknown> | null {
+  const resume = item.resume;
+  if (resume && typeof resume === 'object') {
+    return resume as Record<string, unknown>;
+  }
+  const applicant = item.applicant;
+  if (
+    applicant &&
+    typeof applicant === 'object' &&
+    applicant !== null &&
+    'resume' in applicant &&
+    typeof (applicant as { resume?: unknown }).resume === 'object' &&
+    (applicant as { resume?: unknown }).resume !== null
+  ) {
+    return (applicant as { resume: Record<string, unknown> }).resume;
+  }
+  return null;
 }
+
+/** Импорт кандидата из отклика HH в нашу вакансию (тот же маппинг, что в админке). */
+export const importHhCandidateFromResponse = async (payload: {
+  vacancy_id: number;
+  resume: Record<string, unknown>;
+  negotiation?: Record<string, unknown> | null;
+  hh_vacancy_id?: string | null;
+}): Promise<{ data: unknown | null; error: string | null }> => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  try {
+    const response = await $fetch<{ message: string; data: unknown }>(
+      `/hh/import-candidate-response`,
+      {
+        method: 'POST',
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+        body: payload,
+      }
+    );
+    return { data: response, error: null };
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error(true);
+    }
+    const msg =
+      err.response?._data?.message ||
+      err.data?.message ||
+      err.message ||
+      'Ошибка импорта отклика hh.ru';
+    return { data: null, error: String(msg) };
+  }
+};
