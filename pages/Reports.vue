@@ -6,7 +6,9 @@ import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
 import { getVacancies, getVacancyCities } from '~/utils/getVacancies';
 import { clientsList } from '~/utils/clientsList';
 import { getDepartments } from '~/utils/executorsList';
-import { getCandidates } from '@/src/api/candidates';
+import { getCandidates, getCandidateFunnelMetrics, getCandidateStageAverageDuration } from '@/src/api/candidates';
+import { convertDateToApi } from '@/helpers/date';
+import type { FunnelMetricsSort, StageAverageDurationReport } from '~/types/candidates';
 
 const segmentOptions = ['Рекрутинг', 'Сотрудники'];
 const metricOptions = [
@@ -90,6 +92,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleFiltersClickOutside);
+  funnelMetricsAbort?.abort();
+  stageAvgAbort?.abort();
 });
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -173,6 +177,231 @@ const tableData = [
 ];
 
 const activeSortColumn = ref('views');
+
+/** Отчёт «Поток кандидатов» (GET /candidates/funnel-metrics) */
+const funnelBucketOptions = [
+  { value: 'day' as const, name: 'День' },
+  { value: 'week' as const, name: 'Неделя' },
+  { value: 'month' as const, name: 'Месяц' },
+];
+const funnelBucket = ref<'day' | 'week' | 'month'>('week');
+const funnelSort = ref<FunnelMetricsSort>('period');
+const funnelAsc = ref<0 | 1>(1);
+const funnelMetrics = ref<Awaited<ReturnType<typeof getCandidateFunnelMetrics>> | null>(null);
+const funnelLoading = ref(false);
+const funnelError = ref<string | null>(null);
+/** Смена ключа перезапускает CSS-анимацию столбиков после загрузки данных. */
+const funnelBarAnimKey = ref(0);
+let funnelMetricsAbort: AbortController | null = null;
+
+const funnelRows = computed(() => funnelMetrics.value?.rows ?? []);
+const maxFunnelChartValue = computed(() => {
+  let m = 1;
+  for (const r of funnelRows.value) {
+    m = Math.max(m, r.responses, r.funnel_movements);
+  }
+  return m;
+});
+
+/** Подписи оси Y (0 … max, равномерно). */
+const funnelChartYTicks = computed(() => {
+  const max = maxFunnelChartValue.value;
+  const n = 5;
+  return Array.from({ length: n }, (_, i) => Math.round((max * i) / (n - 1)));
+});
+
+function funnelBarHeightPct(value: number) {
+  const max = maxFunnelChartValue.value;
+  if (max <= 0) return '0%';
+  return `${(value / max) * 100}%`;
+}
+
+/** Дата из календаря (д.м.год) → Y-m-d для API. */
+function datePickerToYmd(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const t = convertDateToApi(s);
+  if (t && /^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m = String(s).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    const [, d, mo, y] = m;
+    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return null;
+}
+
+async function fetchFunnelMetrics() {
+  if (metric.value !== 'Поток кандидатов') return;
+  const vid = selectedVacancy.value;
+  const from = datePickerToYmd(dateRange.value?.from);
+  const to = datePickerToYmd(dateRange.value?.to);
+  if (!vid || !from || !to) {
+    funnelMetrics.value = null;
+    funnelError.value = null;
+    return;
+  }
+  funnelMetricsAbort?.abort();
+  funnelMetricsAbort = new AbortController();
+  const signal = funnelMetricsAbort.signal;
+  funnelLoading.value = true;
+  funnelError.value = null;
+  try {
+    funnelMetrics.value = await getCandidateFunnelMetrics(
+      {
+        vacancy_id: vid,
+        date_from: from,
+        date_to: to,
+        bucket: funnelBucket.value,
+        sort: funnelSort.value,
+        asc: funnelAsc.value,
+      },
+      { signal }
+    );
+    funnelBarAnimKey.value += 1;
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'name' in e && (e as { name: string }).name === 'AbortError') return;
+    funnelMetrics.value = null;
+    let msg = 'Не удалось загрузить отчёт';
+    if (e && typeof e === 'object' && 'response' in e) {
+      const res = (e as { response?: { _data?: { message?: string } } }).response?._data;
+      if (res?.message) msg = res.message;
+    }
+    funnelError.value = msg;
+  } finally {
+    funnelLoading.value = false;
+  }
+}
+
+function toggleFunnelSort(column: FunnelMetricsSort) {
+  if (funnelSort.value === column) {
+    funnelAsc.value = funnelAsc.value === 1 ? 0 : 1;
+  } else {
+    funnelSort.value = column;
+    funnelAsc.value = column === 'period' ? 1 : 0;
+  }
+}
+
+function applyReportsFilters() {
+  void fetchFunnelMetrics();
+  void fetchStageAverageDuration();
+}
+
+watch(
+  [metric, selectedVacancy, dateRange, funnelBucket, funnelSort, funnelAsc],
+  () => {
+    void fetchFunnelMetrics();
+  },
+  { deep: true }
+);
+
+/** Отчёт «Среднее время на этапе» */
+const stageAvgReport = ref<StageAverageDurationReport | null>(null);
+const stageAvgLoading = ref(false);
+const stageAvgBarAnimKey = ref(0);
+let stageAvgAbort: AbortController | null = null;
+let stageAvgRequestId = 0;
+
+/** Демо-значения по макету (если API нет или вернул неполные данные). */
+const STAGE_AVG_DEMO = {
+  avg_close_days: 30,
+  avg_overdue_days: 92,
+  hired_count: 18,
+  hired_total: 68,
+  closure_on_time_percent: 30,
+  closure_on_time: 150,
+  closure_overdue: 109,
+  stageDaysPattern: [32, 17, 10, 7, 5] as const,
+};
+
+function buildStageAvgFallback(vacancyId: number): StageAverageDurationReport {
+  const pattern = STAGE_AVG_DEMO.stageDaysPattern;
+  const stages =
+    vacancyStages.value.length > 0
+      ? vacancyStages.value.map((s, i) => ({
+          stage_id: s.id,
+          stage_name: s.name,
+          avg_days: pattern[i % pattern.length] ?? pattern[0],
+        }))
+      : [
+          { stage_name: 'Подумать', avg_days: 32 },
+          { stage_name: 'Подходящие', avg_days: 17 },
+          { stage_name: 'Отклоненные', avg_days: 10 },
+          { stage_name: 'Подходящие', avg_days: 7 },
+          { stage_name: 'У заказчика', avg_days: 5 },
+        ];
+  return {
+    vacancy_id: vacancyId,
+    avg_close_days: STAGE_AVG_DEMO.avg_close_days,
+    avg_overdue_days: STAGE_AVG_DEMO.avg_overdue_days,
+    hired_count: STAGE_AVG_DEMO.hired_count,
+    hired_total: STAGE_AVG_DEMO.hired_total,
+    closure_on_time_percent: STAGE_AVG_DEMO.closure_on_time_percent,
+    closure_on_time: STAGE_AVG_DEMO.closure_on_time,
+    closure_overdue: STAGE_AVG_DEMO.closure_overdue,
+    stages,
+  };
+}
+
+async function fetchStageAverageDuration() {
+  if (metric.value !== 'Среднее время на этапе') return;
+  const vid = selectedVacancy.value;
+  const from = datePickerToYmd(dateRange.value?.from);
+  const to = datePickerToYmd(dateRange.value?.to);
+  if (!vid || !from || !to) {
+    stageAvgReport.value = null;
+    return;
+  }
+  const reqId = ++stageAvgRequestId;
+  stageAvgAbort?.abort();
+  stageAvgAbort = new AbortController();
+  const signal = stageAvgAbort.signal;
+  stageAvgLoading.value = true;
+  try {
+    const api = await getCandidateStageAverageDuration(
+      { vacancy_id: vid, date_from: from, date_to: to },
+      { signal }
+    );
+    if (reqId !== stageAvgRequestId || selectedVacancy.value !== vid) return;
+    stageAvgReport.value = api;
+    stageAvgBarAnimKey.value += 1;
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'name' in e && (e as { name: string }).name === 'AbortError') return;
+    if (reqId !== stageAvgRequestId) return;
+    stageAvgReport.value = null;
+    stageAvgBarAnimKey.value += 1;
+  } finally {
+    if (reqId === stageAvgRequestId) stageAvgLoading.value = false;
+  }
+}
+
+const stageAvgEffective = computed((): StageAverageDurationReport | null => {
+  const vid = selectedVacancy.value;
+  if (!vid) return null;
+  if (stageAvgLoading.value) return null;
+  if (stageAvgReport.value && stageAvgReport.value.vacancy_id === vid) {
+    return stageAvgReport.value;
+  }
+  const from = datePickerToYmd(dateRange.value?.from);
+  const to = datePickerToYmd(dateRange.value?.to);
+  if (!from || !to) return null;
+  return buildStageAvgFallback(vid);
+});
+
+const stageAvgBarMax = computed(() => {
+  const rows = stageAvgEffective.value?.stages ?? [];
+  let m = 1;
+  for (const r of rows) m = Math.max(m, r.avg_days);
+  return m;
+});
+
+function stageAvgBarWidthPct(days: number) {
+  const max = stageAvgBarMax.value;
+  if (max <= 0) return '0%';
+  return `${(days / max) * 100}%`;
+}
+
+watch([metric, selectedVacancy, dateRange], () => {
+  void fetchStageAverageDuration();
+}, { deep: true });
 
 // Данные для отчёта «Воронка статусов по вакансии»: источники и сегменты из реальных кандидатов
 /** Разбивка по этапам и источникам: stageId -> { sourceName -> count } */
@@ -389,7 +618,7 @@ function barStyle(rowIndex: number) {
           </button>
         </div>
         <div class="flex-shrink-0">
-          <UiButton variant="action" size="semiaction">
+          <UiButton variant="action" size="semiaction" @click="applyReportsFilters">
             Применить
           </UiButton>
         </div>
@@ -548,6 +777,260 @@ function barStyle(rowIndex: number) {
       </div>
     </template>
 
+    <template v-else-if="metric === 'Поток кандидатов'">
+      <div class="rounded-ten bg-white p-25px shadow-sm">
+        <div class="mb-6 flex flex-wrap items-end gap-4">
+          <div class="min-w-[200px] flex-1 sm:max-w-xs">
+            <label class="mb-2 block text-sm font-medium text-space">Интервал</label>
+            <MyDropdown
+              v-model="funnelBucket"
+              :options="funnelBucketOptions"
+              placeholder="Неделя"
+              trigger-variant="semiaction"
+              class="w-full"
+            />
+          </div>
+        </div>
+
+        <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
+          <p class="py-8 text-center text-slate-custom">Выберите вакансию и период в фильтрах выше.</p>
+        </template>
+        <template v-else-if="funnelLoading">
+          <p class="py-8 text-center text-slate-custom">Загрузка…</p>
+        </template>
+        <template v-else-if="funnelError">
+          <p class="py-8 text-center text-red-custom">{{ funnelError }}</p>
+        </template>
+        <template v-else>
+          <p class="mb-4 text-sm font-bold text-space">Поток кандидатов</p>
+
+          <div class="mb-2 flex flex-wrap items-center gap-6 text-sm">
+            <span class="inline-flex items-center gap-2 text-slate-custom">
+              <span class="h-3 w-3 rounded-sm bg-space" />
+              Отклики
+            </span>
+            <span class="inline-flex items-center gap-2 text-slate-custom">
+              <span class="h-3 w-3 rounded-sm bg-orange" />
+              Движение по воронке
+            </span>
+          </div>
+
+          <div class="flex gap-3 overflow-x-auto pb-2">
+            <div
+              class="flex shrink-0 flex-col justify-between py-1 text-right text-xs text-slate-custom"
+              :style="{ height: '220px' }"
+            >
+              <span v-for="tick in [...funnelChartYTicks].reverse()" :key="'y-' + tick">{{ tick }}</span>
+            </div>
+            <div
+              class="relative min-h-[220px] min-w-0 flex-1 border-b border-athens bg-[length:100%_20%] bg-[linear-gradient(to_bottom,#edeff5_1px,transparent_1px)]"
+            >
+              <div :key="funnelBarAnimKey" class="flex h-[220px] items-end gap-2 px-1">
+                <div
+                  v-for="(row, ri) in funnelRows"
+                  :key="row.period_from + '-' + row.period_to + '-' + ri"
+                  class="flex min-w-[52px] flex-col items-center justify-end gap-2"
+                >
+                  <div class="flex h-[200px] w-full items-end justify-center gap-1">
+                    <div
+                      class="funnel-bar-fill w-[42%] max-w-[18px] rounded-t-md bg-space"
+                      :style="{
+                        height: funnelBarHeightPct(row.responses),
+                        animationDelay: `${ri * 45}ms`,
+                      }"
+                      :title="'Отклики: ' + row.responses"
+                    />
+                    <div
+                      class="funnel-bar-fill w-[42%] max-w-[18px] rounded-t-md bg-orange"
+                      :style="{
+                        height: funnelBarHeightPct(row.funnel_movements),
+                        animationDelay: `${ri * 45 + 55}ms`,
+                      }"
+                      :title="'Движение: ' + row.funnel_movements"
+                    />
+                  </div>
+                  <span
+                    class="max-w-[96px] text-center text-[10px] leading-tight text-slate-custom sm:text-xs"
+                    :title="row.period_label"
+                  >{{ row.period_label }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-8 overflow-x-auto">
+            <table class="w-full min-w-[480px] text-left text-sm">
+              <thead>
+                <tr class="border-b border-athens">
+                  <th class="pb-3 pr-4 font-medium text-space">
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 hover:text-dodger"
+                      :class="{ 'border-b-2 border-dodger text-dodger': funnelSort === 'period' }"
+                      @click="toggleFunnelSort('period')"
+                    >
+                      Период
+                      <svg-icon
+                        name="dropdown-arrow"
+                        width="16"
+                        height="16"
+                        class="text-slate-custom transition-transform"
+                        :class="[
+                          funnelSort === 'period'
+                            ? funnelAsc === 1
+                              ? '-rotate-90'
+                              : 'rotate-90'
+                            : 'rotate-90 opacity-40',
+                        ]"
+                      />
+                    </button>
+                  </th>
+                  <th class="pb-3 pr-4 text-right font-medium text-space">
+                    <button
+                      type="button"
+                      class="inline-flex w-full items-center justify-end gap-1 hover:text-dodger"
+                      :class="{ 'border-b-2 border-dodger text-dodger': funnelSort === 'responses' }"
+                      @click="toggleFunnelSort('responses')"
+                    >
+                      Отклики
+                      <svg-icon
+                        name="dropdown-arrow"
+                        width="16"
+                        height="16"
+                        class="text-slate-custom transition-transform"
+                        :class="[
+                          funnelSort === 'responses'
+                            ? funnelAsc === 1
+                              ? '-rotate-90'
+                              : 'rotate-90'
+                            : 'rotate-90 opacity-40',
+                        ]"
+                      />
+                    </button>
+                  </th>
+                  <th class="pb-3 text-right font-medium text-space">
+                    <button
+                      type="button"
+                      class="inline-flex w-full items-center justify-end gap-1 hover:text-dodger"
+                      :class="{ 'border-b-2 border-dodger text-dodger': funnelSort === 'funnel_movements' }"
+                      @click="toggleFunnelSort('funnel_movements')"
+                    >
+                      Движение по воронке
+                      <svg-icon
+                        name="dropdown-arrow"
+                        width="16"
+                        height="16"
+                        class="text-slate-custom transition-transform"
+                        :class="[
+                          funnelSort === 'funnel_movements'
+                            ? funnelAsc === 1
+                              ? '-rotate-90'
+                              : 'rotate-90'
+                            : 'rotate-90 opacity-40',
+                        ]"
+                      />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(row, idx) in funnelRows"
+                  :key="'tbl-' + idx + '-' + row.period_label"
+                  class="border-b border-athens last:border-0"
+                >
+                  <td class="py-3 pr-4 text-space">{{ row.period_label }}</td>
+                  <td class="py-3 pr-4 text-right text-slate-custom">{{ row.responses }}</td>
+                  <td class="py-3 text-right text-slate-custom">{{ row.funnel_movements }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <template v-else-if="metric === 'Среднее время на этапе'">
+      <div class="rounded-ten bg-white p-25px shadow-sm">
+        <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
+          <p class="py-8 text-center text-slate-custom">Выберите вакансию и период в фильтрах выше.</p>
+        </template>
+        <template v-else-if="stageAvgLoading">
+          <p class="py-8 text-center text-slate-custom">Загрузка…</p>
+        </template>
+        <template v-else-if="stageAvgEffective">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div class="rounded-ten bg-[#FEFCE8] px-6 py-5">
+              <p class="text-3xl font-bold leading-tight text-space">
+                {{ stageAvgEffective.avg_close_days }}
+              </p>
+              <p class="mt-2 text-sm leading-snug text-slate-custom">
+                Средний срок закрытия (дни)
+              </p>
+            </div>
+            <div class="rounded-ten bg-[#FEE2E2] px-6 py-5">
+              <p class="text-3xl font-bold leading-tight text-red-custom">
+                {{ stageAvgEffective.avg_overdue_days }}
+              </p>
+              <p class="mt-2 text-sm leading-snug text-slate-custom">
+                Средний срок просрочки (дни)
+              </p>
+            </div>
+            <div class="rounded-ten bg-[#EFF6FF] px-6 py-5">
+              <p class="text-3xl font-bold leading-tight text-dodger">
+                {{ stageAvgEffective.hired_count }} из {{ stageAvgEffective.hired_total }}
+              </p>
+              <p class="mt-2 text-sm leading-snug text-slate-custom">
+                Нанято кандидатов
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-6 rounded-ten bg-[#F8F9FB] px-6 py-4">
+            <p class="text-base font-medium text-space">
+              Из закрытых позиций {{ stageAvgEffective.closure_on_time_percent }}% закрыты в срок
+            </p>
+            <p class="mt-1 text-sm text-slate-custom">
+              {{ stageAvgEffective.closure_on_time }} позиций закрыты в срок,
+              {{ stageAvgEffective.closure_overdue }} просрочены
+            </p>
+          </div>
+
+          <p class="mb-4 mt-8 text-sm font-bold text-space">
+            Среднее время на этапе
+          </p>
+          <div :key="stageAvgBarAnimKey" class="flex flex-col gap-1">
+            <div
+              v-for="(row, si) in stageAvgEffective.stages"
+              :key="(row.stage_id ?? row.stage_name) + '-' + si"
+              class="flex min-h-[40px] items-center gap-4 py-1"
+            >
+              <div class="w-44 min-w-0 flex-shrink-0 text-sm font-medium text-space sm:w-52">
+                <span class="truncate" :title="row.stage_name">{{ row.stage_name }}</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="h-3 w-full overflow-hidden rounded-full bg-athens">
+                  <div
+                    class="stage-avg-bar-fill h-full rounded-full bg-[#052137]"
+                    :style="{
+                      width: stageAvgBarWidthPct(row.avg_days),
+                      animationDelay: `${si * 48}ms`,
+                    }"
+                  />
+                </div>
+              </div>
+              <div class="w-10 flex-shrink-0 text-right text-sm font-medium tabular-nums text-space">
+                {{ row.avg_days }}
+              </div>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <p class="py-8 text-center text-slate-custom">Нет данных для отображения.</p>
+        </template>
+      </div>
+    </template>
+
     <template v-else>
       <!-- Контент для остальных отчётов: донат-графики и таблица -->
       <div class="mb-15px flex flex-wrap justify-between gap-6 rounded-ten bg-white p-25px shadow-sm">
@@ -623,3 +1106,47 @@ function barStyle(rowIndex: number) {
     </template>
   </div>
 </template>
+
+<style scoped>
+@keyframes funnel-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.funnel-bar-fill {
+  transform-origin: bottom;
+  animation: funnel-bar-grow 0.55s cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .funnel-bar-fill {
+    animation: none;
+    transform: none;
+  }
+}
+
+@keyframes stage-avg-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.stage-avg-bar-fill {
+  transform-origin: left center;
+  animation: stage-avg-bar-grow 0.55s cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-avg-bar-fill {
+    animation: none;
+    transform: none;
+  }
+}
+</style>

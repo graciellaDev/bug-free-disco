@@ -232,6 +232,9 @@
   }
 
   const chatStore = useChatStore();
+  const route = useRoute();
+  const router = useRouter();
+
   const emit = defineEmits<{
     'comment-added': [];
     'open-email-popup': [];
@@ -1733,6 +1736,42 @@
     () => props.candidate?.id,
     (id) => {
       if (id == null) return;
+
+      /** Переход из планировщика задач: ?tab=chat&editTask=&taskContent= */
+      const rawEdit = route.query.editTask;
+      const editStr =
+        typeof rawEdit === 'string' ? rawEdit : Array.isArray(rawEdit) ? rawEdit[0] : '';
+      const eventId = editStr !== '' ? Number(editStr) : NaN;
+      const tabQ = route.query.tab;
+      const tabIsChatOrOmitted =
+        tabQ === 'chat' || tabQ === undefined || tabQ === null || tabQ === '';
+      if (tabIsChatOrOmitted && Number.isFinite(eventId) && eventId > 0) {
+        const rawC = route.query.taskContent;
+        const enc =
+          typeof rawC === 'string' ? rawC : Array.isArray(rawC) ? rawC[0] : '';
+        let content = '';
+        if (enc) {
+          try {
+            content = decodeURIComponent(enc);
+          } catch {
+            content = '';
+          }
+        }
+        activeTab.value = 'chat';
+        nextTick(() => {
+          handleEditTask(eventId, content);
+          nextTick(() => {
+            chatInputRef.value?.focusTaskForm?.();
+          });
+          const q = { ...route.query } as Record<string, string | string[] | undefined>;
+          delete q.editTask;
+          delete q.taskContent;
+          delete q.tab;
+          void router.replace({ path: route.path, query: q });
+        });
+        return;
+      }
+
       try {
         const saved = sessionStorage.getItem(`${STORAGE_KEY}-${id}`);
         if (saved && TAB_VALUES.includes(saved as (typeof TAB_VALUES)[number])) {
