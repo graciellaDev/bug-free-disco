@@ -347,6 +347,24 @@
     if (!vacancyId) return;
     navigateTo(`/vacancies/${vacancyId}`);
   }
+
+  /** Планировщик → карточка кандидата: вкладка «Лента событий» + форма редактирования задачи (см. BlockCandidateTabsInfo) */
+  function navigateToEditTask(task: Task) {
+    if (!task.candidate_id) return;
+    openTaskMenuId.value = null;
+    const content = task.payload?.content ?? '';
+    const query: Record<string, string> = {
+      tab: 'chat',
+      editTask: String(task.id),
+    };
+    try {
+      const enc = encodeURIComponent(content);
+      if (enc.length <= 1800) query.taskContent = enc;
+    } catch {
+      // длинный/некорректный текст — откроем форму с пустым телом, id задачи сохранится
+    }
+    navigateTo({ path: `/candidates/${task.candidate_id}`, query });
+  }
 </script>
 
 <template>
@@ -360,11 +378,11 @@
             Управляйте задачами с этого раздела
           </p>
         </div>
-        <button
+        <!-- <button
           class="shrink-0 rounded-[10px] bg-dodger px-[20px] py-[11.5px] text-[14px] font-semibold leading-[1.21] text-white transition-colors hover:bg-dodger/90"
         >
           Новая задача
-        </button>
+        </button> -->
       </div>
 
       <!-- Filter Tabs: без закругления снизу, если ниже открыта панель сортировки/фильтров -->
@@ -609,7 +627,7 @@
             >
               {{ task?.payload?.content || 'Без названия' }}
             </h3>
-            <div
+            <!-- <div
               v-for="(comment, idx) in taskComments(task)"
               :key="idx"
               class="flex items-center gap-[5px]"
@@ -620,7 +638,7 @@
               <span class="text-[14px] font-normal leading-[1.5] text-slate-custom">
                 {{ comment }}
               </span>
-            </div>
+            </div> -->
           </div>
 
           <!-- Meta: Для, кандидат, Вакансия -->
@@ -701,6 +719,14 @@
               class="absolute right-0 top-[calc(100%+4px)] z-30 min-w-[200px] divide-y divide-athens overflow-hidden rounded-[10px] border border-athens bg-white py-0 shadow-shadow-droplist"
               @click.stop
             >
+              <li
+                v-if="task.candidate_id"
+                role="menuitem"
+                class="cursor-pointer px-4 py-2.5 text-left text-[14px] font-normal text-space transition-colors hover:bg-zumthor"
+                @click="navigateToEditTask(task)"
+              >
+                Редактировать
+              </li>
               <li
                 v-if="task.candidate_id"
                 role="menuitem"

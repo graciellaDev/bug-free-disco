@@ -7,6 +7,8 @@ type ApiRequestOptions<T> = Omit<
 > & {
   skipAuth?: boolean; // Если надо пропустить авторизацию
   customHeaders?: Record<string, string>;
+  /** Отмена запроса (совместимо с $fetch). */
+  signal?: AbortSignal;
   /**
    * По умолчанию true: не дергать глобальный лоадер из plugins/loader.ts на каждый запрос
    * (иначе при открытии карточки кандидата десятки параллельных вызовов блокируют UI).

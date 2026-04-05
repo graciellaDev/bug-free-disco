@@ -18,6 +18,11 @@ import type {
     ActivityFeedApiFilters,
     ActivityFeedItem,
     ActivityFeedMeta,
+    FunnelMetricsData,
+    FunnelMetricsBucket,
+    FunnelMetricsSort,
+    StageAverageDurationReport,
+    StageAverageDurationRow,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -510,6 +515,120 @@ export async function attachCandidateToVacancy(
 }
 
 /** Число кандидатов по вакансии и (опционально) внешнему id публикации на площадке */
+/** Отчёт «Поток кандидатов» по интервалам (та же авторизация, что у списка кандидатов). */
+export async function getCandidateFunnelMetrics(
+    params: {
+        vacancy_id: number;
+        date_from: string;
+        date_to: string;
+        bucket?: FunnelMetricsBucket;
+        sort?: FunnelMetricsSort;
+        asc?: 0 | 1;
+    },
+    opts?: { signal?: AbortSignal }
+): Promise<FunnelMetricsData> {
+    const query: Record<string, string | number> = {
+        vacancy_id: params.vacancy_id,
+        date_from: params.date_from,
+        date_to: params.date_to,
+    };
+    if (params.bucket) query.bucket = params.bucket;
+    if (params.sort) query.sort = params.sort;
+    if (params.asc !== undefined) query.asc = params.asc;
+
+    const response = await apiGet<FunnelMetricsData>('/candidates/funnel-metrics', query, {
+        signal: opts?.signal,
+        skipLoader: true,
+    });
+    const d = response.data;
+    return {
+        vacancy_id: d?.vacancy_id ?? params.vacancy_id,
+        bucket: (d?.bucket ?? params.bucket ?? 'week') as FunnelMetricsBucket,
+        date_from: d?.date_from ?? params.date_from,
+        date_to: d?.date_to ?? params.date_to,
+        rows: Array.isArray(d?.rows) ? d.rows : [],
+    };
+}
+
+function parseStageAverageDurationReport(
+    raw: unknown,
+    vacancyId: number,
+    dateFrom: string,
+    dateTo: string
+): StageAverageDurationReport | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const d = raw as Record<string, unknown>;
+    const stagesRaw = d.stages;
+    if (!Array.isArray(stagesRaw) || stagesRaw.length === 0) return null;
+    const stages: StageAverageDurationRow[] = [];
+    for (const item of stagesRaw) {
+        if (!item || typeof item !== 'object') continue;
+        const row = item as Record<string, unknown>;
+        const name =
+            typeof row.stage_name === 'string'
+                ? row.stage_name
+                : typeof row.name === 'string'
+                    ? row.name
+                    : '';
+        const days = Number(row.avg_days ?? row.average_days ?? row.days);
+        if (!name.trim() || !Number.isFinite(days)) continue;
+        stages.push({
+            stage_id: row.stage_id != null ? Number(row.stage_id) : undefined,
+            stage_name: name.trim(),
+            avg_days: days,
+        });
+    }
+    if (stages.length === 0) return null;
+    const hired =
+        d.hired && typeof d.hired === 'object'
+            ? (d.hired as Record<string, unknown>)
+            : null;
+    return {
+        vacancy_id: Number(d.vacancy_id) || vacancyId,
+        date_from: typeof d.date_from === 'string' ? d.date_from : dateFrom,
+        date_to: typeof d.date_to === 'string' ? d.date_to : dateTo,
+        avg_close_days: Number(d.avg_close_days ?? d.avg_closing_days) || 0,
+        avg_overdue_days: Number(d.avg_overdue_days) || 0,
+        hired_count: Number(hired?.count ?? d.hired_count) || 0,
+        hired_total: Number(hired?.total ?? d.hired_total) || 0,
+        closure_on_time_percent: Number(
+            d.closure_on_time_percent ?? d.closed_on_time_percent ?? d.on_time_percent
+        ) || 0,
+        closure_on_time: Number(d.closure_on_time ?? d.closed_on_time ?? d.on_time) || 0,
+        closure_overdue: Number(d.closure_overdue ?? d.closed_overdue ?? d.overdue) || 0,
+        stages,
+    };
+}
+
+/**
+ * Среднее время на этапе и сводка по закрытию вакансии.
+ * Эндпоинт ожидается как GET /candidates/stage-average-duration; при отсутствии или ошибке — null (UI подставит демо-данные).
+ */
+export async function getCandidateStageAverageDuration(
+    params: { vacancy_id: number; date_from: string; date_to: string },
+    opts?: { signal?: AbortSignal }
+): Promise<StageAverageDurationReport | null> {
+    try {
+        const response = await apiGet<unknown>(
+            '/candidates/stage-average-duration',
+            {
+                vacancy_id: params.vacancy_id,
+                date_from: params.date_from,
+                date_to: params.date_to,
+            },
+            { signal: opts?.signal, skipLoader: true }
+        );
+        return parseStageAverageDurationReport(
+            response.data,
+            params.vacancy_id,
+            params.date_from,
+            params.date_to
+        );
+    } catch {
+        return null;
+    }
+}
+
 export async function getPublicationResponsesCount(
     vacancyId: number,
     platformPublicationId?: string | null

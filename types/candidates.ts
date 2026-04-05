@@ -460,3 +460,44 @@ export interface ActivityFeedItem extends CandidateEvent {
     candidate_id: number;
     candidate: ActivityFeedCandidateRow;
 }
+
+/** GET /candidates/funnel-metrics — интервалы «Поток кандидатов». */
+export type FunnelMetricsBucket = 'day' | 'week' | 'month';
+export type FunnelMetricsSort = 'period' | 'responses' | 'funnel_movements';
+
+export interface FunnelMetricsRow {
+    period_from: string;
+    period_to: string;
+    period_label: string;
+    responses: number;
+    funnel_movements: number;
+}
+
+export interface FunnelMetricsData {
+    vacancy_id: number;
+    bucket: FunnelMetricsBucket;
+    date_from: string;
+    date_to: string;
+    rows: FunnelMetricsRow[];
+}
+
+/** GET /candidates/stage-average-duration — отчёт «Среднее время на этапе» (если эндпоинт есть на бэкенде). */
+export interface StageAverageDurationRow {
+    stage_id?: number;
+    stage_name: string;
+    avg_days: number;
+}
+
+export interface StageAverageDurationReport {
+    vacancy_id: number;
+    date_from?: string;
+    date_to?: string;
+    avg_close_days: number;
+    avg_overdue_days: number;
+    hired_count: number;
+    hired_total: number;
+    closure_on_time_percent: number;
+    closure_on_time: number;
+    closure_overdue: number;
+    stages: StageAverageDurationRow[];
+}
