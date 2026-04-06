@@ -46,7 +46,7 @@
           </div>
         </template>
         <div v-else class="py-4 px-15px text-sm text-bali">
-          Нет вариантов. Выберите отрасль или откройте каталог.
+          Ничего не найдено. Измените запрос или откройте каталог справа.
         </div>
       </div>
     </transition>
@@ -106,14 +106,35 @@ const isSelected = (opt) => {
   return getOptionLabel(opt) === label || (opt?.id && val?.id && String(opt.id) === String(val.id))
 }
 
-const allOptions = computed(() => {
-  if (props.options && props.options.length > 0) return props.options
-  const fromCatalog = []
-  ;(props.fullCatalog || []).forEach((cat) => {
+/** Плоский список ролей из дерева категорий (полный каталог hh / SuperJob и т.д.) */
+const flattenedCatalogRoles = computed(() => {
+  const out = []
+  for (const cat of props.fullCatalog || []) {
     const roles = cat?.roles && Array.isArray(cat.roles) ? cat.roles : []
-    fromCatalog.push(...roles)
-  })
-  return fromCatalog
+    out.push(...roles)
+  }
+  return out
+})
+
+/**
+ * По полю поиска должны находиться любые роли из полного каталога.
+ * Раньше при непустом `options` (например, только роли выбранной отрасли) выпадающий список
+ * обрезался и поиск не видел остальные позиции.
+ */
+const allOptions = computed(() => {
+  const flat = flattenedCatalogRoles.value
+  if (flat.length > 0) {
+    const seen = new Set()
+    const deduped = []
+    for (const r of flat) {
+      const id = r?.id != null ? String(r.id) : `name:${getOptionLabel(r)}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      deduped.push(r)
+    }
+    return deduped
+  }
+  return props.options && props.options.length > 0 ? props.options : []
 })
 
 const filteredOptions = computed(() => {

@@ -485,6 +485,62 @@ function getPhrasesArray(phrasesData) {
     .filter((name) => name !== null)
 }
 
+/** Сбор языков для API: стабильные { name, level }, id из выпадашек приводятся к названию из справочника. */
+function buildLanguagesForApi() {
+  const arr = newVacancy.value.languages || []
+  const langOpts = Array.isArray(languagesOptions.value) ? languagesOptions.value : []
+  const levelOpts = Array.isArray(languageLevelOptions.value) ? languageLevelOptions.value : []
+  const optMatches = (opt, raw) => {
+    if (opt == null || raw == null || raw === '') return false
+    const id = opt.id
+    const val = opt.value
+    return id === raw || String(id) === String(raw)
+      || val === raw || String(val) === String(raw)
+  }
+  const resolveName = (raw) => {
+    if (raw == null || raw === '') return null
+    if (typeof raw === 'string') {
+      const byLabel = langOpts.find((o) => o.name === raw)
+      return (byLabel?.name ?? raw).trim() || null
+    }
+    if (typeof raw === 'object') {
+      if (raw.name != null && String(raw.name).trim() !== '') return String(raw.name).trim()
+      const key = raw.id ?? raw.value
+      if (key == null || key === '') return null
+      const o = langOpts.find((x) => optMatches(x, key))
+      if (o?.name) return String(o.name).trim()
+      return String(key).trim() || null
+    }
+    const o = langOpts.find((x) => optMatches(x, raw))
+    return o?.name ? String(o.name).trim() : String(raw).trim() || null
+  }
+  const resolveLevel = (raw) => {
+    if (raw == null || raw === '') return null
+    if (typeof raw === 'string') {
+      const byLabel = levelOpts.find((o) => o.name === raw)
+      return (byLabel?.name ?? raw).trim() || null
+    }
+    if (typeof raw === 'object') {
+      if (raw.name != null && String(raw.name).trim() !== '') return String(raw.name).trim()
+      const key = raw.id ?? raw.value
+      if (key == null || key === '') return null
+      const o = levelOpts.find((x) => optMatches(x, key))
+      if (o?.name) return String(o.name).trim()
+      return String(key).trim() || null
+    }
+    const o = levelOpts.find((x) => optMatches(x, raw))
+    return o?.name ? String(o.name).trim() : String(raw).trim() || null
+  }
+  return arr
+    .map((item) => {
+      const name = resolveName(item?.language)
+      const level = resolveLevel(item?.languageLevel)
+      if (!name) return null
+      return level ? { name, level } : { name }
+    })
+    .filter(Boolean)
+}
+
 // Функция для преобразования employment в siteName (для API)
 function getEmploymentText(employmentValue) {
   if (!employmentValue) return ''
@@ -981,19 +1037,9 @@ const vacancyData = computed(() => {
     has_evening_night_shifts: newVacancy.value.hasEveningNightShifts || false,
     experience: getExperienceText(newVacancy.value.experience),
     education: getEducationText(newVacancy.value.education),
-    skills: getPhrasesArray(newVacancy.value.phrases),
-    languages: (() => {
-      const arr = newVacancy.value.languages || []
-      return arr
-        .filter((item) => item?.language)
-        .map((item) => {
-          const langName = typeof item.language === 'object' ? item.language?.name : item.language
-          const levelName = item.languageLevel
-            ? (typeof item.languageLevel === 'object' ? item.languageLevel?.name : item.languageLevel)
-            : null
-          return levelName ? { name: langName, level: levelName } : { name: langName }
-        })
-    })(),
+    // Ключ `phrases` — как в API и в originalVacancyData; `skills` — другая сущность на бэкенде
+    phrases: getPhrasesArray(newVacancy.value.phrases),
+    languages: buildLanguagesForApi(),
     conditions: newVacancy.value.conditions || [],
     drivers: newVacancy.value.drivers || [],
     additions: newVacancy.value.additions || [],
@@ -1296,10 +1342,8 @@ async function saveVacancy(opt) {
       if (placeArr.length) {
         changedFields.place = placeArr.map((p) => String(p));
       }
-      // Языки всегда отправляем при редактировании, чтобы не терять
-      if (fullData.languages && Array.isArray(fullData.languages)) {
-        changedFields.languages = fullData.languages;
-      }
+      // Языки всегда отправляем при редактировании (актуальный снимок с id → name по справочнику)
+      changedFields.languages = buildLanguagesForApi()
       // Очищаем от null значений
       const cleanedData = cleanDataForSending(changedFields);
       const result = await updateVacancy(String(effectiveId), cleanedData);

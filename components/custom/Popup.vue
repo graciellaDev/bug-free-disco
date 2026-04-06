@@ -34,7 +34,8 @@
       noOuterPadding?: boolean;
       /**
        * true = не резервировать место справа под скролл (pr-[15px] у контента).
-       * Для коротких модалок даёт симметричные отступы слева и справа.
+       * Плюс полоса прокрутки у правого края белой карточки: внешний padding только слева/сверху/снизу,
+       * справа 0; от контента до края — внутренний pr на обёртке слота.
        */
       noScrollbarGutter?: boolean;
     }>(),
@@ -83,6 +84,10 @@
   };
 
   const updateStyles = () => {
+    if (props.noScrollbarGutter) {
+      customStyles.value = {};
+      return;
+    }
     if (hasScrollbar.value) {
       customStyles.value = { paddingRight: '15px' };
     } else {
@@ -105,12 +110,42 @@
     }
   );
 
+  /** Сколько модалок сейчас открыто — чтобы при вложенных попапах вернуть scroll только когда все закрыты */
+  let bodyScrollLockCount = 0;
+
+  function lockDocumentScroll() {
+    bodyScrollLockCount += 1;
+    if (bodyScrollLockCount === 1) {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function unlockDocumentScroll() {
+    if (bodyScrollLockCount < 1) return;
+    bodyScrollLockCount -= 1;
+    if (bodyScrollLockCount === 0) {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  watch(
+    isOpenValue,
+    open => {
+      if (open) lockDocumentScroll();
+      else unlockDocumentScroll();
+    },
+    { immediate: true }
+  );
+
   onMounted(() => {
     checkScrollbar();
     window.addEventListener('resize', checkScrollbar);
   });
 
   onBeforeUnmount(() => {
+    if (isOpenValue.value) unlockDocumentScroll();
     window.removeEventListener('resize', checkScrollbar);
   });
 </script>
@@ -118,7 +153,7 @@
 <template>
   <div
     v-if="isOpenValue"
-    class="fixed inset-0 z-50 flex items-center justify-center"
+    class="fixed inset-0 z-50 flex items-center justify-center overscroll-none"
     @click.self="closePopup"
     :class="[
       props.noBackdrop ? 'bg-transparent' : 'bg-black bg-opacity-50',
@@ -135,7 +170,11 @@
       @click.self="closePopup"
       class="absolute w-full rounded-fifteen bg-white"
       :class="[
-        props.noOuterPadding ? 'p-0' : 'p-25px',
+        props.noOuterPadding
+          ? 'p-0'
+          : noScrollbarGutter
+            ? 'pl-25px pt-25px pb-25px pr-0'
+            : 'p-25px',
         props.allowDropdownOverflow || props.disableOverflowHidden
           ? 'overflow-visible'
           : 'overflow-hidden',
@@ -150,7 +189,7 @@
         :class="[
           contentRounded ? 'rounded-fifteen' : 'rounded-none',
           contentPadding ? 'p-25px' : 'p-0',
-          { 'pr-2.5': customStyles },
+          { 'pr-2.5': hasScrollbar && !noScrollbarGutter },
         ]"
         :style="{
           maxWidth: width,
@@ -191,7 +230,20 @@
           >
             ✖
           </button>
-          <slot />
+          <template v-if="noScrollbarGutter">
+            <!-- Отступ справа у контента задаётся внутри слота у overflow-контейнера, иначе полоса оказывается левее края -->
+            <div
+              class="min-h-0 w-full max-w-full"
+              :style="
+                disableOverflowHidden
+                  ? { maxHeight: maxHeightValue }
+                  : undefined
+              "
+            >
+              <slot />
+            </div>
+          </template>
+          <slot v-else />
         </div>
       </div>
     </div>
@@ -201,15 +253,25 @@
 <style scoped>
   ::-webkit-scrollbar {
     width: 10px;
-    margin-right: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
   ::-webkit-scrollbar-thumb {
+    border: none;
     background-color: #79869a;
     border-radius: 5px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
     background-color: #5a6a7f;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 </style>

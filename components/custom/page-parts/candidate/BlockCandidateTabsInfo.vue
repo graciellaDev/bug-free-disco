@@ -1645,9 +1645,9 @@
   function setExperienceDescriptionEl(el: unknown, idx: number) {
     if (!(el instanceof HTMLElement)) {
       if (experienceDescEls.has(idx)) {
-        experienceDescObservers.get(idx)?.disconnect();
-        experienceDescObservers.delete(idx);
-        experienceDescEls.delete(idx);
+    experienceDescObservers.get(idx)?.disconnect();
+    experienceDescObservers.delete(idx);
+    experienceDescEls.delete(idx);
         if (idx in experienceDescOverflow.value) {
           delete experienceDescOverflow.value[idx];
         }
@@ -1671,9 +1671,9 @@
   }
 
   watch(expandedExperience, () => {
-    nextTick(() => {
-      experienceDescEls.forEach((_, idx) => measureExpDescriptionOverflow(idx));
-    });
+      nextTick(() => {
+        experienceDescEls.forEach((_, idx) => measureExpDescriptionOverflow(idx));
+      });
   });
 
   watch(
@@ -1726,7 +1726,7 @@
       considerations.value = [];
     } finally {
       if (considerationsAbort === ac) {
-        considerationsLoading.value = false;
+      considerationsLoading.value = false;
       }
     }
   };
@@ -2520,12 +2520,12 @@
             Опыт работы: {{ experienceDisplay }}
           </p>
           <div class="space-y-5">
-            <div
-              v-for="(exp, idx) in candidate.experiences"
-              :key="exp.id ?? idx"
+          <div
+            v-for="(exp, idx) in candidate.experiences"
+            :key="exp.id ?? idx"
               class="experience-entry"
-            >
-              <div class="flex gap-4">
+          >
+            <div class="flex gap-4">
               <div class="experience-entry-dates w-[118px] shrink-0">
                 <template
                   v-for="period in [formatExperienceWorkPeriod(exp)]"
@@ -2611,9 +2611,9 @@
                 >
                   <TextWithLinks :text="exp.description" />
                 </div>
+                </div>
               </div>
             </div>
-          </div>
           </div>
           <p
             v-if="(!candidate.experiences || candidate.experiences.length === 0) && candidate.experience"
@@ -2632,7 +2632,7 @@
             >
               {{ skill }}
             </span>
-          </div>
+        </div>
         </div>
         <div
           v-if="hhNativeLanguages.length > 0 || hhOtherLanguages.length > 0"
@@ -2649,20 +2649,20 @@
               >
                 {{ lang.name }}
               </span>
-            </div>
+          </div>
           </div>
           <div v-if="hhOtherLanguages.length > 0">
             <p class="mb-2 text-sm font-normal text-slate-custom">Другие языки</p>
             <div class="flex flex-wrap gap-2">
-              <span
+            <span
                 v-for="(lang, index) in hhOtherLanguages"
                 :key="`${lang.name}-other-${index}`"
                 class="inline-flex items-center rounded-fifteen bg-[#DFF3E8] px-3 py-1.5 text-sm font-normal leading-normal text-[#12A45C]"
               >
                 {{ lang.name }}<span v-if="lang.level"> — {{ lang.level }}</span>
-              </span>
-            </div>
+            </span>
           </div>
+        </div>
         </div>
         <div v-if="hasAboutMeText" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">
@@ -2687,10 +2687,10 @@
                 class="mt-1 text-sm font-normal leading-150 text-slate-custom"
               >
                 {{ rec.position || '—' }}<span v-if="rec.company"> · {{ rec.company }}</span>
-              </p>
-            </div>
-          </div>
+          </p>
         </div>
+      </div>
+          </div>
         <div v-if="hasResumeEducationBlock" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Образование</p>
           <p class="mb-1 text-sm font-normal text-slate-custom">Уровень</p>
@@ -2712,16 +2712,16 @@
                 class="mt-1 text-sm font-normal leading-150 text-slate-custom"
               >
                 {{ formatHhEducationLine2(edu, resumeEducationLevelLabel) }}
-              </p>
-            </div>
+            </p>
+          </div>
           </div>
           <p
             v-else-if="legacyEducationFallback"
             class="text-sm font-normal leading-150 text-space"
           >
             {{ legacyEducationFallback }}
-          </p>
-        </div>
+            </p>
+          </div>
         <div v-if="hasCourseQualificationBlock" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">
             Курсы повышения квалификации
@@ -2739,8 +2739,8 @@
                 class="mt-1 text-sm font-normal leading-150 text-slate-custom"
               >
                 <TextWithLinks :text="formatHhCourseSecondaryLine(course)" />
-              </p>
-            </div>
+            </p>
+          </div>
           </div>
           <template v-else>
             <p class="text-sm font-normal leading-150 text-space">
@@ -2753,7 +2753,7 @@
               <TextWithLinks :text="courseQualificationDetails" />
             </p>
           </template>
-        </div>
+          </div>
         <div v-if="hhCertificateEntries.length > 0" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Сертификаты</p>
           <div class="space-y-5">
@@ -2769,21 +2769,21 @@
                 <a
                   v-if="cert.url"
                   :href="cert.url"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                target="_blank"
+                rel="noopener noreferrer"
                   class="shrink-0 text-sm font-normal text-slate-custom hover:text-dodger"
-                >
+              >
                   Посмотреть &gt;
-                </a>
-              </div>
+              </a>
+          </div>
               <p
                 v-if="cert.year"
                 class="mt-1 text-xs font-normal leading-normal text-slate-custom"
               >
                 {{ cert.year }}
-              </p>
-            </div>
+            </p>
           </div>
+        </div>
         </div>
         <div v-if="hasAdditionalInfoSection" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Дополнительно</p>
@@ -2821,7 +2821,7 @@
                 :disabled="sourceFieldSaving"
                 @update:model-value="handleSourceFieldUpdate"
               />
-            </div>
+          </div>
           </div>
           <div class="fields-tab-line mb-5">
             <span class="fields-tab-line__label text-sm font-normal text-bali">
@@ -3068,7 +3068,7 @@
                 </svg>
                 Сохранить
               </button>
-            </div>
+          </div>
           </div>
           <!-- Старый вывод customFields с API (только текст) — не показываем вместе с полями аккаунта с сервера, иначе дубль -->
           <template
@@ -3094,8 +3094,8 @@
                 class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150 text-slate-custom"
               >
                 {{ row.text }}
-              </p>
-            </div>
+            </p>
+          </div>
           </template>
           <ClientOnly>
             <draggable
@@ -3169,7 +3169,7 @@
               Добавить
             </span>
           </button>
-        </div>
+          </div>
         <!-- Секция «Информация» скрыта по макету
         <div class="bg-white p-25px pl-30px">
           <div class="mb-26px flex items-center">
