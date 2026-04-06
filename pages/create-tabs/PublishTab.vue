@@ -145,255 +145,31 @@
     </div>
         </div>
 
-        <!-- Попап публикации вакансии -->
+        <!-- Попап «Опубликовать» на hh.ru: данные из вакансии Jobly по карте /admin/job-sites/vacancy-export -->
         <Popup
             :isOpen="isPublishPopupOpen"
             @close="closePublishPopup"
-            :showCloseButton="false"
             :width="'900px'"
-            :height="'fit-content'"
+            :height="'auto'"
+            :showCloseButton="false"
             :disableOverflowHidden="true"
-            maxHeight
+            :contentPadding="false"
+            :noScrollbarGutter="true"
+            :noOuterPadding="true"
+            :max-height-value="'90vh'"
         >
-            <div class="p-25px max-h-[90vh] overflow-y-auto">
-                <div class="flex items-center justify-between mb-25px">
-                    <div>
-                        <p class="text-xl font-semibold text-space mb-1">Публикация вакансии на hh.ru</p>
-                        <p class="text-sm font-normal text-slate-custom">
-                            Заполните форму для публикации вакансии на платформе HeadHunter
-                        </p>
-                    </div>
-                    <button @click="closePublishPopup" class="text-slate-custom hover:text-space transition-colors" :disabled="isPublishing">
-                        <svg-icon name="close" width="20" height="20" />
-                    </button>
-                </div>
-
-                <!-- Прелоадер -->
-                <div v-if="isLoadingPublishForm" class="flex flex-col items-center justify-center py-60px">
-                    <div class="loader mb-15px"></div>
-                    <p class="text-sm font-normal text-slate-custom">Загрузка формы...</p>
-                </div>
-
-                <!-- Форма публикации -->
-                <div v-else-if="currentVacancy" class="space-y-25px">
-                    <!-- Название и код -->
-                    <div class="flex gap-25px">
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                <span class="text-red-custom">*</span>
-                                Название должности
-                            </p>
-                            <MyInput
-                                placeholder="Например, Менеджер по продажам"
-                                :model-value="publishFormData.name"
-                                @update:model-value="publishFormData.name = $event"
-                            />
-                        </div>
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Код вакансии
-                            </p>
-                            <MyInput
-                                placeholder="Код вакансии"
-                                :model-value="publishFormData.code"
-                                @update:model-value="publishFormData.code = $event"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Описание -->
-                    <div>
-                        <p class="text-sm font-medium text-space mb-4">
-                            <span class="text-red-custom">*</span>
-                            Описание вакансии
-                        </p>
-                        <TiptapEditor
-                            :model-value="publishFormData.description"
-                            @update:model-value="publishFormData.description = $event"
-                        />
-                    </div>
-
-                    <!-- Отрасль и специализация -->
-                    <div class="flex gap-25px">
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Отрасль компании
-                            </p>
-                            <DropDownRoles
-                                v-if="hhRolesData"
-                                :options="hhRolesData.categories || []"
-                                :selected="publishFormData.industry"
-                                @update:model-value="handleIndustryChange"
-                                placeholder="Выберите отрасль"
-                            />
-                            <div v-else class="text-sm text-slate-custom py-9px px-15px bg-athens-gray border border-athens rounded-ten">
-                                Загрузка данных...
-                            </div>
-                        </div>
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Выберите специализацию
-                            </p>
-                            <DropDownRoles
-                                v-if="professionsOptions.length > 0"
-                                :options="professionsOptions"
-                                :selected="publishFormData.professional_role"
-                                @update:model-value="publishFormData.professional_role = $event"
-                                placeholder="Выберите специализацию"
-                            />
-                            <div v-else class="text-sm text-slate-custom py-9px px-15px bg-athens-gray border border-athens rounded-ten">
-                                Сначала выберите отрасль
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Тип занятости и график -->
-                    <div class="flex gap-25px">
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Тип занятости
-                            </p>
-                            <DropDownTypes
-                                :options="HH_EMPLOYMENT_TYPES"
-                                :selected="publishFormData.employment_form"
-                                @update:model-value="publishFormData.employment_form = $event"
-                                placeholder="Выберите тип занятости"
-                            />
-                        </div>
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                График работы
-                            </p>
-                            <DropDownTypes
-                                :options="HH_WORK_SCHEDULE_BY_DAYS"
-                                :selected="publishFormData.work_schedule_by_days"
-                                @update:model-value="publishFormData.work_schedule_by_days = $event"
-                                placeholder="Выберите график работы"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Образование и опыт -->
-                    <div class="flex gap-25px">
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Образование
-                            </p>
-                            <DropDownTypes
-                                :options="HH_EDUCATION_LAVEL"
-                                :selected="publishFormData.education_level"
-                                @update:model-value="publishFormData.education_level = $event"
-                                placeholder="Выберите образование"
-                            />
-                        </div>
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Опыт работы
-                            </p>
-                            <DropDownTypes
-                                :options="experienceData"
-                                :selected="publishFormData.experience"
-                                @update:model-value="publishFormData.experience = $event"
-                                placeholder="Выберите опыт работы"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Зарплата -->
-                    <div class="flex gap-25px">
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Зарплата от
-                            </p>
-                            <MyInput
-                                placeholder="От"
-                                type="number"
-                                :model-value="publishFormData.salary_from"
-                                @update:model-value="publishFormData.salary_from = $event"
-                            />
-                        </div>
-                        <div class="w-full">
-                            <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                Зарплата до
-                            </p>
-                            <MyInput
-                                placeholder="До"
-                                type="number"
-                                :model-value="publishFormData.salary_to"
-                                @update:model-value="publishFormData.salary_to = $event"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Место работы -->
-                    <div>
-                        <p class="text-sm font-medium mb-4 leading-normal text-space">
-                            Место работы
-                        </p>
-                        <RadioGroup :model-value="publishFormData.workSpace" @update:model-value="publishFormData.workSpace = $event" class="flex gap-x-15px w-full">
-                            <CardOption
-                                v-for="card in workSpaceCards"
-                                :key="card.id"
-                                :id="card.id"
-                                :title="card.title"
-                                :description="card.description"
-                                :selectedCard="publishFormData.workSpace"
-                                @update:selected="publishFormData.workSpace = $event"
-                            />
-                        </RadioGroup>
-                    </div>
-
-                    <!-- Локация -->
-                    <div>
-                        <p class="text-sm font-medium mb-4 leading-normal text-space">
-                            Локация офиса
-                        </p>
-                        <GeoInput
-                            :model-value="publishFormData.location"
-                            :use-api-cities="true"
-                            @update:model-value="publishFormData.location = $event"
-                        />
-                    </div>
-
-                    <!-- Тариф и кнопки -->
-                    <div class="pt-25px border-t border-athens">
-                        <div class="flex items-end gap-x-15px">
-                            <div class="w-[300px]">
-                                <p class="text-sm font-medium mb-4 leading-normal text-space">
-                                    Тариф публикации
-                                </p>
-                                <MyDropdown
-                                    v-if="hhBillingTypes.length > 0"
-                                    :defaultValue="'Выберите тариф'"
-                                    :options="hhBillingTypes"
-                                    :model-value="selectedBillingType"
-                                    @update:model-value="selectedBillingType = $event"
-                                    placeholder="Выберите тариф"
-                                />
-                                <div v-else class="text-sm text-slate-custom py-9px px-15px bg-athens-gray border border-athens rounded-ten">
-                                    Загрузка тарифов...
-                                </div>
-                            </div>
-                            <div class="flex gap-x-15px">
-                                <UiButton variant="action" size="action" @click="confirmPublish" :disabled="isPublishing || !selectedBillingType">
-                                    {{ isPublishing ? 'Публикация...' : 'Опубликовать' }}
-                                </UiButton>
-                                <UiButton variant="back" size="back" @click="closePublishPopup" :disabled="isPublishing">
-                                    Отмена
-                                </UiButton>
-                            </div>
-                        </div>
-                        <p class="text-red-500 text-xs mt-3" v-if="publishError">
-                            {{ publishError }}
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Сообщение об ошибке загрузки вакансии -->
-                <div v-else class="bg-athens-gray rounded-fifteen p-20px mb-25px text-center">
-                    <p class="text-sm font-normal text-red-500">Не удалось загрузить данные вакансии.</p>
-                </div>
-            </div>
+            <HhOriginalVacancyPopup
+                v-if="isPublishPopupOpen"
+                :key="hhPublishPopupKey"
+                jobly-publish-prefill
+                :initial-hh-draft-from-jobly="hhPublishInitialDraft"
+                :vacancy-id="publishHhVacancyNumericId"
+                is-publish-headline
+                suppress-snapshot-persist
+                @close="closePublishPopup"
+                @jobly-hh-published="onJoblyHhPublishedFromPopup"
+                @jobly-hh-draft-saved="onJoblyHhDraftSavedFromPopup"
+            />
         </Popup>
 
         <!-- Попап отвязки профиля -->
@@ -597,6 +373,8 @@
             <HhOriginalVacancyPopup
                 v-if="hhOriginalVacancyApiId != null && isHhOriginalPopupOpen"
                 :vacancy-id="hhOriginalVacancyApiId"
+                :suppress-snapshot-persist="hhOriginalFromPublishCard"
+                :is-publish-headline="hhOriginalFromPublishCard"
                 @close="closeHhOriginalPopup"
                 @saved="onHhOriginalVacancySavedToHh"
             />
@@ -628,7 +406,13 @@
                             <svg-icon name="close" width="20" height="20" />
                         </button>
                     </div>
-                    <AddPublication :selectedPlatform="selectedPlatformForPublish" @cancel="closeCreatePublicationPopup"/>
+                    <div class="relative min-h-[220px]">
+                        <AddPublication
+                            :key="'create-publication-' + createPublicationModalKey"
+                            :selectedPlatform="selectedPlatformForPublish"
+                            @cancel="closeCreatePublicationPopup"
+                        />
+                    </div>
                 </div>
             </div>
         </Popup>
@@ -804,7 +588,9 @@ import {
     importHhCandidateFromResponse,
     getAddresses,
     archivePublication as archivePublicationHh,
-    getPublication as getHhPublication
+    getPublication as getHhPublication,
+    getLanguages,
+    getLanguageLevels,
 } from "~/utils/hhAccount";
 import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito, getPublications as getPublicationsAvito, getAllPublications as getAllPublicationsAvito, archivePublication as archivePublicationAvito } from "~/utils/avitoAccount";
 import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota, archivePublication as archivePublicationRabota } from "~/utils/rabotaAccount";
@@ -813,7 +599,8 @@ import { dateStringToDayMonth } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
-import { getVacancy, getVacancies, updateVacancy, resolveDriverNamesToDbIds, postPublicationPlatformStatsCache } from '@/utils/getVacancies'
+import { getVacancy, getVacancies, getHhVacancyExportMap, getVacancyFields, updateVacancy, resolveDriverNamesToDbIds, postPublicationPlatformStatsCache, buildDriverDbIdToNameMap } from '@/utils/getVacancies'
+import { buildHhOriginalDraftFromJoblyForPublish } from '@/utils/buildHhOriginalDraftFromJoblyVacancy'
 import { deleteVacancy } from '@/utils/deleteVacancy'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
@@ -832,6 +619,7 @@ import {
     hhPublicationStatusLabelFromApi,
     hhPublicationStatusBadgeClass,
     normalizeHhPublicationStatusFromApi,
+    normalizeHhPublicationStatusFromCrmVacancy,
 } from '@/utils/hhPublicationStatus'
 import experience from '~/src/data/experience.json'
 import schedule from '~/src/data/work-schedule.json'
@@ -855,6 +643,8 @@ const sortKey = ref(""); // Поле для сортировки
 const sortOrder = ref("asc"); // Порядок сортировки
 const sortDirection = ref("asc");
 const isOpenPopup = ref(false);
+/** Смена key при каждом открытии модалки «Публикация» — форма подхватывает актуальный provide вакансии. */
+const createPublicationModalKey = ref(0);
 const publicationsHh = ref([]);
 const publicationPlatforms = ref([]);
 //const publications = await getPublications()
@@ -904,10 +694,36 @@ watch(authError, (newValue) => {
 
 // Попап публикации вакансии
 const isPublishPopupOpen = ref(false);
+/** Черновик полей hh.ru при открытии «Опубликовать» на hh */
+/** `undefined` — префилл ещё грузится (попап уже открыт); объект — готово к показу */
+/** @type {import('vue').Ref<Record<string, unknown> | undefined>} */
+const hhPublishInitialDraft = ref(undefined);
+const hhPublishPopupKey = ref(0);
 const currentVacancy = ref(null);
 const selectedPlatformForPublish = ref(null);
 const route = useRoute();
-const currentVacancyId = route.query.id;
+const currentVacancyId = computed(() => {
+    const p = route.params?.id;
+    const q = route.query?.id;
+    const v = route.query?._vid;
+    if (p != null && String(p).trim() !== '') {
+        return String(p).trim();
+    }
+    if (q != null && String(q).trim() !== '') {
+        return String(q).trim();
+    }
+    if (v != null && String(v).trim() !== '') {
+        return String(v).trim();
+    }
+    return null;
+});
+
+/** ID вакансии Jobly для PUT hh-publication-original (если открыта страница вакансии). */
+const publishHhVacancyNumericId = computed(() => {
+    const id = currentVacancyId.value;
+    const n = Number(id);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+});
 const isPublishing = ref(false);
 const publishError = ref(null);
 const isLoadingPublishForm = ref(false);
@@ -998,14 +814,14 @@ const filteredImportedPublications = computed(() => {
 
 // Функция для загрузки вакансий с платформ
 async function loadPublicationPlatforms() {
-    if (!currentVacancyId) {
+    if (!currentVacancyId.value) {
         return;
     }
     
     isLoadingPublicationPlatforms.value = true;
     
     try {
-        const vacancies = await getVacancies(`filters[baseVacancyId]=${currentVacancyId}`);
+        const vacancies = await getVacancies(`filters[baseVacancyId]=${currentVacancyId.value}`);
         if (vacancies && vacancies.lastIndexOf) {
             publicationPlatforms.value = vacancies;
         }
@@ -1023,8 +839,16 @@ async function loadPublicationPlatforms() {
 /** Статус hh.ru в строке таблицы публикаций (как в попапе импорта). Для других площадок — «—». */
 function publicationRowHhStatusLabel(item) {
     const pd = item?.platforms_data?.[0];
-    if (pd?.id !== 1) return '—';
-    return hhPublicationStatusLabelFromApi(item.hhPublicationStatus);
+    if (Number(pd?.id) !== 1) return '—';
+    const apiSt = item.hhPublicationStatus;
+    if (apiSt != null && apiSt !== '') {
+        return hhPublicationStatusLabelFromApi(apiSt);
+    }
+    const crmSt = normalizeHhPublicationStatusFromCrmVacancy(item?.status);
+    if (crmSt != null) {
+        return hhPublicationStatusLabelFromApi(crmSt);
+    }
+    return hhPublicationStatusLabelFromApi(null);
 }
 
 /** Пункт «Снять с публикации» — только для строк со статусом «Активна» (и для др. площадок: не архив в CRM). */
@@ -1169,7 +993,7 @@ async function refreshPublicationPlatformsStats() {
 
         try {
             // Импорт не зависит от флага «профиль подключён»: токен проверяется на бекенде.
-            if (platformTypeId === 1) {
+            if (Number(platformTypeId) === 1) {
                 const [vRes, rRes, pubRes] = await Promise.all([
                     getVacancyCountViews(extVacancyId),
                     getVacancyResponses(extVacancyId),
@@ -1179,8 +1003,22 @@ async function refreshPublicationPlatformsStats() {
                     const n = Number(vRes.data);
                     item.views = Number.isFinite(n) ? n : vRes.data;
                 }
-                if (pubRes && !pubRes.error && pubRes.data) {
-                    item.hhPublicationStatus = normalizeHhPublicationStatusFromApi(pubRes.data);
+                if (pubRes && !pubRes.error && pubRes.data != null) {
+                    let body = pubRes.data;
+                    const inner =
+                        body &&
+                        typeof body === 'object' &&
+                        !Array.isArray(body) &&
+                        body.data != null &&
+                        typeof body.data === 'object' &&
+                        !Array.isArray(body.data) &&
+                        Object.prototype.hasOwnProperty.call(body.data, 'id')
+                            ? body.data
+                            : null;
+                    if (inner != null) {
+                        body = inner;
+                    }
+                    item.hhPublicationStatus = normalizeHhPublicationStatusFromApi(body);
                 }
                 const negotiationItems = !rRes?.error && Array.isArray(rRes?.data?.items)
                     ? rRes.data.items
@@ -1349,8 +1187,8 @@ async function openPublishPopup(platformName) {
 
     try {
         // Загружаем данные текущей вакансии
-        if (currentVacancyId && !currentVacancy.value) {
-            currentVacancy.value = await getVacancy(currentVacancyId);
+        if (currentVacancyId.value && !currentVacancy.value) {
+            currentVacancy.value = await getVacancy(currentVacancyId.value);
         }
 
         // Загружаем данные о ролях и индустриях для hh.ru
@@ -1636,6 +1474,19 @@ function handleIndustryChange(industry) {
 function closePublishPopup() {
     isPublishPopupOpen.value = false;
     selectedPlatformForPublish.value = null;
+    hhPublishInitialDraft.value = undefined;
+}
+
+function onJoblyHhPublishedFromPopup() {
+    showPublicationToastMessage('Вакансия опубликована на hh.ru', 'success');
+    closePublishPopup();
+    loadPublicationPlatforms();
+}
+
+function onJoblyHhDraftSavedFromPopup() {
+    showPublicationToastMessage('Вакансия сохранена как черновик на hh.ru', 'success');
+    closePublishPopup();
+    loadPublicationPlatforms();
 }
 
 async function confirmPublish() {
@@ -2125,7 +1976,7 @@ async function importPublication(publication) {
         }
         
         // Проверяем на дубликаты перед импортом
-        if (currentVacancyId) {
+        if (currentVacancyId.value) {
             await loadPublicationPlatforms();
             // Для rabota.ru ID может быть в разных форматах
             const publicationId = publication.id || publication.vacancy_id || publication.vacancyId;
@@ -2179,7 +2030,7 @@ async function importPublication(publication) {
         let vacancyData = mapPublicationToVacancy(
             publication, 
             platform, 
-            currentVacancyId ? Number(currentVacancyId) : undefined,
+            currentVacancyId.value ? Number(currentVacancyId.value) : undefined,
             platformId
         );
         
@@ -2279,7 +2130,7 @@ async function importPublication(publication) {
         publication.isImported = true; // Помечаем как импортированную
         
         // Обновляем список publicationPlatforms для проверки дубликатов
-        if (currentVacancyId) {
+        if (currentVacancyId.value) {
             await loadPublicationPlatforms();
             console.log(`Обновлен список publicationPlatforms после импорта, всего вакансий: ${publicationPlatforms.value.length}`);
         }
@@ -2311,11 +2162,11 @@ async function importPublication(publication) {
         }
         
         // Перезагружаем список вакансий с платформ
-        if (currentVacancyId) {
+        if (currentVacancyId.value) {
             await loadPublicationPlatforms();
         }
 
-        const baseVid = currentVacancyId ? Number(currentVacancyId) : NaN;
+        const baseVid = currentVacancyId.value ? Number(currentVacancyId.value) : NaN;
         const targetVacancyIdForResponses =
             Number.isFinite(baseVid) && baseVid > 0 ? baseVid : Number(createdVacancy.data.id);
 
@@ -2339,7 +2190,7 @@ async function importPublication(publication) {
         await recheckImportedPublications();
 
         // Сразу подтянуть просмотры/отклики в таблицу (polling стартует refresh без await)
-        if (currentVacancyId && publicationPlatforms.value.length > 0) {
+        if (currentVacancyId.value && publicationPlatforms.value.length > 0) {
             try {
                 await refreshPublicationPlatformsStats();
             } catch (statsErr) {
@@ -2532,7 +2383,7 @@ onMounted(async () => {
         await navigateTo(redirectUrl);
     }
 
-    if (currentVacancyId) {
+    if (currentVacancyId.value) {
         await loadPublicationPlatforms();
     }
   })
@@ -2652,6 +2503,8 @@ const isEditPublicationLoading = ref(false);
 /** Попап полей оригинала hh.ru (отдельное хранилище, не форма Jobly). */
 const isHhOriginalPopupOpen = ref(false);
 const hhOriginalEditRow = ref(null);
+/** Открыто с карточки «Опубликовать»: без записи снимка в БД при GET, заголовок «Публикация…». */
+const hhOriginalFromPublishCard = ref(false);
 /** ID записи вакансии в CRM для строки таблицы — совпадает с vacancy_id в vacancy_platform. */
 const hhOriginalVacancyApiId = computed(() => {
     const row = hhOriginalEditRow.value;
@@ -2723,7 +2576,7 @@ async function confirmDeletePublicationRow() {
         deletePublicationTargetItem.value = null;
         return;
     }
-    if (currentVacancyId && String(v.id) === String(currentVacancyId)) {
+    if (currentVacancyId.value && String(v.id) === String(currentVacancyId.value)) {
         showPublicationToastMessage('Нельзя удалить базовую вакансию из этого списка.', 'error');
         deletePublicationConfirmOpen.value = false;
         deletePublicationTargetItem.value = null;
@@ -2798,10 +2651,12 @@ async function handleArchivePublication(vacancyItem) {
 function closeHhOriginalPopup() {
     isHhOriginalPopupOpen.value = false;
     hhOriginalEditRow.value = null;
+    hhOriginalFromPublishCard.value = false;
 }
 
 function onHhOriginalVacancySavedToHh() {
     showPublicationToastMessage('Вакансия сохранена на hh.ru', 'success');
+    loadPublicationPlatforms();
 }
 
 // Обработчик действий из dropdown
@@ -2809,6 +2664,7 @@ const handleDropdownAction = (action, vacancyItem) => {
     if (action === "Редактировать текст") {
         const pd = vacancyItem?.platforms_data?.[0];
         if (pd?.id === 1) {
+            hhOriginalFromPublishCard.value = false;
             hhOriginalEditRow.value = vacancyItem;
             isHhOriginalPopupOpen.value = true;
             return;
@@ -2865,11 +2721,66 @@ const handleVacancyUpdated = () => {
     loadPublicationPlatforms();
 };
 
-const openPopupNewPublication = (platformName) => {
-    // Сохраняем выбранную платформу для использования при сабмите
+/** Публикация с карточки платформы: на hh.ru — форма как снимок HH, поля из вакансии по карте vacancy-export; иначе AddPublication. */
+const openPopupNewPublication = async (platformName) => {
     selectedPlatformForPublish.value = platformName;
+    if (platformName === 'hh.ru') {
+        hhPublishInitialDraft.value = undefined;
+        hhPublishPopupKey.value += 1;
+        isPublishPopupOpen.value = true;
+        const vid = currentVacancyId.value;
+        void (async () => {
+            try {
+                const [vac, mapRows, rolesRes, fieldsRes, langPack, levPack] = await Promise.all([
+                    vid ? getVacancy(vid) : Promise.resolve(null),
+                    getHhVacancyExportMap(),
+                    getRoles(),
+                    getVacancyFields(),
+                    getLanguages(),
+                    getLanguageLevels(),
+                ]);
+                const categories =
+                    rolesRes?.roles?.categories && Array.isArray(rolesRes.roles.categories)
+                        ? rolesRes.roles.categories
+                        : [];
+                const langData = langPack?.data;
+                const levData = levPack?.data;
+                const languageList = Array.isArray(langData)
+                    ? langData.map((l) => ({
+                        id: l.id,
+                        name: l.name,
+                        value: l.value ?? l.id,
+                        is_popular: l.is_popular,
+                    }))
+                    : [];
+                const languageLevelList = Array.isArray(levData)
+                    ? levData.map((l) => ({
+                        id: l.id,
+                        name: l.name,
+                        value: l.value ?? l.id,
+                    }))
+                    : [];
+                const driverDbIdToName = buildDriverDbIdToNameMap(fieldsRes?.data?.drivers);
+                hhPublishInitialDraft.value = buildHhOriginalDraftFromJoblyForPublish(
+                    vac && typeof vac === 'object' ? vac : null,
+                    mapRows,
+                    categories,
+                    {
+                        driverDbIdToName,
+                        languageList,
+                        languageLevelList,
+                    },
+                );
+            } catch (e) {
+                console.error('Подготовка формы публикации hh:', e);
+                hhPublishInitialDraft.value = {};
+            }
+        })();
+        return;
+    }
+    createPublicationModalKey.value += 1;
     isOpenPopup.value = true;
-}
+};
 </script>
 
 <style scoped>

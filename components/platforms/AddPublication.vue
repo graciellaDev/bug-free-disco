@@ -18,16 +18,15 @@
             <p class="text-sm font-medium mb-4 leading-normal"
               :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
-              <template v-if="currentPlatform === 'hh'">Название (API: <span class="font-mono text-11px">name</span>)</template>
+              <template v-if="currentPlatform === 'hh'">Название</template>
               <template v-else>Название должности</template>
             </p>
             <MyInput placeholder="Например, Менеджер по продажам" v-model="data.name"
               @update:model-value="($event) => updateValidField('name', $event.trim() !== '')" />
           </div>
-          <div class="w-full">
+          <div v-if="currentPlatform !== 'hh'" class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
-              <template v-if="currentPlatform === 'hh'">Код (API: <span class="font-mono text-11px">code</span>)</template>
-              <template v-else>Код вакансии</template>
+              Код вакансии
             </p>
             <MyInput placeholder="Код вакансии" v-model="data.code" />
           </div>
@@ -56,7 +55,7 @@
             <p class="text-sm font-medium leading-normal"
               :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
-              Специализация (<span class="font-mono text-11px">professional_roles</span>)
+              Специализация
             </p>
             <span class="inline-flex items-center cursor-help">
               <svg-icon name="question" width="16" height="16" />
@@ -101,7 +100,7 @@
               <p class="text-sm font-medium leading-normal"
                 :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'">
                 <span class="text-red-custom">*</span>
-                <template v-if="currentPlatform === 'hh'">Опыт (<span class="font-mono text-11px">experience</span>)</template>
+                <template v-if="currentPlatform === 'hh'">Опыт</template>
                 <template v-else>Опыт работы</template>
               </p>
               <span v-if="currentPlatform === 'hh' || hideScheduleBlockForSuperjob" class="inline-flex items-center cursor-help">
@@ -172,7 +171,7 @@
             <div class="w-full mb-6">
               <p class="text-sm font-medium text-space mb-3.5">
                 <span class="text-red-custom">*</span>
-                Тип занятости (<span class="font-mono text-11px">employment_form</span>)
+                Тип занятости
               </p>
               <div class="flex w-full gap-2">
                 <button v-for="opt in hhEmploymentOptionsForType" :key="opt.id" type="button"
@@ -459,11 +458,8 @@
         </div>
         <div class="mb-25px mt-25px border-t"></div>
         <template v-if="currentPlatform === 'hh'">
-          <p class="text-space text-xl font-semibold mb-2">
+          <p class="text-space text-xl font-semibold mb-8">
             Описание и навыки
-          </p>
-          <p class="text-xs text-bali mb-8 leading-normal">
-            API hh.ru: <span class="font-mono">description</span> (HTML), ключевые навыки — <span class="font-mono">key_skills</span> в форме / словарь HH при отправке.
           </p>
         </template>
         <p v-else class="text-space text-xl font-semibold mb-8">
@@ -473,8 +469,7 @@
           <p class="text-sm font-medium mb-3.5"
             :class="validFields.description.status === false ? 'text-red-custom' : 'text-space'">
             <span class="text-red-custom">*</span>
-            <template v-if="currentPlatform === 'hh'">Текст вакансии (API: <span class="font-mono text-11px">description</span>)</template>
-            <template v-else>Текст вакансии</template>
+            Текст вакансии
           </p>
           <GenerateButton></GenerateButton>
           <div class="mt-15px mb-25px">
@@ -490,7 +485,7 @@
           <div class="flex gap-25px">
             <div class="w-full">
               <p class="text-sm font-medium text-space mb-13px">
-                <template v-if="currentPlatform === 'hh'">Ключевые навыки (<span class="font-mono text-11px">key_skills</span>)</template>
+                <template v-if="currentPlatform === 'hh'">Ключевые навыки</template>
                 <template v-else>Навыки</template>
               </p>
               <TagSelect :options="[]" :model-value="data.key_skills ? data.key_skills : []" :is-new="true"
@@ -718,6 +713,8 @@ import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
 import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
 
+/** Возможные сетевые запросы при инициализации — перечень: `utils/addPublicationRemoteLoads.ts` (`ADD_PUBLICATION_REMOTE_LOADS`). */
+
 /** Уникальные города по названию (первое вхождение) — для чистого списка без дублей */
 function dedupeAreasByName(arr) {
   if (!Array.isArray(arr)) return []
@@ -750,6 +747,11 @@ function normalizePlatformName(name) {
   if (name === 'superjob.ru' || name === 'superjob') return 'superjob'
   return name
 }
+
+/** Карточка «Опубликовать» на вкладке размещений — не блокируем рендер запросами к HH; данные вакансии из provide. */
+const isNewPublicationFromCard = Boolean(props.selectedPlatform && !props.editingVacancy?.id)
+const isNewHhPublicationFromCard =
+  isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'hh'
 
 const isDraft = ref(true)
 const platforms = ref(inject('platformsGlobal'))
@@ -1714,37 +1716,35 @@ const loadDictionaries = async (platform) => {
   }
 }
 
-// Загружаем справочники по умолчанию (hh.ru)
-const { roles, errorRoles } = await getRolesHh()
-if (!errorRoles) {
-  currectRole.value = roles.categories
-  // Обновляем вычисленные значения после загрузки отраслей
-  updateComputedValues()
-  await applyComputedValues()
-}
-
-// Загрузка списка городов из API (локальная БД hh_areas), без дублей по названию
-const { data: areasData, error: areasError } = await getAreasHh()
-if (!areasError && areasData) {
-  cities.value = dedupeAreasByName(areasData)
-  console.log('Загружены города, количество:', cities.value.length)
-
-  // Обновляем вычисленные значения после загрузки городов
-  updateComputedValues()
-
-  // Теперь применяем значения, включая установку города из вакансии
-  await applyComputedValues()
-}
-
-try {
-  const result = await getAddressesHh()
-  const addressesData = result?.data
-  const addressesError = result?.error
-  if (!addressesError && addressesData?.items) {
-    addresses.value = addressesData.items
+// Справочники hh.ru по умолчанию — при «Опубликовать» с карточки не дергаем HH до показа формы (см. onMounted).
+if (!isNewPublicationFromCard) {
+  const { roles, errorRoles } = await getRolesHh()
+  if (!errorRoles) {
+    currectRole.value = roles.categories
+    updateComputedValues()
+    await applyComputedValues()
   }
-} catch (e) {
-  addresses.value = []
+
+  const { data: areasData, error: areasError } = await getAreasHh()
+  if (!areasError && areasData) {
+    cities.value = dedupeAreasByName(areasData)
+    console.log('Загружены города, количество:', cities.value.length)
+    updateComputedValues()
+    await applyComputedValues()
+  }
+}
+
+if (!isNewPublicationFromCard) {
+  try {
+    const result = await getAddressesHh()
+    const addressesData = result?.data
+    const addressesError = result?.error
+    if (!addressesError && addressesData?.items) {
+      addresses.value = addressesData.items
+    }
+  } catch (e) {
+    addresses.value = []
+  }
 }
 
 // Преобразование тарифов из tariffsHh в формат для DropDownTypes
@@ -1801,6 +1801,37 @@ const loadTariffsForHh = async (employerId) => {
 //   return tariffsOptions.value.find(tariff => tariff.property_type === propertyType) || null
 // })
 
+function normSalaryLabel(s) {
+  return String(s ?? '')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+}
+
+/** place из InfoTab: '1'…'4' → id формата HH (work_format). */
+function mapJoblyPlaceToHhWorkFormat(placeVal) {
+  const idByJobly = { 1: 'ON_SITE', 2: 'REMOTE', 3: 'HYBRID', 4: 'FIELD_WORK' };
+  const raw = Array.isArray(placeVal)
+    ? placeVal
+    : placeVal != null && placeVal !== ''
+      ? [placeVal]
+      : [];
+  const out = [];
+  const seen = new Set();
+  for (const p of raw) {
+    const key = String(typeof p === 'object' && p != null ? (p.id ?? p.value ?? '') : p).trim();
+    const hhId = idByJobly[key];
+    if (!hhId || seen.has(hhId)) {
+      continue;
+    }
+    const fmt = HH_WORK_FORMAT.find((f) => f.id === hhId);
+    if (fmt) {
+      seen.add(hhId);
+      out.push({ ...fmt, value: fmt.id });
+    }
+  }
+  return out;
+}
+
 /** Заполняет форму из загруженной вакансии (globCurrentVacancy). Вызывать после установки globCurrentVacancy. */
 async function fillFormFromCurrentVacancy() {
   const vacancy = globCurrentVacancy.value
@@ -1819,8 +1850,15 @@ async function fillFormFromCurrentVacancy() {
   if (vacancy.education) {
     data.value.education_level = HH_EDUCATION_LAVEL.find((item) => item.name == vacancy.education)
   }
-  // Навыки: бэкенд может вернуть skills или phrases. В форме отображаются в key_skills как массив { name: string }.
-  const skillsRaw = vacancy.skills ?? vacancy.phrases
+  // Навыки: приоритет phrases (InfoTab); пустой skills[] не должен скрывать phrases
+  const phrases = vacancy.phrases
+  const skills = vacancy.skills
+  const skillsRaw =
+    Array.isArray(phrases) && phrases.length > 0
+      ? phrases
+      : Array.isArray(skills) && skills.length > 0
+        ? skills
+        : phrases ?? skills
   if (skillsRaw != null) {
     data.value.phrases = Array.isArray(skillsRaw) ? skillsRaw : skillsRaw
     const arr = Array.isArray(skillsRaw)
@@ -1842,10 +1880,8 @@ async function fillFormFromCurrentVacancy() {
   } else if (vacancy.drivers && Array.isArray(vacancy.drivers) && vacancy.drivers.length > 0) {
     const hasNumericIds = vacancy.drivers.some((d) => typeof d?.id === 'number' || (typeof d?.id === 'string' && /^\d+$/.test(String(d.id))))
     if (hasNumericIds) {
-      try {
-        const fields = await getVacancyFields()
+      const applyDriversMap = (fields) => {
         const idToName = buildDriverDbIdToNameMap(fields?.data?.drivers)
-        // Нормализуем название до одной буквы A–E, чтобы совпало с HH_DRIVER_LICENSE_TYPES в форме
         const toCategoryId = (name) => {
           if (!name || typeof name !== 'string') return null
           const s = String(name).trim().toUpperCase()
@@ -1862,9 +1898,27 @@ async function fillFormFromCurrentVacancy() {
           })
           .filter(Boolean)
         if (mapped.length > 0) data.value.driver_license_types = mapped
-      } catch (e) {
-        console.warn('Маппинг водительских прав (drivers → категории):', e)
-        data.value.driver_license_types = vacancy.drivers
+      }
+      if (isNewPublicationFromCard) {
+        void getVacancyFields()
+          .then((fields) => {
+            try {
+              applyDriversMap(fields)
+            } catch (e) {
+              console.warn('Маппинг водительских прав (drivers → категории):', e)
+            }
+          })
+          .catch((e) => {
+            console.warn('Маппинг водительских прав (drivers → категории):', e)
+          })
+      } else {
+        try {
+          const fields = await getVacancyFields()
+          applyDriversMap(fields)
+        } catch (e) {
+          console.warn('Маппинг водительских прав (drivers → категории):', e)
+          data.value.driver_license_types = vacancy.drivers
+        }
       }
     } else {
       data.value.driver_license_types = vacancy.drivers.map((d) => ({ id: String(d?.id ?? '').trim().toUpperCase() })).filter((d) => /^[A-E]$/.test(d.id))
@@ -1905,8 +1959,59 @@ async function fillFormFromCurrentVacancy() {
     }
     data.value.working_hours = ids
   }
-  if (vacancy.place != null && vacancy.place !== '') {
-    data.value.workSpace = String(vacancy.place)
+  const wf = mapJoblyPlaceToHhWorkFormat(vacancy.place);
+  if (wf.length > 0) {
+    data.value.work_format = wf;
+  } else if (vacancy.place != null && vacancy.place !== '') {
+    data.value.workSpace = String(vacancy.place);
+  }
+
+  const rawOf = vacancy.oformlenie;
+  if (Array.isArray(rawOf) && rawOf.length > 0) {
+    const mappedOf = [];
+    for (const o of rawOf) {
+      const v = typeof o === 'object' && o != null ? (o.value ?? o.id ?? '') : o;
+      const found = HH_OFORMLENIE_MULTISELECT_OPTIONS.find((x) => x.value === v || x.id === v);
+      if (found) {
+        mappedOf.push({ ...found });
+      }
+    }
+    if (mappedOf.length > 0) {
+      data.value.oformlenie = mappedOf;
+    }
+  }
+
+  const night = vacancy.has_evening_night_shifts ?? vacancy.hasEveningNightShifts;
+  if (night != null) {
+    data.value.has_evening_night_shifts = Boolean(night);
+  }
+
+  const curStr = vacancy.currency;
+  if (typeof curStr === 'string' && curStr.trim() !== '') {
+    const hit = ArrayCurrency.value.find((c) => c.name === curStr.trim());
+    if (hit) {
+      data.value.salary_range.currency = hit.id;
+    }
+  }
+  const salFreq = vacancy.salary_frequency;
+  if (typeof salFreq === 'string' && salFreq.trim() !== '') {
+    const n = normSalaryLabel(salFreq);
+    const mode = HH_SALARY_TYPE.find(
+      (t) => normSalaryLabel(t.name) === n || t.name === salFreq.trim()
+    );
+    if (mode) {
+      data.value.salary_range.mode = { id: mode.id };
+    }
+  }
+  const payFreq = vacancy.salary_payment_frequency;
+  if (typeof payFreq === 'string' && payFreq.trim() !== '') {
+    const n = normSalaryLabel(payFreq);
+    const freq = HH_SALARY_FREQUENCY.find(
+      (t) => normSalaryLabel(t.name) === n || t.name === payFreq.trim()
+    );
+    if (freq) {
+      data.value.salary_range.frequency = { id: freq.id };
+    }
   }
   // Условия занятости SuperJob (теги): сохраняются в нашей БД, при открытии формы подставляем из вакансии
   const conditionsRaw = vacancy.superjob_employment_conditions
@@ -1924,7 +2029,17 @@ const vacancyIdFields = ['experience', 'employment_form']
 async function loadInitialFormData() {
   const platformIdToName = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' };
 
-  let vacancyId = route.query.id;
+  const qId = route.query?.id;
+  const pId = route.params?.id;
+  const vid = route.query?._vid;
+  let vacancyId =
+    qId != null && String(qId).trim() !== ''
+      ? String(qId).trim()
+      : pId != null && String(pId).trim() !== ''
+        ? String(pId).trim()
+        : vid != null && String(vid).trim() !== ''
+          ? String(vid).trim()
+          : null;
 
   if (props.editingVacancy?.id) {
     vacancyId = String(props.editingVacancy.id);
@@ -2002,61 +2117,73 @@ async function loadInitialFormData() {
     }
   }
 
-  if (vacancyId) {
-    // Загружаем вакансию с API только если ещё нет или id изменился
-    if (!globCurrentVacancy.value || vacancyId !== globCurrentVacancy.value.id?.toString()) {
-      const vacancy = await getVacancyById(vacancyId);
+  const fromPublishCardOnly = !props.editingVacancy?.id && Boolean(props.selectedPlatform)
+
+  async function applyVacancyToFormFields() {
+    const pdHh = props.editingVacancy?.platforms_data?.[0]
+    if (
+      pdHh?.id === 1 &&
+      pdHh?.platform_id != null &&
+      String(pdHh.platform_id).trim() !== '' &&
+      globCurrentVacancy.value &&
+      !globCurrentVacancy.value._hh_api_professional_roles
+    ) {
+      const pubRes = await getHhPublicationById(String(pdHh.platform_id))
+      const pr = pubRes?.data?.professional_roles
+      if (!pubRes?.error && Array.isArray(pr) && pr.length > 0) {
+        globCurrentVacancy.value = {
+          ...globCurrentVacancy.value,
+          _hh_api_professional_roles: pr,
+        }
+      }
+    }
+    updateComputedValues()
+    await fillFormFromCurrentVacancy()
+    vacancyIdFields.forEach((field) => {
+      if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
+      const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
+      const values = mappingFieldsHH[field].values
+      const found = field === 'employment_form'
+        ? findValueByNameOrSiteName(values, fieldValue)
+        : findValue(values, fieldValue)
+      if (found == null) {
+        handleIdUpdate(field, values[0])
+      } else {
+        handleIdUpdate(field, found)
+      }
+    })
+  }
+
+  // Карточка «Опубликовать»: только локальный provide(vacancyCurrect), без GET вакансии и без ожидания совпадения id с URL (черновик).
+  if (fromPublishCardOnly) {
+    if (globCurrentVacancy.value || vacancyData.value) {
+      await applyVacancyToFormFields()
+    }
+  } else if (vacancyId) {
+    const mustFetchVacancy =
+      !globCurrentVacancy.value ||
+      vacancyId !== globCurrentVacancy.value.id?.toString()
+
+    if (mustFetchVacancy) {
+      const vacancy = await getVacancyById(vacancyId)
       if (vacancy) {
-        globCurrentVacancy.value = vacancy;
-        console.log('Загружена вакансия, location:', vacancy.location);
-        // Редактирование из «Активные публикации»: подтянуть professional_roles с hh.ru по id публикации (в БД часто нет/обрезана specializations)
-        const pd = props.editingVacancy?.platforms_data?.[0];
+        globCurrentVacancy.value = vacancy
+        console.log('Загружена вакансия, location:', vacancy.location)
+        const pd = props.editingVacancy?.platforms_data?.[0]
         if (pd?.id === 1 && pd?.platform_id != null && String(pd.platform_id).trim() !== '') {
-          const pubRes = await getHhPublicationById(String(pd.platform_id));
-          const pr = pubRes?.data?.professional_roles;
+          const pubRes = await getHhPublicationById(String(pd.platform_id))
+          const pr = pubRes?.data?.professional_roles
           if (!pubRes?.error && Array.isArray(pr) && pr.length > 0) {
             globCurrentVacancy.value = {
               ...globCurrentVacancy.value,
               _hh_api_professional_roles: pr,
-            };
+            }
           }
         }
       }
     }
-    // Всегда заполняем форму при открытии (в т.ч. при повторном открытии модалки без перезагрузки)
     if (globCurrentVacancy.value && globCurrentVacancy.value.id?.toString() === vacancyId) {
-      const pdHh = props.editingVacancy?.platforms_data?.[0]
-      if (
-        pdHh?.id === 1 &&
-        pdHh?.platform_id != null &&
-        String(pdHh.platform_id).trim() !== '' &&
-        !globCurrentVacancy.value._hh_api_professional_roles
-      ) {
-        const pubRes = await getHhPublicationById(String(pdHh.platform_id))
-        const pr = pubRes?.data?.professional_roles
-        if (!pubRes?.error && Array.isArray(pr) && pr.length > 0) {
-          globCurrentVacancy.value = {
-            ...globCurrentVacancy.value,
-            _hh_api_professional_roles: pr,
-          }
-        }
-      }
-      updateComputedValues();
-      await fillFormFromCurrentVacancy();
-      vacancyIdFields.forEach((field) => {
-        // Опыт для SuperJob уже подставлен из sjVacancy в loadInitialFormData — не перезаписываем
-        if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
-        const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
-        const values = mappingFieldsHH[field].values
-        const found = field === 'employment_form'
-          ? findValueByNameOrSiteName(values, fieldValue)
-          : findValue(values, fieldValue)
-        if (found == null) {
-          handleIdUpdate(field, values[0])
-        } else {
-          handleIdUpdate(field, found)
-        }
-      })
+      await applyVacancyToFormFields()
     }
   }
 }
@@ -2068,7 +2195,11 @@ const getPhrasesVacancy = async function () {
   return data
 }
 
-phrases.value = await getPhrasesVacancy()
+if (isNewPublicationFromCard) {
+  getPhrasesVacancy().then((d) => { phrases.value = d }).catch(() => {})
+} else {
+  phrases.value = await getPhrasesVacancy()
+}
 
 // Дефолты для experience/employment_form, если вакансия не загружалась (форма «добавить»)
 vacancyIdFields.forEach((field) => {
@@ -2087,7 +2218,9 @@ vacancyIdFields.forEach((field) => {
 
 if (vacancyData.value) {
   data.value.name = vacancyData.value.name
-  data.value.code = vacancyData.value.code
+  if (currentPlatform.value !== 'hh') {
+    data.value.code = vacancyData.value.code
+  }
   data.value.description = vacancyData.value.description
   // Отрасль/специализацию из vacancyData не подставляем, если уже заданы из каталога SuperJob (редактирование вакансии с SuperJob)
   if (data.value.superjob_catalogue_id == null && currectRole.value && Array.isArray(currectRole.value)) {
@@ -2110,7 +2243,7 @@ if (vacancyData.value) {
 //       return item.siteName == globCurrentVacancy.value?.employment
 // })[0] || HH_EMPLOYMENT_TYPES[0];
 
-if (!inject('isPlatforms')) {
+if (!inject('isPlatforms') && !isNewPublicationFromCard) {
   const profileResult = await profileHh()
   const profileData = profileResult?.data
   const profileError = profileResult?.error
@@ -2138,12 +2271,14 @@ if (targetPlatformFromProps) {
   if (platformKey) {
     data.value.platform = platformKey
     if (targetPlatformFromProps === 'hh') {
-      // hh.ru: загружаем тарифы (как при редактировании), справочники уже загружены по умолчанию
-      const profile = await profileHh()
-      if (!profile.error && profile.data?.data?.employer?.id) {
-        await loadTariffsForHh(profile.data.data.employer.id)
-        platformKey.isAuthenticated = true
-        platformKey.data = profile.data.data
+      // Для карточки «Опубликовать» профиль/тарифы — один раз в цикле ниже (без повторного profileHh).
+      if (!isNewPublicationFromCard) {
+        const profile = await profileHh()
+        if (!profile.error && profile.data?.data?.employer?.id) {
+          await loadTariffsForHh(profile.data.data.employer.id)
+          platformKey.isAuthenticated = true
+          platformKey.data = profile.data.data
+        }
       }
     } else if (targetPlatformFromProps === 'superjob') {
       await loadDictionaries('superjob')
@@ -2162,12 +2297,28 @@ for (let key of platforms.value) {
       const targetPlatform = normalizePlatformName(props.selectedPlatform)
       if (key.platform === targetPlatform) {
         if (key.platform == 'hh') {
-          const profile = await profileHh()
-          if (!profile.error && profile.data?.data?.employer?.id) {
-            await loadTariffsForHh(profile.data.data.employer.id)
+          if (isNewPublicationFromCard) {
             key.isAuthenticated = true
-            key.data = profile.data.data
             isPlatforms.value = true
+          } else {
+            const profile = await profileHh()
+            if (!profile.error && profile.data?.data) {
+              const pdata = profile.data.data
+              const employerId = pdata.employer?.id
+              const managerId = pdata.manager?.id
+              if (employerId && managerId) {
+                const { types, errorTypes } = await typesHh(employerId, managerId)
+                if (!errorTypes && platforms.value[0]) {
+                  platforms.value[0].types = types
+                }
+              }
+              if (employerId) {
+                await loadTariffsForHh(employerId)
+                key.isAuthenticated = true
+                key.data = pdata
+                isPlatforms.value = true
+              }
+            }
           }
         } else if (key.platform == 'avito') {
           const profile = await profileAvito()
@@ -2182,14 +2333,16 @@ for (let key of platforms.value) {
             key.isAuthenticated = true
             key.data = profile.data.data
             isPlatforms.value = true
-            // Загружаем справочники rabota.ru
-            await loadDictionaries('rabota')
+            if (!isNewPublicationFromCard || targetPlatformFromProps !== 'rabota') {
+              await loadDictionaries('rabota')
+            }
           }
         } else if (key.platform == 'superjob') {
-          // SuperJob: устанавливаем платформу и загружаем каталог
           key.isAuthenticated = true
           isPlatforms.value = true
-          await loadDictionaries('superjob')
+          if (!isNewPublicationFromCard || targetPlatformFromProps !== 'superjob') {
+            await loadDictionaries('superjob')
+          }
         }
         data.value.platform = key
         break // Используем найденную платформу
@@ -2234,6 +2387,10 @@ for (let key of platforms.value) {
       }
     }
   }
+}
+
+if (isNewHhPublicationFromCard) {
+  void nextTick(() => emit('form-ready'))
 }
 
 const ArrayCurrency = ref(currency)
@@ -2470,8 +2627,9 @@ const savePublication = async () => {
         const vacancyPlatformId = platformData.platform_id;
         let platformResponse = null;
         if (platformId === 1) {
+          const { code: _omitHhCode, ...hhEditPayload } = data.value;
           const payload = {
-            ...data.value,
+            ...hhEditPayload,
             vacancy_platform_id: String(vacancyPlatformId),
             publication_id: vacancyPlatformId,
             jobly_vacancy_id: props.editingVacancy?.id,
@@ -2551,7 +2709,8 @@ const savePublication = async () => {
     }
   }
   if (currentPlatform === 'hh') {
-    const hhForm = { ...data.value, jobly_vacancy_id: props.editingVacancy?.id };
+    const { code: _omitHhCode, ...hhRest } = data.value;
+    const hhForm = { ...hhRest, jobly_vacancy_id: props.editingVacancy?.id };
     if (isDraft.value || isDraft.value === 'true'
     ) {
       response = await addDraftHh(hhForm)
@@ -2631,13 +2790,34 @@ watch(() => data.value.description, (newValue) => {
 }, { immediate: true })
 
 
-onBeforeMount(async () => {
-})
-
 onMounted(() => {
-  if (props.editingVacancy?.id) {
+  if (!isNewHhPublicationFromCard) {
     emit('form-ready')
+    return
   }
+  void (async () => {
+    try {
+      await loadDictionaries('hh')
+      const profile = await profileHh()
+      if (profile.error || !profile.data?.data) return
+      const pdata = profile.data.data
+      const employerId = pdata.employer?.id
+      const managerId = pdata.manager?.id
+      const hhKey = platforms.value?.find((p) => p.platform === 'hh')
+      if (employerId && managerId && platforms.value[0]) {
+        const { types, errorTypes } = await typesHh(employerId, managerId)
+        if (!errorTypes) platforms.value[0].types = types
+      }
+      if (employerId && hhKey) {
+        await loadTariffsForHh(employerId)
+        hhKey.data = pdata
+      }
+      updateComputedValues()
+      await applyComputedValues()
+    } catch (e) {
+      console.warn('Отложенная загрузка HH после показа формы публикации:', e)
+    }
+  })()
 })
 
 </script>

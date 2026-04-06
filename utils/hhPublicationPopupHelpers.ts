@@ -154,3 +154,18 @@ export function addressLineFromHhPayload(address: unknown): string {
   }
   return '';
 }
+
+/**
+ * Слой `original` из API: ключи вида `name_original` → черновик полей hh.ru (`name`, …).
+ * Нужен, когда заполнены hh_vacancy_original_fields, а `payload_original` в БД ещё null.
+ */
+export function draftPayloadFromHhOriginalLayer(original: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!original || typeof original !== 'object') return {};
+  const out: Record<string, unknown> = {};
+  const suffix = '_original';
+  for (const [k, v] of Object.entries(original)) {
+    if (typeof k !== 'string' || !k.endsWith(suffix)) continue;
+    out[k.slice(0, -suffix.length)] = v;
+  }
+  return out;
+}

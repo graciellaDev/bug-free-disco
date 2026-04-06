@@ -30,7 +30,8 @@
         </div>
         <transition name="slide-fade">
             <div
-              class="options-wrapper absolute w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-10 max-h-400px overflow-y-scroll"
+              class="options-wrapper absolute left-0 w-full bg-white border border-athens rounded-ten shadow-shadow-droplist z-[200] max-h-[min(280px,40vh)] overflow-y-auto"
+              :class="dropUp ? 'bottom-full mb-1' : 'top-full mt-1'"
               v-if="isDropDownVisible">
               <template v-for="(option, index) in props.options" :key="index">
                 <div
@@ -83,6 +84,11 @@ const props = defineProps({
     variant: {
         type: String,
         default: 'selected', // default | selected
+    },
+    /** Список над триггером (например, у нижнего края модального окна, чтобы не обрезался) */
+    dropUp: {
+        type: Boolean,
+        default: false,
     },
 });
 

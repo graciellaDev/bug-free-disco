@@ -2,25 +2,35 @@
   <div
     class="flex h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0 w-full flex-col overflow-hidden rounded-b-fifteen"
   >
-    <div class="min-h-0 flex-1 overflow-hidden rounded-t-fifteen">
       <div
-        class="hh-original-popup-scroll h-full min-h-0 overflow-y-auto overscroll-y-contain px-25px pb-25px pt-25px"
+        class="hh-original-popup-scroll flex min-h-0 flex-1 basis-0 flex-col overflow-y-auto overscroll-y-contain px-25px pb-25px pt-25px rounded-t-fifteen"
       >
-      <div class="mb-25px">
-      <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии на hh.ru</p>
-      <p class="text-sm font-normal text-slate-custom leading-normal">
-        Вы меняете текст и параметры именно той вакансии, что видна соискателям на HeadHunter.
-      </p>
+      <div v-if="!loading" class="mb-25px">
+        <p class="text-xl font-semibold text-space mb-1">{{ popupTitle }}</p>
+        <p class="text-sm font-normal text-slate-custom leading-normal">
+          <template v-if="joblyPublishPrefill">
+            Поля уже подставлены из вашей вакансии в кабинете. Перед публикацией вы можете изменить текст и условия именно для объявления на hh.ru — для каждой публикации это можно настроить отдельно.
+          </template>
+          <template v-else>
+            Вы меняете текст и параметры именно той вакансии, что видна соискателям на HeadHunter.
+          </template>
+        </p>
       </div>
 
-      <div v-if="loading" class="flex flex-col items-center justify-center py-60px">
-        <div class="loader mb-15px"></div>
-        <p class="text-sm font-normal text-slate-custom">Загрузка сохранённого снимка…</p>
-      </div>
+      <div
+        v-if="loading"
+        class="flex min-h-[min(420px,calc(90dvh-100px))] flex-1 flex-col items-center justify-center py-15px"
+        role="status"
+        aria-busy="true"
+        aria-label="Загрузка"
+      >
+        <UiDotsLoader class="w-full" />
+        <span class="sr-only">Загрузка</span>
+    </div>
 
-      <div v-else-if="errorMessage" class="rounded-fifteen border border-red-200 bg-red-50 px-15px py-12px text-sm text-red-800">
-        {{ errorMessage }}
-      </div>
+    <div v-else-if="errorMessage" class="rounded-fifteen border border-red-200 bg-red-50 px-15px py-12px text-sm text-red-800">
+      {{ errorMessage }}
+    </div>
 
       <div v-else-if="!loading && !errorMessage" class="space-y-25px">
       <template v-for="key in HH_VACANCY_POPUP_STATIC_DISPLAY_KEYS" :key="key">
@@ -122,7 +132,7 @@
         </template>
 
         <template v-else>
-          <p class="text-sm font-medium mb-2 leading-normal text-space">
+            <p class="text-sm font-medium mb-2 leading-normal text-space">
             {{ hhVacancyFieldLabelRu(key) }}
             <span v-if="isHhVacancyPayloadServiceKey(key)" class="ml-2 text-11px font-normal text-bali">только просмотр</span>
           </p>
@@ -134,28 +144,23 @@
           </template>
 
           <template v-else-if="key === 'name'">
-            <MyInput
+              <MyInput
               :key="'mi-' + key + '-' + formRemountKey"
               :model-value="scalarString(key)"
-              placeholder="—"
+                placeholder="—"
               @update:model-value="(v: string) => patchField(key, v)"
-            />
-          </template>
+              />
+            </template>
 
           <template v-else-if="key === 'professional_roles'">
-            <ClientOnly>
-              <SpecializationSelector
-                :options="professionsOptionsForHh"
-                :full-catalog="hhRoleCategories"
-                :model-value="professionalRoleSingle"
-                placeholder="Выберите из списка"
-                @update:model-value="onProfessionalRoleUpdate"
+            <SpecializationSelector
+              :options="professionsOptionsForHh"
+              :full-catalog="hhRoleCategories"
+              :model-value="professionalRoleSingle"
+              placeholder="Выберите из списка"
+              @update:model-value="onProfessionalRoleUpdate"
               />
-              <template #fallback>
-                <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
-              </template>
-            </ClientOnly>
-          </template>
+            </template>
 
           <template v-else-if="key === 'experience'">
             <div class="flex w-full flex-wrap gap-2">
@@ -172,7 +177,7 @@
                 {{ opt.name }}
               </button>
             </div>
-          </template>
+            </template>
 
           <template v-else-if="key === 'employment_form'">
             <div class="flex flex-col gap-4">
@@ -191,7 +196,7 @@
                   >
                     {{ opt.name }}
                   </button>
-                </div>
+              </div>
               </div>
               <div>
                 <p class="text-xs text-bali mb-2">Тип занятости</p>
@@ -211,7 +216,7 @@
                 </div>
               </div>
             </div>
-          </template>
+            </template>
 
           <template v-else-if="key === 'fly_in_fly_out_duration'">
             <MultiSelect
@@ -221,7 +226,7 @@
               default-value="Выберите длительность вахты"
               @update:model-value="(v: unknown[]) => patchField(key, v)"
             />
-          </template>
+            </template>
 
           <template v-else-if="key === 'work_format'">
             <MultiSelect
@@ -258,8 +263,8 @@
               >
                 {{ opt.name }}
               </button>
-            </div>
-          </template>
+          </div>
+      </template>
 
           <template v-else-if="key === 'working_hours'">
             <div class="flex flex-wrap gap-2">
@@ -273,38 +278,28 @@
                   : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
                 @click="patchField('working_hours', [opt])"
               >
-                {{ opt.name }}
+                {{ hhWorkingHoursChipLabel(opt) }}
               </button>
-            </div>
+    </div>
           </template>
 
           <template v-else-if="key === 'area'">
-            <ClientOnly>
-              <GeoInput
-                :model-value="hhLocationDisplay"
-                :use-api-cities="true"
-                placeholder="Например, Москва"
-                @update:model-value="onHhLocationUpdate"
-              />
-              <template #fallback>
-                <div class="w-full h-11 rounded-ten border border-athens bg-athens-gray animate-pulse" />
-              </template>
-            </ClientOnly>
+            <GeoInput
+              :model-value="hhLocationDisplay"
+              :use-api-cities="true"
+              placeholder="Например, Москва"
+              @update:model-value="onHhLocationUpdate"
+            />
           </template>
 
           <template v-else-if="key === 'address'">
-            <ClientOnly>
-              <AddressMapInput
-                :model-value="addressLineFromHhPayload(draftPayload[key])"
-                :hide-address="addressHideFlag"
-                placeholder="Адрес работы"
-                @update:model-value="onHhWorkAddressUpdate"
-                @update:hide-address="onAddressHideUpdate"
-              />
-              <template #fallback>
-                <div class="w-full h-11 rounded-ten border border-athens bg-athens-gray animate-pulse" />
-              </template>
-            </ClientOnly>
+            <AddressMapInput
+              :model-value="addressLineFromHhPayload(draftPayload[key])"
+              :hide-address="addressHideFlag"
+              placeholder="Адрес работы"
+              @update:model-value="onHhWorkAddressUpdate"
+              @update:hide-address="onAddressHideUpdate"
+            />
           </template>
 
           <template v-else-if="key === 'salary_range'">
@@ -377,17 +372,12 @@
           </template>
 
           <template v-else-if="key === 'description'">
-            <ClientOnly>
-              <TiptapEditor
-                :key="'desc-' + formRemountKey"
-                :model-value="String(draftPayload.description ?? '')"
-                class="mb-15px"
-                @update:model-value="(html: string) => patchField('description', html)"
-              />
-              <template #fallback>
-                <div class="min-h-[200px] rounded-ten border border-athens bg-athens-gray animate-pulse" />
-              </template>
-            </ClientOnly>
+            <TiptapEditor
+              :key="'desc-' + formRemountKey"
+              :model-value="String(draftPayload.description ?? '')"
+              class="mb-15px"
+              @update:model-value="(html: string) => patchField('description', html)"
+            />
           </template>
 
           <template v-else-if="key === 'key_skills'">
@@ -499,28 +489,64 @@
       </template>
     </div>
       </div>
-    </div>
     <footer
-      class="flex flex-shrink-0 flex-wrap items-center justify-between gap-15px rounded-b-fifteen border-t border-athens bg-white px-25px py-15px"
+      class="relative z-20 flex flex-shrink-0 flex-wrap items-center justify-between gap-15px rounded-b-fifteen border-t border-athens bg-white px-25px py-15px"
     >
       <div class="flex flex-wrap items-center gap-15px">
+        <template v-if="joblyPublishPrefill">
+          <div class="min-w-[200px] max-w-[340px] flex-1 basis-[200px]">
+            <DropDownTypes
+              v-if="hhPublishTariffs.length > 0"
+              drop-up
+              :options="hhPublishTariffs"
+              :selected="selectedHhPublishTariff"
+              placeholder="Тариф публикации"
+              @update:model-value="onHhTariffSelected"
+            />
+            <p v-else-if="hhTariffsLoading" class="text-sm text-bali py-9px">Загрузка тарифов…</p>
+            <p v-else-if="hhTariffsLoadError" class="text-sm text-red-600 py-9px leading-snug">
+              {{ hhTariffsLoadError }}
+            </p>
+            <p v-else class="text-sm text-bali py-9px leading-snug">
+              Нет размещений на счёте hh.ru. Купите пакет или выберите другой способ публикации.
+            </p>
+          </div>
+          <UiButton
+            variant="action"
+            size="action"
+            :disabled="publishJoblyActionsDisabled || !selectedHhPublishTariff || hhPublishTariffs.length === 0"
+            @click="publishJoblyVacancyToHh"
+          >
+            {{ saving ? 'Публикация…' : 'Опубликовать' }}
+          </UiButton>
+          <UiButton
+            variant="back"
+            size="back"
+            :disabled="publishJoblyActionsDisabled"
+            @click="saveJoblyVacancyAsHhDraft"
+          >
+            {{ savingDraft ? 'Сохранение…' : 'В черновик' }}
+          </UiButton>
+        </template>
         <UiButton
+          v-else
           variant="action"
           size="action"
-          :disabled="loading || saving || !isDirty || hasJsonErrors"
+          :disabled="loading || saving || staticLayoutPreview || !isDirty || hasJsonErrors || !props.vacancyId || props.vacancyId < 1"
           @click="saveToHh"
         >
           {{ saving ? 'Сохранение…' : 'Сохранить на hh.ru' }}
         </UiButton>
-        <UiButton variant="back" size="back" :disabled="loading || saving" @click="emit('close')">
+        <UiButton variant="back" size="back" :disabled="loading || saving || savingDraft" @click="emit('close')">
           Закрыть
         </UiButton>
       </div>
       <UiButton
+        v-if="!joblyPublishPrefill"
         variant="ghost"
         size="default"
         class="h-auto shrink-0 px-2 py-2 text-sm font-normal text-dodger no-underline hover:bg-transparent hover:text-dodger hover:no-underline"
-        :disabled="loading || saving"
+        :disabled="loading || saving || staticLayoutPreview"
         @click="reloadFromHh"
       >
         Обновить с hh.ru
@@ -530,7 +556,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import MyInput from '~/components/custom/MyInput.vue';
 import MyCheckbox from '~/components/custom/MyCheckbox.vue';
 import MyDropdown from '~/components/custom/MyDropdown.vue';
@@ -542,6 +568,7 @@ import GeoInput from '~/components/custom/GeoInput.vue';
 import AddressMapInput from '~/components/custom/AddressMapInput.vue';
 import MyAccordion from '~/components/custom/MyAccordion.vue';
 import SpecializationSelector from '~/components/custom/SpecializationSelector.vue';
+import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -549,7 +576,18 @@ import {
   putHhPublicationOriginal,
   type HhPublicationOriginalApiData,
 } from '@/utils/getVacancies';
-import { getRoles, getAreas, getAddresses, getLanguages, getLanguageLevels } from '@/utils/hhAccount';
+import {
+  getRoles,
+  getAreas,
+  getAddresses,
+  getLanguages,
+  getLanguageLevels,
+  getProfile,
+  getAvailablePublications,
+  publishVacancy,
+  addDraft,
+} from '@/utils/hhAccount';
+import type { DraftDataHh } from '@/types/platform';
 import {
   HH_ADDITIONAL_CONDITIONS,
   HH_DRIVER_LICENSE_TYPES,
@@ -572,18 +610,181 @@ import {
 import {
   addressLineFromHhPayload,
   dedupeAreasByName,
+  draftPayloadFromHhOriginalLayer,
   normalizeOformlenieFieldsForPopupDraft,
 } from '@/utils/hhPublicationPopupHelpers';
 
-const props = defineProps<{
-  vacancyId: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** ID публикации hh для загрузки снимка; не нужен при `staticLayoutPreview` */
+    vacancyId?: number;
+    /** С карточки «Опубликовать»: не сохранять снимок в БД при загрузке / «Обновить с hh.ru» */
+    suppressSnapshotPersist?: boolean;
+    /** Заголовок как у публикации, не «Редактирование» */
+    isPublishHeadline?: boolean;
+    /** Только верстка без запросов к API (карточка «Опубликовать» на hh) */
+    staticLayoutPreview?: boolean;
+    /** Заполнение формы из вакансии Jobly без GET снимка hh (карточка «Опубликовать») */
+    joblyPublishPrefill?: boolean;
+    /** Человек из Jobly; `undefined` — родитель ещё грузит данные (показываем лоадер после справочников) */
+    initialHhDraftFromJobly?: Record<string, unknown> | null | undefined;
+  }>(),
+  {
+    suppressSnapshotPersist: false,
+    isPublishHeadline: false,
+    staticLayoutPreview: false,
+    joblyPublishPrefill: false,
+  }
+);
+
+const staticLayoutPreview = computed(() => props.staticLayoutPreview === true);
+const joblyPublishPrefill = computed(() => props.joblyPublishPrefill === true);
+
+const popupTitle = computed(() =>
+  props.isPublishHeadline ? 'Публикация вакансии на hh.ru' : 'Редактирование вакансии на hh.ru'
+);
 
 const emit = defineEmits<{
   close: [];
   /** Успешный PUT на hh.ru и обновление снимка в приложении */
   saved: [];
+  /** Первая публикация с карточки Jobly: POST /hh/publication */
+  'jobly-hh-published': [];
+  /** Черновик на hh без списания размещения: POST /hh/drafts */
+  'jobly-hh-draft-saved': [];
 }>();
+
+type HhTariffOption = {
+  id: number;
+  name: string;
+  property_type: unknown;
+  description?: string;
+  available_publications_count?: number;
+};
+
+const hhTariffsLoading = ref(false);
+const hhPublishTariffs = ref<HhTariffOption[]>([]);
+const selectedHhPublishTariff = ref<HhTariffOption | null>(null);
+const hhTariffsLoadError = ref<string | null>(null);
+const savingDraft = ref(false);
+
+const publishJoblyActionsDisabled = computed(
+  () =>
+    loading.value ||
+    saving.value ||
+    savingDraft.value ||
+    staticLayoutPreview.value ||
+    hasJsonErrors.value ||
+    !props.vacancyId ||
+    props.vacancyId < 1,
+);
+
+function onHhTariffSelected(option: HhTariffOption | null) {
+  selectedHhPublishTariff.value = option;
+}
+
+async function loadHhTariffsForJoblyPublish() {
+  if (!joblyPublishPrefill.value) return;
+  hhTariffsLoading.value = true;
+  hhTariffsLoadError.value = null;
+  hhPublishTariffs.value = [];
+  selectedHhPublishTariff.value = null;
+  try {
+    const profileRes = await getProfile();
+    if (!profileRes || profileRes.error) {
+      hhTariffsLoadError.value = profileRes?.error ?? 'Не удалось загрузить профиль hh.ru';
+      return;
+    }
+    const body = profileRes.data as Record<string, unknown> | null | undefined;
+    const hhPayload = (body?.data as Record<string, unknown> | undefined) ?? body;
+    const employerRaw = hhPayload?.employer as { id?: string } | undefined;
+    const employerId = employerRaw?.id;
+    if (!employerId) {
+      hhTariffsLoadError.value =
+        'Не удалось определить работодателя hh.ru. Проверьте привязку профиля.';
+      return;
+    }
+    const tariffsRes = await getAvailablePublications(String(employerId));
+    if (tariffsRes?.error && (!tariffsRes.types || tariffsRes.types.length === 0)) {
+      hhTariffsLoadError.value = tariffsRes.error ?? 'Ошибка при загрузке тарифов';
+      return;
+    }
+    const types = (tariffsRes?.types as HhTariffOption[]) ?? [];
+    hhPublishTariffs.value = Array.isArray(types) ? types : [];
+    if (hhPublishTariffs.value.length > 0) {
+      selectedHhPublishTariff.value = hhPublishTariffs.value[0];
+    }
+  } catch (e) {
+    hhTariffsLoadError.value =
+      e instanceof Error ? e.message : 'Не удалось загрузить тарифы публикации';
+  } finally {
+    hhTariffsLoading.value = false;
+  }
+}
+
+function buildJoblyHhPublishPayload(): DraftDataHh {
+  commitHhContactsToDraft();
+  commitLanguagesFromForm();
+  const merged = { ...draftPayload.value } as DraftDataHh;
+  merged.jobly_vacancy_id = props.vacancyId as number;
+  if (selectedHhPublishTariff.value?.property_type != null) {
+    (merged as Record<string, unknown>).vacancy_properties = {
+      property_type: selectedHhPublishTariff.value.property_type,
+    };
+  }
+  return merged;
+}
+
+async function publishJoblyVacancyToHh() {
+  if (!joblyPublishPrefill.value || staticLayoutPreview.value) return;
+  if (publishJoblyActionsDisabled.value) return;
+  if (!selectedHhPublishTariff.value && hhPublishTariffs.value.length > 0) {
+    errorMessage.value = 'Выберите тариф публикации';
+    return;
+  }
+  saving.value = true;
+  errorMessage.value = null;
+  try {
+    const payload = buildJoblyHhPublishPayload();
+    const res = await publishVacancy(payload);
+    if (res?.error) {
+      errorMessage.value = res.error;
+      return;
+    }
+    emit('jobly-hh-published');
+    emit('close');
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function saveJoblyVacancyAsHhDraft() {
+  if (!joblyPublishPrefill.value || staticLayoutPreview.value) return;
+  if (publishJoblyActionsDisabled.value) return;
+  savingDraft.value = true;
+  errorMessage.value = null;
+  try {
+    commitHhContactsToDraft();
+    commitLanguagesFromForm();
+    const merged = { ...draftPayload.value } as DraftDataHh;
+    merged.jobly_vacancy_id = props.vacancyId as number;
+    delete merged.vacancy_properties;
+    delete merged.billing_types;
+    const res = await addDraft(merged);
+    if (!res) {
+      errorMessage.value = 'Нет ответа сервера при сохранении черновика';
+      return;
+    }
+    if (res.errorDraft || res.error) {
+      errorMessage.value = (res.errorDraft || res.error) as string;
+      return;
+    }
+    emit('jobly-hh-draft-saved');
+    emit('close');
+  } finally {
+    savingDraft.value = false;
+  }
+}
 
 type IdName = { id?: string; name?: string };
 
@@ -1169,6 +1370,16 @@ function isScheduleOptSelected(opt: IdName & { value?: string }) {
   );
 }
 
+/** Подписи как во вкладке Jobly: только число для часов, без «часа/часов». */
+function hhWorkingHoursChipLabel(opt: IdName & { value?: string }) {
+  const id = opt?.id != null ? String(opt.id) : '';
+  if (id === 'FLEXIBLE') return 'По договорённости';
+  if (id === 'OTHER') return 'Другое';
+  const m = /^HOURS_(\d+)$/.exec(id);
+  if (m) return m[1];
+  return opt?.name ?? '';
+}
+
 function isHoursOptSelected(opt: IdName & { value?: string }) {
   const arr = draftPayload.value.working_hours as unknown[] | undefined;
   if (!Array.isArray(arr) || !arr[0]) return false;
@@ -1300,58 +1511,77 @@ function onAdditionalConditionsUpdate(selected: Array<{ id: string }>) {
   draftPayload.value = d;
 }
 
+const defaultLanguageOptions = (): PopupLangOption[] => [
+  { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
+  { id: 'deu', value: 'deu', name: 'Немецкий', is_popular: true },
+  { id: 'fra', value: 'fra', name: 'Французский', is_popular: true },
+  { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
+];
+
+const defaultLanguageOptionsFallback = (): PopupLangOption[] => [
+  { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
+  { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
+];
+
+const defaultLevelOptions = (): PopupLangOption[] => [
+  { id: 'a1', value: 'a1', name: 'A1 — Начальный' },
+  { id: 'a2', value: 'a2', name: 'A2 — Элементарный' },
+  { id: 'b1', value: 'b1', name: 'B1 — Средний' },
+  { id: 'b2', value: 'b2', name: 'B2 — Средне-продвинутый' },
+  { id: 'c1', value: 'c1', name: 'C1 — Продвинутый' },
+  { id: 'c2', value: 'c2', name: 'C2 — В совершенстве' },
+];
+
+/** Один запуск справочников на инстанс попапа (init может вызваться дважды: до/после префилла) */
+let hhDictionariesPromise: Promise<void> | null = null;
+
 async function loadHhDictionaries() {
-  const [rolesRes, areasRes] = await Promise.all([getRoles(), getAreas()]);
-  const cats = (rolesRes as { roles?: { categories?: Array<Record<string, unknown>> } })?.roles?.categories;
-  if (Array.isArray(cats)) hhRoleCategories.value = cats;
-  const areaData = (areasRes as { data?: Array<{ id: string; name: string }> })?.data;
-  if (Array.isArray(areaData)) cities.value = dedupeAreasByName(areaData);
-  try {
-    await getAddresses();
-  } catch {
-    /* optional */
-  }
+  if (!hhDictionariesPromise) {
+    hhDictionariesPromise = (async () => {
+      const [rolesRes, areasRes] = await Promise.all([getRoles(), getAreas()]);
+      const cats = (rolesRes as { roles?: { categories?: Array<Record<string, unknown>> } })?.roles
+        ?.categories;
+      if (Array.isArray(cats)) hhRoleCategories.value = cats;
+      const areaData = (areasRes as { data?: Array<{ id: string; name: string }> })?.data;
+      if (Array.isArray(areaData)) cities.value = dedupeAreasByName(areaData);
 
-  try {
-    const res = await getLanguages();
-    const langs = (res as { data?: Array<{ id: string; name: string; is_popular?: boolean }> })?.data;
-    languagesOptions.value =
-      Array.isArray(langs) && langs.length > 0
-        ? langs.map((l) => ({
-            id: l.id,
-            value: l.id,
-            name: l.name,
-            is_popular: !!l.is_popular,
-          }))
-        : [
-            { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
-            { id: 'deu', value: 'deu', name: 'Немецкий', is_popular: true },
-            { id: 'fra', value: 'fra', name: 'Французский', is_popular: true },
-            { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
-          ];
-  } catch {
-    languagesOptions.value = [
-      { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
-      { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
-    ];
+      await Promise.all([
+        getAddresses().catch(() => undefined),
+        getLanguages()
+          .then((res) => {
+            const langs = (res as { data?: Array<{ id: string; name: string; is_popular?: boolean }> })?.data;
+            languagesOptions.value =
+              Array.isArray(langs) && langs.length > 0
+                ? langs.map((l) => ({
+                    id: l.id,
+                    value: l.id,
+                    name: l.name,
+                    is_popular: !!l.is_popular,
+                  }))
+                : defaultLanguageOptions();
+          })
+          .catch(() => {
+            languagesOptions.value = defaultLanguageOptionsFallback();
+          }),
+        getLanguageLevels()
+          .then((res) => {
+            const levels = (res as { data?: Array<{ id: string; name: string }> })?.data;
+            languageLevelOptions.value =
+              Array.isArray(levels) && levels.length > 0
+                ? levels.map((l) => ({ id: l.id, value: l.id, name: l.name }))
+                : defaultLevelOptions();
+          })
+          .catch(() => {
+            languageLevelOptions.value = [{ id: 'a1', value: 'a1', name: 'A1 — Начальный' }];
+          }),
+      ]);
+    })();
   }
-
   try {
-    const res = await getLanguageLevels();
-    const levels = (res as { data?: Array<{ id: string; name: string }> })?.data;
-    languageLevelOptions.value =
-      Array.isArray(levels) && levels.length > 0
-        ? levels.map((l) => ({ id: l.id, value: l.id, name: l.name }))
-        : [
-            { id: 'a1', value: 'a1', name: 'A1 — Начальный' },
-            { id: 'a2', value: 'a2', name: 'A2 — Элементарный' },
-            { id: 'b1', value: 'b1', name: 'B1 — Средний' },
-            { id: 'b2', value: 'b2', name: 'B2 — Средне-продвинутый' },
-            { id: 'c1', value: 'c1', name: 'C1 — Продвинутый' },
-            { id: 'c2', value: 'c2', name: 'C2 — В совершенстве' },
-          ];
-  } catch {
-    languageLevelOptions.value = [{ id: 'a1', value: 'a1', name: 'A1 — Начальный' }];
+    await hhDictionariesPromise;
+  } catch (e) {
+    hhDictionariesPromise = null;
+    throw e;
   }
 }
 
@@ -1359,7 +1589,7 @@ function clonePayload(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     try {
       return JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
-    } catch {
+  } catch {
       return {};
     }
   }
@@ -1367,7 +1597,9 @@ function clonePayload(raw: unknown): Record<string, unknown> {
 }
 
 function resetDraftFromApiData(d: HhPublicationOriginalApiData | null) {
-  const payload = clonePayload(d?.payload_original);
+  const fromLayer = draftPayloadFromHhOriginalLayer(d?.original);
+  const fromSnapshot = clonePayload(d?.payload_original);
+  const payload = { ...fromLayer, ...fromSnapshot };
   normalizeOformlenieFieldsForPopupDraft(payload);
   draftPayload.value = payload;
   baselineJson.value = JSON.stringify(draftPayload.value);
@@ -1420,7 +1652,7 @@ function jsonEditorText(key: string): string {
   try {
     return JSON.stringify(v, null, 2);
   } catch {
-    return '';
+      return '';
   }
 }
 
@@ -1440,16 +1672,74 @@ function onJsonFieldInput(key: string, raw: string) {
   }
 }
 
+function initStaticLayoutPreview() {
+  loading.value = false;
+  saving.value = false;
+  errorMessage.value = null;
+  apiData.value = null;
+  draftPayload.value = {};
+  baselineJson.value = '{}';
+  jsonErrors.value = {};
+  formRemountKey.value += 1;
+  languageFormRows.value = [{ language: null, languageLevel: null }];
+  hhContactName.value = '';
+  hhContactPhone.value = '';
+  hhContactEmail.value = '';
+}
+
+async function initJoblyPublishDraft() {
+  loading.value = true;
+  saving.value = false;
+  savingDraft.value = false;
+  errorMessage.value = null;
+  apiData.value = null;
+  try {
+    await Promise.all([loadHhDictionaries(), loadHhTariffsForJoblyPublish()]);
+    if (joblyPublishPrefill.value && props.initialHhDraftFromJobly === undefined) {
+      return;
+    }
+    const incoming = props.initialHhDraftFromJobly;
+    const payload =
+      incoming && typeof incoming === 'object'
+        ? (JSON.parse(JSON.stringify(incoming)) as Record<string, unknown>)
+        : {};
+    normalizeOformlenieFieldsForPopupDraft(payload);
+    draftPayload.value = payload;
+    baselineJson.value = JSON.stringify(draftPayload.value);
+    jsonErrors.value = {};
+    formRemountKey.value += 1;
+    languageFormRows.value = hhPayloadToLanguageRows(draftPayload.value.languages);
+    syncHhContactFormFromDraft();
+  } catch (e) {
+    errorMessage.value =
+      e instanceof Error ? e.message : 'Не удалось загрузить справочники для формы';
+    loading.value = false;
+    return;
+  } finally {
+    const stillWaitingPrefill =
+      joblyPublishPrefill.value && props.initialHhDraftFromJobly === undefined;
+    if (!stillWaitingPrefill) {
+      loading.value = false;
+    }
+  }
+}
+
 async function load(refresh: boolean) {
+  if (staticLayoutPreview.value) return;
   if (!props.vacancyId || props.vacancyId < 1) {
     errorMessage.value = 'Некорректный ID вакансии';
     return;
   }
   loading.value = true;
   errorMessage.value = null;
-  await loadHhDictionaries();
-  const { data, error } = await getHhPublicationOriginal(props.vacancyId, refresh);
-  loading.value = false;
+  const dictPromise = loadHhDictionaries();
+  const pubPromise = getHhPublicationOriginal(
+    props.vacancyId,
+    refresh,
+    props.suppressSnapshotPersist
+  );
+  const { data, error } = await pubPromise;
+  await dictPromise;
   if (error) {
     apiData.value = null;
     draftPayload.value = {};
@@ -1459,18 +1749,23 @@ async function load(refresh: boolean) {
     hhContactPhone.value = '';
     hhContactEmail.value = '';
     errorMessage.value = error;
+    loading.value = false;
     return;
   }
   apiData.value = data;
   resetDraftFromApiData(data);
+  await nextTick();
+  loading.value = false;
 }
 
 async function reloadFromHh() {
+  if (staticLayoutPreview.value) return;
+  if (joblyPublishPrefill.value && (!props.vacancyId || props.vacancyId < 1)) return;
   await load(true);
 }
 
 async function saveToHh() {
-  if (!props.vacancyId || hasJsonErrors.value) return;
+  if (staticLayoutPreview.value || !props.vacancyId || props.vacancyId < 1 || hasJsonErrors.value) return;
   saving.value = true;
   errorMessage.value = null;
   const { data, error, errors } = await putHhPublicationOriginal(props.vacancyId, draftPayload.value);
@@ -1487,11 +1782,26 @@ async function saveToHh() {
 }
 
 watch(
-  () => props.vacancyId,
-  () => {
+  () =>
+    [
+      props.vacancyId,
+      props.suppressSnapshotPersist,
+      props.staticLayoutPreview,
+      props.joblyPublishPrefill,
+      props.initialHhDraftFromJobly,
+    ] as const,
+  async () => {
+    if (props.joblyPublishPrefill) {
+      await initJoblyPublishDraft();
+      return;
+    }
+    if (props.staticLayoutPreview) {
+      initStaticLayoutPreview();
+      return;
+    }
     load(false);
   },
-  { immediate: true }
+  { immediate: true, deep: true }
 );
 </script>
 

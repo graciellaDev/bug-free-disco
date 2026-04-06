@@ -1,4 +1,5 @@
 import { useUserStore } from '@/stores/user';
+import type { HhVacancyExportMapRow } from '@/utils/buildHhOriginalDraftFromJoblyVacancy';
 
 interface VacancyResponse {
   data: {
@@ -157,6 +158,38 @@ export const getVacancy = async (id: String) => {
   }
 };
 
+/**
+ * Карта полей Jobly → hh.ru и флаги «подключено» (как /admin/job-sites/vacancy-export).
+ */
+export const getHhVacancyExportMap = async (): Promise<HhVacancyExportMapRow[]> => {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return [];
+  }
+  try {
+    const response = await $fetch<{ message?: string; data?: HhVacancyExportMapRow[] }>(
+      `/vacancies/hh-export-map`,
+      {
+        method: 'GET',
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+      }
+    );
+    return Array.isArray(response?.data) ? response.data : [];
+  } catch (err: unknown) {
+    console.warn('getHhVacancyExportMap:', err);
+    return [];
+  }
+};
+
 export interface HhPublicationOriginalApiData {
   hh_vacancy_id: string;
   synced_at: string | null;
@@ -167,10 +200,12 @@ export interface HhPublicationOriginalApiData {
 /**
  * Снимок полей публикации hh.ru (hh_vacancy_originals + hh_vacancy_original_fields), ключи в `original` с суффиксом _original.
  * @param refresh — query refresh=1, повторный запрос к api.hh.ru
+ * @param noSnapshot — query no_snapshot=1, не писать снимок в БД при обращении к hh.ru (карточка «Опубликовать»)
  */
 export const getHhPublicationOriginal = async (
   vacancyId: string | number,
-  refresh = false
+  refresh = false,
+  noSnapshot = false
 ): Promise<{ data: HhPublicationOriginalApiData | null; error: string | null }> => {
   const config = useRuntimeConfig();
   const serverTokenCookie = useCookie('auth_token');
@@ -180,7 +215,10 @@ export const getHhPublicationOriginal = async (
   if (!serverToken || !userToken) {
     return { data: null, error: 'Нет токена авторизации' };
   }
-  const q = refresh ? '?refresh=1' : '';
+  const params = new URLSearchParams();
+  if (refresh) params.set('refresh', '1');
+  if (noSnapshot) params.set('no_snapshot', '1');
+  const q = params.toString() ? `?${params.toString()}` : '';
   try {
     const response = await $fetch<{
       message?: string;

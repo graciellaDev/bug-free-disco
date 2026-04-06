@@ -10,7 +10,6 @@ export type HhPublicationGroupId = 'basic' | 'conditions';
 export type JoblyVacancyKey =
   | 'name'
   | 'description'
-  | 'code'
   | 'industry'
   | 'specializations'
   | 'employment'
@@ -50,13 +49,11 @@ export const HH_PUBLICATION_SECTIONS: Record<
 > = {
   basic: {
     titleRu: 'Текст и профессиональная роль',
-    subtitleRu:
-      'Параметры API hh.ru: name, description, code, professional_roles.',
+    subtitleRu: 'Укажите название, специализацию и базовые сведения о позиции.',
   },
   conditions: {
     titleRu: 'Условия работы и размещение',
-    subtitleRu:
-      'employment_form, work_format, schedule, work_schedule_by_days, address, area, experience, education_level, salary_range, driver_license_types, vacancy_properties и др.',
+    subtitleRu: 'Заполните занятость, график, зарплату, адрес и связанные поля.',
   },
 };
 
@@ -71,12 +68,6 @@ export const HH_PUBLICATION_FIELD_REGISTRY: HhPublicationFieldMeta[] = [
     hhApiKey: 'description',
     labelRu: 'Описание',
     joblyVacancyKeys: ['description'],
-    group: 'basic',
-  },
-  {
-    hhApiKey: 'code',
-    labelRu: 'Код вакансии',
-    joblyVacancyKeys: ['code'],
     group: 'basic',
   },
   {
@@ -150,12 +141,6 @@ export const HH_ORIGINAL_POPUP_FIELDS: HhOriginalPopupFieldMeta[] = [
     labelRu: 'Описание',
     group: 'basic',
     uiKind: 'textarea',
-  },
-  {
-    hhApiKey: 'code',
-    labelRu: 'Код вакансии',
-    group: 'basic',
-    uiKind: 'text',
   },
   {
     hhApiKey: 'professional_roles',

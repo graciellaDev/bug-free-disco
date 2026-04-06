@@ -110,12 +110,42 @@
     }
   );
 
+  /** Сколько модалок сейчас открыто — чтобы при вложенных попапах вернуть scroll только когда все закрыты */
+  let bodyScrollLockCount = 0;
+
+  function lockDocumentScroll() {
+    bodyScrollLockCount += 1;
+    if (bodyScrollLockCount === 1) {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function unlockDocumentScroll() {
+    if (bodyScrollLockCount < 1) return;
+    bodyScrollLockCount -= 1;
+    if (bodyScrollLockCount === 0) {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  watch(
+    isOpenValue,
+    open => {
+      if (open) lockDocumentScroll();
+      else unlockDocumentScroll();
+    },
+    { immediate: true }
+  );
+
   onMounted(() => {
     checkScrollbar();
     window.addEventListener('resize', checkScrollbar);
   });
 
   onBeforeUnmount(() => {
+    if (isOpenValue.value) unlockDocumentScroll();
     window.removeEventListener('resize', checkScrollbar);
   });
 </script>
@@ -123,7 +153,7 @@
 <template>
   <div
     v-if="isOpenValue"
-    class="fixed inset-0 z-50 flex items-center justify-center"
+    class="fixed inset-0 z-50 flex items-center justify-center overscroll-none"
     @click.self="closePopup"
     :class="[
       props.noBackdrop ? 'bg-transparent' : 'bg-black bg-opacity-50',
@@ -202,7 +232,14 @@
           </button>
           <template v-if="noScrollbarGutter">
             <!-- Отступ справа у контента задаётся внутри слота у overflow-контейнера, иначе полоса оказывается левее края -->
-            <div class="min-h-0">
+            <div
+              class="min-h-0 w-full max-w-full"
+              :style="
+                disableOverflowHidden
+                  ? { maxHeight: maxHeightValue }
+                  : undefined
+              "
+            >
               <slot />
             </div>
           </template>
