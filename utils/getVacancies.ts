@@ -157,6 +157,120 @@ export const getVacancy = async (id: String) => {
   }
 };
 
+export interface HhPublicationOriginalApiData {
+  hh_vacancy_id: string;
+  synced_at: string | null;
+  original: Record<string, unknown>;
+  payload_original?: Record<string, unknown> | null;
+}
+
+/**
+ * Снимок полей публикации hh.ru (hh_vacancy_originals + hh_vacancy_original_fields), ключи в `original` с суффиксом _original.
+ * @param refresh — query refresh=1, повторный запрос к api.hh.ru
+ */
+export const getHhPublicationOriginal = async (
+  vacancyId: string | number,
+  refresh = false
+): Promise<{ data: HhPublicationOriginalApiData | null; error: string | null }> => {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return { data: null, error: 'Нет токена авторизации' };
+  }
+  const q = refresh ? '?refresh=1' : '';
+  try {
+    const response = await $fetch<{
+      message?: string;
+      data?: HhPublicationOriginalApiData;
+    }>(`/vacancies/${vacancyId}/hh-publication-original${q}`, {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    return { data: response?.data ?? null, error: null };
+  } catch (err: unknown) {
+    const e = err as { data?: { message?: string }; response?: { status?: number; _data?: { message?: string } } };
+    const msg =
+      e?.data?.message ||
+      e?.response?._data?.message ||
+      (err instanceof Error ? err.message : 'Ошибка загрузки данных hh.ru');
+    if (e?.response?.status === 401) {
+      const userStore = useUserStore();
+      userStore.clearUserData();
+      serverTokenCookie.value = null;
+      userTokenCookie.value = null;
+      navigateTo('/auth');
+    }
+    return { data: null, error: typeof msg === 'string' ? msg : 'Ошибка загрузки данных hh.ru' };
+  }
+};
+
+/**
+ * Сохранить черновик полей вакансии на hh.ru (PUT api.hh.ru/vacancies/{id}) и обновить снимок в БД.
+ */
+export const putHhPublicationOriginal = async (
+  vacancyId: string | number,
+  payload: Record<string, unknown>
+): Promise<{
+  data: HhPublicationOriginalApiData | null;
+  error: string | null;
+  errors?: unknown;
+}> => {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return { data: null, error: 'Нет токена авторизации' };
+  }
+  try {
+    const response = await $fetch<{
+      message?: string;
+      data?: HhPublicationOriginalApiData;
+      errors?: unknown;
+    }>(`/vacancies/${vacancyId}/hh-publication-original`, {
+      method: 'PUT',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: { payload },
+    });
+    return { data: response?.data ?? null, error: null };
+  } catch (err: unknown) {
+    const e = err as {
+      data?: { message?: string; errors?: unknown };
+      response?: { status?: number; _data?: { message?: string; errors?: unknown } };
+    };
+    const body = e?.data ?? e?.response?._data;
+    const msg =
+      body?.message ||
+      (err instanceof Error ? err.message : 'Ошибка сохранения на hh.ru');
+    if (e?.response?.status === 401) {
+      const userStore = useUserStore();
+      userStore.clearUserData();
+      serverTokenCookie.value = null;
+      userTokenCookie.value = null;
+      navigateTo('/auth');
+    }
+    return {
+      data: null,
+      error: typeof msg === 'string' ? msg : 'Ошибка сохранения на hh.ru',
+      errors: body?.errors,
+    };
+  }
+};
+
 export const getVacanciesNames = async () => {
   const vacancies: any = await getVacancies();
   return (

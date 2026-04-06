@@ -426,7 +426,7 @@
             </div>
         </Popup>
 
-        <!-- Попап импорта публикаций -->
+        <!-- Попап импорта публикаций (отступы как у DeleteConfirmPopup: один слой p-25px снаружи) -->
         <Popup
             :isOpen="isImportPopupOpen"
             @close="closeImportPopup"
@@ -435,16 +435,27 @@
             :height="'fit-content'"
             :disableOverflowHidden="true"
             maxHeight
+            :lgSize="true"
+            :parentRounded="true"
+            :contentRounded="false"
+            :contentPadding="false"
+            :noScrollbarGutter="true"
         >
-            <div>
-                <div class="flex items-center justify-between mb-25px">
+            <div class="flex flex-col gap-6 pr-25px">
+                <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="text-xl font-semibold text-space mb-1">Импорт публикаций</p>
-                        <p class="text-sm font-normal text-slate-custom">
+                        <p class="text-xl font-semibold text-space">Импорт публикаций</p>
+                        <p class="text-sm font-normal text-slate-custom mt-1">
                             Публикации с платформы {{ selectedImportPlatform }}
                         </p>
+                        <p
+                            v-if="isHhImportBackfillLoading && selectedImportPlatform === 'hh.ru' && !isLoadingImport"
+                            class="text-xs font-normal text-slate-custom mt-1"
+                        >
+                            Загружаем полный список с hh.ru…
+                        </p>
                     </div>
-                    <button @click="closeImportPopup" class="text-slate-custom hover:text-space transition-colors">
+                    <button type="button" @click="closeImportPopup" class="shrink-0 text-slate-custom hover:text-space transition-colors">
                         <svg-icon name="close" width="20" height="20" />
                     </button>
                 </div>
@@ -464,61 +475,56 @@
                 </div>
 
                 <!-- Список публикаций -->
-                <div v-else-if="importedPublications.length > 0" class="max-h-[400px] overflow-y-auto">
-                    <div class="import-table">
-                        <!-- Хедер таблицы -->
-                        <div class="import-table-header">
-                            <div class="px-2.5">Название</div>
-                            <div class="px-2.5">Регион</div>
-                            <div class="px-2.5">Зарплата</div>
-                            <div class="px-2.5">Статус</div>
-                            <div>Действие</div>
-                        </div>
-                        <!-- Строки таблицы -->
-                        <div
-                            v-for="pub in importedPublications"
-                            :key="pub.id"
-                            class="import-table-row"
-                        >
-                            <div class="text-sm font-medium text-space px-2.5 truncate">{{ pub.name }}</div>
-                            <div class="text-sm font-normal text-slate-custom px-2.5">{{ pub.area?.name || '—' }}</div>
-                            <div class="text-sm font-normal text-slate-custom px-2.5">
-                                <template v-if="pub.salary">
-                                    {{ pub.salary.from ? `от ${pub.salary.from}` : '' }}
-                                    {{ pub.salary.to ? `до ${pub.salary.to}` : '' }}
-                                    {{ pub.salary.currency || '' }}
-                                </template>
-                                <template v-else>Не указана</template>
+                <template v-else-if="importedPublications.length > 0">
+                    <MyInput
+                        v-model="importSearchQuery"
+                        placeholder="Поиск по названию или региону"
+                        :search="true"
+                    />
+                    <div v-if="filteredImportedPublications.length === 0" class="py-40px text-center">
+                        <p class="text-sm font-normal text-slate-custom">Ничего не найдено</p>
+                    </div>
+                    <div v-else class="max-h-[400px] overflow-y-auto">
+                        <div class="import-table">
+                            <div class="import-table-header">
+                                <div class="px-2.5">Название</div>
+                                <div class="px-2.5">Регион</div>
+                                <div class="px-2.5">Статус</div>
+                                <div>Действие</div>
                             </div>
-                            <div class="px-2.5">
-                                <span
-                                    class="text-xs font-medium px-2 py-1 rounded-md"
-                                    :class="hhPublicationStatusBadgeClass(pub.status)"
-                                >
-                                    {{ hhPublicationStatusLabelFromApi(pub.status) }}
-                                </span>
-                            </div>
-                            <div class="flex justify-end">
-                                <UiButton
-                                    class="p-btn"
-                                    variant="action"
-                                    size="small"
-                                    @click="importPublication(pub)"
-                                    :disabled="!!pub.isImported || isLoadingImport"
-                                >
-                                    {{ pub.isImported ? 'Импортировано' : (isLoadingImport ? 'Импорт...' : 'Импорт') }}
-                                </UiButton>
+                            <div
+                                v-for="pub in filteredImportedPublications"
+                                :key="pub.id"
+                                class="import-table-row"
+                            >
+                                <div class="text-sm font-medium text-space px-2.5 truncate" :title="pub.name">{{ pub.name }}</div>
+                                <div class="text-sm font-normal text-slate-custom px-2.5 min-w-0">{{ pub.area?.name || '—' }}</div>
+                                <div class="px-2.5">
+                                    <span :class="hhPublicationStatusBadgeClass(pub.status)">
+                                        {{ hhPublicationStatusLabelFromApi(pub.status) }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-end">
+                                    <UiButton
+                                        :variant="pub.isImported ? 'back' : 'semiaction'"
+                                        :size="pub.isImported ? 'second-back' : 'semiaction'"
+                                        @click="importPublication(pub)"
+                                        :disabled="!!pub.isImported || isLoadingImport"
+                                    >
+                                        {{ pub.isImported ? 'Импортировано' : (isLoadingImport ? 'Импорт...' : 'Импорт') }}
+                                    </UiButton>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </template>
 
                 <!-- Пустой список -->
                 <div v-else class="py-40px text-center">
                     <p class="text-sm font-normal text-slate-custom">Публикации не найдены</p>
                 </div>
 
-                <div class="flex justify-end mt-25px pt-25px border-t border-athens">
+                <div class="flex justify-end">
                     <UiButton variant="back" size="back" @click="closeImportPopup">
                         Закрыть
                     </UiButton>
@@ -534,29 +540,66 @@
             :height="'fit-content'"
             :showCloseButton="false"
             :disableOverflowHidden="true"
+            :contentPadding="false"
+            :noScrollbarGutter="true"
             maxHeight
         >
-            <div class="p-25px max-h-[90vh] overflow-y-auto">
-                <div class="flex items-center justify-between mb-25px">
-                    <div>
-                        <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии</p>
-                        <p class="text-sm font-normal text-slate-custom">
-                            Редактирование вакансии из таблицы "Активные публикации"
-                        </p>
+            <div class="max-h-[90vh] overflow-y-auto">
+                <div class="pr-25px">
+                    <div class="flex items-center justify-between mb-15px">
+                        <div>
+                            <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии</p>
+                            <p class="text-sm font-normal text-slate-custom">
+                                Редактирование вакансии из таблицы "Активные публикации"
+                            </p>
+                        </div>
+                        <button @click="closeEditPopup" class="text-slate-custom hover:text-space transition-colors">
+                            <svg-icon name="close" width="20" height="20" />
+                        </button>
                     </div>
-                    <button @click="closeEditPopup" class="text-slate-custom hover:text-space transition-colors">
-                        <svg-icon name="close" width="20" height="20" />
-                    </button>
+                    <div class="mb-15px mt-15px border-t"></div>
+                    <div class="relative min-h-[220px]">
+                        <div
+                            v-if="isEditPublicationLoading"
+                            class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-fifteen bg-white/95 py-12"
+                            aria-busy="true"
+                            aria-live="polite"
+                        >
+                            <div class="loader mb-15px"></div>
+                            <p class="text-sm font-normal text-slate-custom">Загрузка данных вакансии…</p>
+                        </div>
+                        <AddPublication
+                            v-if="editingVacancy"
+                            :key="'edit-pub-' + editingVacancy.id"
+                            :selectedPlatform="null"
+                            :editingVacancy="editingVacancy"
+                            @saved="handleVacancyUpdated"
+                            @cancel="closeEditPopup"
+                            @form-ready="onEditPublicationFormReady"
+                        />
+                    </div>
                 </div>
-                <div class="mb-25px mt-25px border-t"></div>
-                <AddPublication 
-                    v-if="editingVacancy"
-                    :selectedPlatform="null"
-                    :editingVacancy="editingVacancy"
-                    @saved="handleVacancyUpdated"
-                    @cancel="closeEditPopup"
-                />
             </div>
+        </Popup>
+
+        <Popup
+            :isOpen="isHhOriginalPopupOpen"
+            @close="closeHhOriginalPopup"
+            :width="'900px'"
+            :height="'auto'"
+            :showCloseButton="false"
+            :disableOverflowHidden="true"
+            :contentPadding="false"
+            :noScrollbarGutter="true"
+            :noOuterPadding="true"
+            :max-height-value="'90vh'"
+        >
+            <HhOriginalVacancyPopup
+                v-if="hhOriginalVacancyApiId != null && isHhOriginalPopupOpen"
+                :vacancy-id="hhOriginalVacancyApiId"
+                @close="closeHhOriginalPopup"
+                @saved="onHhOriginalVacancySavedToHh"
+            />
         </Popup>
 
         <Popup
@@ -567,22 +610,26 @@
             :showCloseButton="false"
             :disableOverflowHidden="true"
             :overflowContainer="true"
+            :contentPadding="false"
+            :noScrollbarGutter="true"
             maxHeight
             :lgSize="true"
         >
-            <div class="p-25px max-h-[90vh] overflow-y-auto">
-                <div class="flex items-center justify-between mb-25px">
-                    <div>
-                        <p class="text-xl font-semibold text-space mb-1">Публикация вакансии</p>
-                        <p class="text-sm font-normal text-slate-custom">
-                            Заполните форму для публикации вакансии на выбранной платформе
-                        </p>
+            <div class="max-h-[90vh] overflow-y-auto">
+                <div class="pr-25px">
+                    <div class="flex items-center justify-between mb-15px">
+                        <div>
+                            <p class="text-xl font-semibold text-space mb-1">Публикация вакансии</p>
+                            <p class="text-sm font-normal text-slate-custom">
+                                Заполните форму для публикации вакансии на выбранной платформе
+                            </p>
+                        </div>
+                        <button @click="closeCreatePublicationPopup" class="text-slate-custom hover:text-space transition-colors">
+                            <svg-icon name="close" width="20" height="20" />
+                        </button>
                     </div>
-                    <button @click="closeCreatePublicationPopup" class="text-slate-custom hover:text-space transition-colors">
-                        <svg-icon name="close" width="20" height="20" />
-                    </button>
+                    <AddPublication :selectedPlatform="selectedPlatformForPublish" @cancel="closeCreatePublicationPopup"/>
                 </div>
-                <AddPublication :selectedPlatform="selectedPlatformForPublish" @cancel="closeCreatePublicationPopup"/>
             </div>
         </Popup>
 
@@ -732,6 +779,7 @@ import DotsDropdown from '~/components/custom/DotsDropdown.vue';
 import CardIcon from '~/components/custom/CardIcon.vue';
 import Popup from '~/components/custom/Popup.vue';
 import AddPublication from "~/components/platforms/AddPublication.vue";
+import HhOriginalVacancyPopup from "~/components/platforms/HhOriginalVacancyPopup.vue";
 import MultiDropdown from "~/components/custom/MultiDropdown.vue";
 import MyInput from '~/components/custom/MyInput.vue';
 import TiptapEditor from '~/components/TiptapEditor.vue';
@@ -928,9 +976,25 @@ const unlinkError = ref(null);
 // Попап импорта публикаций
 const isImportPopupOpen = ref(false);
 const isLoadingImport = ref(false);
+/** Догрузка полного списка hh.ru после быстрого first_page_only */
+const isHhImportBackfillLoading = ref(false);
 const importedPublications = ref([]);
 const importError = ref(null);
 const selectedImportPlatform = ref(null);
+const importSearchQuery = ref('');
+
+const filteredImportedPublications = computed(() => {
+    const list = importedPublications.value;
+    const q = importSearchQuery.value.trim().toLowerCase();
+    if (!q) {
+        return list;
+    }
+    return list.filter(pub => {
+        const name = String(pub.name || pub.title || '').toLowerCase();
+        const area = String(pub.area?.name || '').toLowerCase();
+        return name.includes(q) || area.includes(q);
+    });
+});
 
 // Функция для загрузки вакансий с платформ
 async function loadPublicationPlatforms() {
@@ -1720,18 +1784,99 @@ function handlePlatformDropdown(item, platformName) {
     }
 }
 
+function applyImportResultToList(result, platformName) {
+    const publications = result?.roles?.items || [];
+
+    if (publications.length === 0) {
+        console.log('Список публикаций пуст для платформы:', platformName);
+        importedPublications.value = [];
+        return;
+    }
+
+    const platformId = getPlatformId(platformName);
+
+    if (!platformId) {
+        console.warn('Не удалось определить platform_id для платформы:', platformName);
+        importedPublications.value = publications.map((pub) => ({
+            ...pub,
+            isImported: false,
+        }));
+        return;
+    }
+
+    console.log(`Начинаем проверку импорта для ${publications.length} публикаций платформы ${platformName} (platform_id: ${platformId})`);
+    console.log(`Используем существующий список активных публикаций для проверки: ${publicationPlatforms.value.length} вакансий`);
+    console.log('publicationPlatforms.value:', publicationPlatforms.value);
+
+    importedPublications.value = publications.map((pub) => {
+        const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
+        if (!publicationId) {
+            console.warn(`Публикация без ID для платформы ${platformName}:`, pub);
+            return {
+                ...pub,
+                isImported: false,
+            };
+        }
+
+        console.log(`Проверка публикации для платформы ${platformName}:`, {
+            publicationId,
+            pubId: pub.id,
+            pubVacancyId: pub.vacancy_id,
+            pubVacancyIdAlt: pub.vacancyId,
+            name: pub.name || pub.title || 'без названия',
+            platformsCount: publicationPlatforms.value.length,
+        });
+
+        const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
+        console.log(`Результат проверки публикации ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
+
+        return {
+            ...pub,
+            isImported: !!isImported,
+        };
+    });
+
+    const importedCount = importedPublications.value.filter((p) => p.isImported).length;
+    console.log(`Проверка импорта завершена для платформы ${platformName}:`, {
+        total: importedPublications.value.length,
+        imported: importedCount,
+        notImported: importedPublications.value.length - importedCount,
+        details: importedPublications.value.map((p) => ({ id: p.id, name: p.name, isImported: p.isImported })),
+    });
+}
+
 async function openImportPopup(platformName) {
     selectedImportPlatform.value = platformName;
     importError.value = null;
     importedPublications.value = [];
+    importSearchQuery.value = '';
     isImportPopupOpen.value = true;
     isLoadingImport.value = true;
+    isHhImportBackfillLoading.value = false;
 
     try {
         // Для hh.ru, rabota.ru и avito.ru загружаем и активные, и архивные публикации
         let result;
         if (platformName === 'hh.ru') {
-            result = await getAllPublications();
+            const quick = await getAllPublications({ firstPageOnly: true });
+            if (quick?.error || quick?.errorRoles) {
+                importError.value = quick?.error || quick?.errorRoles || 'Ошибка при загрузке публикаций';
+                return;
+            }
+            applyImportResultToList(quick, platformName);
+            isLoadingImport.value = false;
+            isHhImportBackfillLoading.value = true;
+            getAllPublications({ firstPageOnly: false })
+                .then((full) => {
+                    if (full && !full.error && !full.errorRoles) {
+                        applyImportResultToList(full, platformName);
+                    }
+                })
+                .catch((e) => console.error('Полный список публикаций hh.ru:', e))
+                .finally(() => {
+                    isHhImportBackfillLoading.value = false;
+                });
+            return;
         } else if (platformName === 'rabota.ru') {
             result = await getAllPublicationsRabota();
         } else if (platformName === 'avito.ru') {
@@ -1826,6 +1971,8 @@ function closeImportPopup() {
     importedPublications.value = [];
     importError.value = null;
     selectedImportPlatform.value = null;
+    importSearchQuery.value = '';
+    isHhImportBackfillLoading.value = false;
 }
 
 /**
@@ -2190,15 +2337,27 @@ async function importPublication(publication) {
         // Перепроверяем все публикации в списке после успешного импорта и обновления списка вакансий
         // Функция recheckImportedPublications проверит все публикации на наличие в активных публикациях
         await recheckImportedPublications();
-        
-        // Показываем успешное сообщение (опционально)
+
+        // Сразу подтянуть просмотры/отклики в таблицу (polling стартует refresh без await)
+        if (currentVacancyId && publicationPlatforms.value.length > 0) {
+            try {
+                await refreshPublicationPlatformsStats();
+            } catch (statsErr) {
+                console.warn('Не удалось сразу обновить статистику публикаций:', statsErr);
+            }
+        }
+
+        const pubTitle = publication.name || publication.title || 'Вакансия';
+        showPublicationToastMessage(`Публикация «${pubTitle}» успешно импортирована`);
+        closeImportPopup();
+
         console.log('Публикация успешно импортирована:', {
             platform: platform,
             publicationId: publicationId || publication.id,
             vacancyId: createdVacancy.data.id,
             name: publication.name || publication.title,
             platform_id: vacancyData.platform_id,
-            base_id: vacancyData.base_id
+            base_id: vacancyData.base_id,
         });
         
     } catch (err) {
@@ -2488,6 +2647,18 @@ watch(allSelected, (newValue) => {
 // Состояние для редактирования вакансии
 const isEditPopupOpen = ref(false);
 const editingVacancy = ref(null);
+/** Прелоадер в модалке «Редактирование вакансии» до окончания async setup AddPublication */
+const isEditPublicationLoading = ref(false);
+/** Попап полей оригинала hh.ru (отдельное хранилище, не форма Jobly). */
+const isHhOriginalPopupOpen = ref(false);
+const hhOriginalEditRow = ref(null);
+/** ID записи вакансии в CRM для строки таблицы — совпадает с vacancy_id в vacancy_platform. */
+const hhOriginalVacancyApiId = computed(() => {
+    const row = hhOriginalEditRow.value;
+    if (!row) return null;
+    const id = Number(row.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+});
 
 const archiveConfirmOpen = ref(false);
 const archiveTargetItem = ref(null);
@@ -2624,9 +2795,24 @@ async function handleArchivePublication(vacancyItem) {
     loadPublicationPlatforms();
 }
 
+function closeHhOriginalPopup() {
+    isHhOriginalPopupOpen.value = false;
+    hhOriginalEditRow.value = null;
+}
+
+function onHhOriginalVacancySavedToHh() {
+    showPublicationToastMessage('Вакансия сохранена на hh.ru', 'success');
+}
+
 // Обработчик действий из dropdown
 const handleDropdownAction = (action, vacancyItem) => {
     if (action === "Редактировать текст") {
+        const pd = vacancyItem?.platforms_data?.[0];
+        if (pd?.id === 1) {
+            hhOriginalEditRow.value = vacancyItem;
+            isHhOriginalPopupOpen.value = true;
+            return;
+        }
         openEditPopup(vacancyItem);
     } else if (action === "Посмотреть публикацию") {
         const url = getPublicationViewUrl(vacancyItem);
@@ -2650,6 +2836,7 @@ const handleDropdownAction = (action, vacancyItem) => {
 
 // Открытие попапа редактирования
 const openEditPopup = (vacancyItem) => {
+    isEditPublicationLoading.value = true;
     editingVacancy.value = vacancyItem;
     isEditPopupOpen.value = true;
 };
@@ -2657,8 +2844,13 @@ const openEditPopup = (vacancyItem) => {
 // Закрытие попапа редактирования
 const closeEditPopup = () => {
     isEditPopupOpen.value = false;
+    isEditPublicationLoading.value = false;
     editingVacancy.value = null;
 };
+
+function onEditPublicationFormReady() {
+    isEditPublicationLoading.value = false;
+}
 
 // Закрытие попапа создания публикации
 const closeCreatePublicationPopup = () => {
@@ -2765,7 +2957,7 @@ const openPopupNewPublication = (platformName) => {
 .import-table-header,
 .import-table-row {
     display: grid;
-    grid-template-columns: 28% 18% 18% 12% 11%;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto minmax(112px, auto);
     gap: 15px;
     padding: 15px 20px;
     align-items: center;

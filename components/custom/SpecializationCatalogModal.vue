@@ -14,7 +14,7 @@
         @click="closeModal"
       />
       <div
-        class="relative w-full max-w-[480px] rounded-fifteen border border-athens bg-white shadow-lg flex flex-col max-h-[90vh]"
+        class="relative w-full max-w-[480px] overflow-hidden rounded-fifteen border border-athens bg-white shadow-lg flex flex-col max-h-[90vh]"
         :class="props.class"
         @click.stop
       >

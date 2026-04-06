@@ -23,12 +23,15 @@ export function hhPublicationStatusLabelFromApi(status: string | null | undefine
   return String(status);
 }
 
-/** Классы бейджа в таблице импорта (согласованы с PublishTab). */
-export function hhPublicationStatusBadgeClass(status: string | null | undefined): Record<string, boolean> {
-  return {
-    'bg-green-100 text-green-600': status === 'published' || status === 'active',
-    'bg-orange-100 text-orange-600': status === 'archived',
-    'bg-gray-100 text-slate-custom':
-      !status || (status !== 'published' && status !== 'active' && status !== 'archived'),
-  };
+/** Бейдж статуса в таблице импорта — те же нейтральные стили, что у полей формы (athens / athens-gray). */
+export function hhPublicationStatusBadgeClass(status: string | null | undefined): string {
+  const base =
+    'inline-flex items-center border px-2 py-1 rounded-ten text-xs font-medium bg-athens-gray border-athens';
+  if (status === 'published' || status === 'active') {
+    return `${base} text-space`;
+  }
+  if (status === 'archived') {
+    return `${base} text-slate-custom`;
+  }
+  return `${base} text-slate-custom`;
 }

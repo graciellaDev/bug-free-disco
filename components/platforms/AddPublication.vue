@@ -2,7 +2,15 @@
   <div class="container p-0">
     <div class="flex gap-x-[24px]">
       <div class="max-w-[100%] flex-grow bg-white rounded-fifteen">
-        <p class="text-space text-xl font-semibold mb-8">
+        <template v-if="currentPlatform === 'hh'">
+          <p class="text-space text-xl font-semibold mb-2">
+            {{ HH_PUBLICATION_SECTIONS.basic.titleRu }}
+          </p>
+          <p class="text-xs text-bali mb-8 leading-normal">
+            {{ HH_PUBLICATION_SECTIONS.basic.subtitleRu }}
+          </p>
+        </template>
+        <p v-else class="text-space text-xl font-semibold mb-8">
           Основная информация
         </p>
         <div class="w-full justify-between flex gap-25px mb-6">
@@ -10,14 +18,16 @@
             <p class="text-sm font-medium mb-4 leading-normal"
               :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
-              Название должности
+              <template v-if="currentPlatform === 'hh'">Название (API: <span class="font-mono text-11px">name</span>)</template>
+              <template v-else>Название должности</template>
             </p>
             <MyInput placeholder="Например, Менеджер по продажам" v-model="data.name"
               @update:model-value="($event) => updateValidField('name', $event.trim() !== '')" />
           </div>
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Код вакансии
+              <template v-if="currentPlatform === 'hh'">Код (API: <span class="font-mono text-11px">code</span>)</template>
+              <template v-else>Код вакансии</template>
             </p>
             <MyInput placeholder="Код вакансии" v-model="data.code" />
           </div>
@@ -46,7 +56,7 @@
             <p class="text-sm font-medium leading-normal"
               :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
-              Специализация сотрудника
+              Специализация (<span class="font-mono text-11px">professional_roles</span>)
             </p>
             <span class="inline-flex items-center cursor-help">
               <svg-icon name="question" width="16" height="16" />
@@ -91,7 +101,8 @@
               <p class="text-sm font-medium leading-normal"
                 :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'">
                 <span class="text-red-custom">*</span>
-                Опыт работы
+                <template v-if="currentPlatform === 'hh'">Опыт (<span class="font-mono text-11px">experience</span>)</template>
+                <template v-else>Опыт работы</template>
               </p>
               <span v-if="currentPlatform === 'hh' || hideScheduleBlockForSuperjob" class="inline-flex items-center cursor-help">
                 <svg-icon name="question" width="16" height="16" />
@@ -131,7 +142,15 @@
           <div class="mb-25px mt-25px border-t"></div>
         </template>
         <template v-else>
-          <p class="text-space text-xl font-semibold mb-8">
+          <template v-if="currentPlatform === 'hh'">
+            <p class="text-space text-xl font-semibold mb-2">
+              {{ HH_PUBLICATION_SECTIONS.conditions.titleRu }}
+            </p>
+            <p class="text-xs text-bali mb-8 leading-normal">
+              {{ HH_PUBLICATION_SECTIONS.conditions.subtitleRu }}
+            </p>
+          </template>
+          <p v-else class="text-space text-xl font-semibold mb-8">
             Условия работы
           </p>
           <template v-if="currentPlatform === 'hh'">
@@ -153,7 +172,7 @@
             <div class="w-full mb-6">
               <p class="text-sm font-medium text-space mb-3.5">
                 <span class="text-red-custom">*</span>
-                Тип занятости
+                Тип занятости (<span class="font-mono text-11px">employment_form</span>)
               </p>
               <div class="flex w-full gap-2">
                 <button v-for="opt in hhEmploymentOptionsForType" :key="opt.id" type="button"
@@ -439,14 +458,23 @@
           </div>
         </div>
         <div class="mb-25px mt-25px border-t"></div>
-        <p class="text-space text-xl font-semibold mb-8">
+        <template v-if="currentPlatform === 'hh'">
+          <p class="text-space text-xl font-semibold mb-2">
+            Описание и навыки
+          </p>
+          <p class="text-xs text-bali mb-8 leading-normal">
+            API hh.ru: <span class="font-mono">description</span> (HTML), ключевые навыки — <span class="font-mono">key_skills</span> в форме / словарь HH при отправке.
+          </p>
+        </template>
+        <p v-else class="text-space text-xl font-semibold mb-8">
           Описание вакансии
         </p>
         <div id="description" class="w-full anchor">
           <p class="text-sm font-medium mb-3.5"
             :class="validFields.description.status === false ? 'text-red-custom' : 'text-space'">
             <span class="text-red-custom">*</span>
-            Текст вакансии
+            <template v-if="currentPlatform === 'hh'">Текст вакансии (API: <span class="font-mono text-11px">description</span>)</template>
+            <template v-else>Текст вакансии</template>
           </p>
           <GenerateButton></GenerateButton>
           <div class="mt-15px mb-25px">
@@ -462,7 +490,8 @@
           <div class="flex gap-25px">
             <div class="w-full">
               <p class="text-sm font-medium text-space mb-13px">
-                Навыки
+                <template v-if="currentPlatform === 'hh'">Ключевые навыки (<span class="font-mono text-11px">key_skills</span>)</template>
+                <template v-else>Навыки</template>
               </p>
               <TagSelect :options="[]" :model-value="data.key_skills ? data.key_skills : []" :is-new="true"
                 :placeholder="'Например, Активный'" @enter="$event => updateSkills($event)"
@@ -639,8 +668,9 @@ import {
   SUPERJOB_EMPLOYMENT_CONDITIONS,
   HH_BILLING_TYPES,
 } from '@/src/constants'
+import { HH_OFORMLENIE_MULTISELECT_OPTIONS } from '@/utils/hhVacancyPayloadConstants'
 import experience from '~/src/data/experience.json'
-import { inject, watch, computed, defineProps, nextTick } from 'vue'
+import { inject, watch, computed, defineProps, nextTick, onMounted } from 'vue'
 
 const props = defineProps({
   selectedPlatform: {
@@ -653,7 +683,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['saved', 'cancel'])
+const emit = defineEmits(['saved', 'cancel', 'form-ready'])
 const isEditingMode = computed(() => props.editingVacancy != null)
 
 import {
@@ -664,7 +694,8 @@ import {
   getRoles as getRolesHh,
   getAreas as getAreasHh,
   getAddresses as getAddressesHh,
-  getAvailablePublications as getAvailablePublicationsHh
+  getAvailablePublications as getAvailablePublicationsHh,
+  getPublication as getHhPublicationById,
 } from '@/utils/hhAccount'
 import { addDraft as addDraftAvito, getProfile as profileAvito, publishVacancy as publishVacancyToAvito, getProfessions as getProfessionsAvito, getSpecializations as getSpecializationsAvito } from '@/utils/avitoAccount'
 import {
@@ -684,6 +715,8 @@ import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFiel
 import { useRoute } from 'vue-router'
 import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
+import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
+import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
 
 /** Уникальные города по названию (первое вхождение) — для чистого списка без дублей */
 function dedupeAreasByName(arr) {
@@ -1151,6 +1184,79 @@ const computedIndustry = ref(null)
 const computedProfessionalRole = ref(null)
 const computedCity = ref(null)
 
+/** Нормализация подписи специализации для сравнения с каталогом hh.ru */
+function normalizeSpecLabel(s) {
+  return String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/**
+ * Импорт с hh.ru кладёт в БД в основном строку specializations (из name ролей), без industry.
+ * Ищем объект роли и родительскую категорию по всему каталогу professional_roles.
+ */
+function findHhRoleInFullCatalog(specializations, categories) {
+  if (specializations == null || specializations === '' || !categories?.length) {
+    return null
+  }
+
+  const matchByPredicate = (predicate) => {
+    for (const cat of categories) {
+      const roles = cat?.roles && Array.isArray(cat.roles) ? cat.roles : []
+      for (const r of roles) {
+        if (predicate(r)) return { role: r, category: cat }
+      }
+    }
+    return null
+  }
+
+  if (typeof specializations === 'object') {
+    if (specializations.id != null && String(specializations.id).trim() !== '') {
+      const idStr = String(specializations.id).trim()
+      const byId = matchByPredicate((r) => r.id != null && String(r.id) === idStr)
+      if (byId) return byId
+    }
+    if (specializations.name) {
+      const target = normalizeSpecLabel(specializations.name)
+      const byName = matchByPredicate((r) => r?.name && normalizeSpecLabel(r.name) === target)
+      if (byName) return byName
+    }
+    return null
+  }
+
+  if (typeof specializations !== 'string') return null
+
+  const raw = specializations.trim()
+  if (!raw) return null
+
+  if (/^\d+$/.test(raw)) {
+    const byId = matchByPredicate((r) => r.id != null && String(r.id) === raw)
+    if (byId) return byId
+  }
+
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean)
+  const candidates = parts.length > 0 ? parts : [raw]
+
+  for (const part of candidates) {
+    const n = normalizeSpecLabel(part)
+    if (!n) continue
+    let hit = matchByPredicate((r) => r?.name && normalizeSpecLabel(r.name) === n)
+    if (hit) return hit
+  }
+  for (const part of candidates) {
+    const n = normalizeSpecLabel(part)
+    if (!n || n.length < 4) continue
+    const hit = matchByPredicate((r) => {
+      if (!r?.name) return false
+      const rn = normalizeSpecLabel(r.name)
+      return rn.includes(n) || n.includes(rn)
+    })
+    if (hit) return hit
+  }
+  return null
+}
+
 // Функция для обновления ref переменных
 const updateComputedValues = () => {
   const vacancy = globCurrentVacancy.value || vacancyData.value;
@@ -1181,24 +1287,53 @@ const updateComputedValues = () => {
     computedIndustry.value = null;
   }
 
-  // Обновляем специализацию
-  if (computedIndustry.value && vacancy.specializations && computedIndustry.value.roles && Array.isArray(computedIndustry.value.roles)) {
-    computedProfessionalRole.value = computedIndustry.value.roles.find(r => {
-      if (typeof vacancy.specializations === 'string') {
-        return r.name === vacancy.specializations;
+  // Обновляем специализацию внутри найденной отрасли
+  computedProfessionalRole.value = null
+
+  // Точные professional_roles с hh.ru (GET /hh/publications/{platform_id}) — приоритет над строкой specializations из БД
+  const hhApiRoles = vacancy._hh_api_professional_roles
+  if (Array.isArray(hhApiRoles) && hhApiRoles.length > 0 && currectRole.value && Array.isArray(currectRole.value)) {
+    const first = hhApiRoles[0]
+    const hit = first ? findHhRoleInFullCatalog(first, currectRole.value) : null
+    if (hit) {
+      computedProfessionalRole.value = hit.role
+      if (!computedIndustry.value) {
+        computedIndustry.value = hit.category
       }
-      if (typeof vacancy.specializations === 'object') {
-        if (vacancy.specializations.name && r.name) {
-          return r.name === vacancy.specializations.name;
+    }
+  }
+
+  if (!computedProfessionalRole.value && computedIndustry.value && vacancy.specializations && computedIndustry.value.roles && Array.isArray(computedIndustry.value.roles)) {
+    const spec = vacancy.specializations
+    const matchRole = (r) => {
+      if (typeof spec === 'string') {
+        const parts = spec.split(',').map((p) => p.trim()).filter(Boolean)
+        const targets = parts.length ? parts.map(normalizeSpecLabel) : [normalizeSpecLabel(spec)]
+        const rn = normalizeSpecLabel(r.name)
+        return targets.some((t) => t && (t === rn || r.name === spec.trim()))
+      }
+      if (typeof spec === 'object' && spec !== null) {
+        if (spec.name && r.name) {
+          return normalizeSpecLabel(spec.name) === normalizeSpecLabel(r.name) || spec.name === r.name
         }
-        if (vacancy.specializations.id && r.id) {
-          return String(r.id) === String(vacancy.specializations.id);
+        if (spec.id != null && r.id != null) {
+          return String(r.id) === String(spec.id)
         }
       }
-      return false;
-    }) || null;
-  } else {
-    computedProfessionalRole.value = null;
+      return false
+    }
+    computedProfessionalRole.value = computedIndustry.value.roles.find(matchRole) || null
+  }
+
+  // hh.ru: в БД часто только строка specializations (без industry) — ищем роль по всему каталогу
+  if (!computedProfessionalRole.value && vacancy.specializations && currectRole.value && Array.isArray(currectRole.value)) {
+    const hit = findHhRoleInFullCatalog(vacancy.specializations, currectRole.value)
+    if (hit) {
+      computedProfessionalRole.value = hit.role
+      if (!computedIndustry.value) {
+        computedIndustry.value = hit.category
+      }
+    }
   }
 
   // Обновляем город
@@ -1242,7 +1377,15 @@ const applyComputedValues = async () => {
       if (role) {
         data.value.professional_roles = [role];
         console.log('Установлена специализация:', data.value.professional_roles);
+        updateValidField('professional_roles', true)
       }
+    } else if (
+      currentPlatform.value === 'hh' &&
+      computedProfessionalRole.value &&
+      (!data.value.professional_roles?.[0]?.id ||
+        String(data.value.professional_roles[0].id) !== String(computedProfessionalRole.value.id))
+    ) {
+      handleHhSpecializationUpdate(computedProfessionalRole.value)
     }
   }
 
@@ -1329,11 +1472,7 @@ function isHhEmploymentSelected(opt) {
   if (!v) return false
   return String(opt?.id) === String(v?.id) || opt?.siteName === v?.siteName
 }
-const hhOformlenieOptions = [
-  { id: 'labor', name: 'Трудовой договор', value: 'labor' },
-  { id: 'internship', name: 'Стажировка', value: 'internship' },
-  { id: 'gph', name: 'Договор ГПХ', value: 'gph' },
-]
+const hhOformlenieOptions = [...HH_OFORMLENIE_MULTISELECT_OPTIONS]
 
 function isHhScheduleSelected(opt) {
   const arr = data.value.work_schedule_by_days
@@ -1672,6 +1811,9 @@ async function fillFormFromCurrentVacancy() {
   for (const key in platformProps) {
     data.value[key] = vacancy[key]
   }
+  if (currentPlatform.value === 'hh') {
+    applyJoblyVacancyToHhPublicationFormData(data.value, vacancy)
+  }
   if (vacancy.salary_from != null) data.value.salary_range.from = vacancy.salary_from
   if (vacancy.salary_to != null) data.value.salary_range.to = vacancy.salary_to
   if (vacancy.education) {
@@ -1867,10 +2009,38 @@ async function loadInitialFormData() {
       if (vacancy) {
         globCurrentVacancy.value = vacancy;
         console.log('Загружена вакансия, location:', vacancy.location);
+        // Редактирование из «Активные публикации»: подтянуть professional_roles с hh.ru по id публикации (в БД часто нет/обрезана specializations)
+        const pd = props.editingVacancy?.platforms_data?.[0];
+        if (pd?.id === 1 && pd?.platform_id != null && String(pd.platform_id).trim() !== '') {
+          const pubRes = await getHhPublicationById(String(pd.platform_id));
+          const pr = pubRes?.data?.professional_roles;
+          if (!pubRes?.error && Array.isArray(pr) && pr.length > 0) {
+            globCurrentVacancy.value = {
+              ...globCurrentVacancy.value,
+              _hh_api_professional_roles: pr,
+            };
+          }
+        }
       }
     }
     // Всегда заполняем форму при открытии (в т.ч. при повторном открытии модалки без перезагрузки)
     if (globCurrentVacancy.value && globCurrentVacancy.value.id?.toString() === vacancyId) {
+      const pdHh = props.editingVacancy?.platforms_data?.[0]
+      if (
+        pdHh?.id === 1 &&
+        pdHh?.platform_id != null &&
+        String(pdHh.platform_id).trim() !== '' &&
+        !globCurrentVacancy.value._hh_api_professional_roles
+      ) {
+        const pubRes = await getHhPublicationById(String(pdHh.platform_id))
+        const pr = pubRes?.data?.professional_roles
+        if (!pubRes?.error && Array.isArray(pr) && pr.length > 0) {
+          globCurrentVacancy.value = {
+            ...globCurrentVacancy.value,
+            _hh_api_professional_roles: pr,
+          }
+        }
+      }
       updateComputedValues();
       await fillFormFromCurrentVacancy();
       vacancyIdFields.forEach((field) => {
@@ -2300,7 +2470,12 @@ const savePublication = async () => {
         const vacancyPlatformId = platformData.platform_id;
         let platformResponse = null;
         if (platformId === 1) {
-          const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
+          const payload = {
+            ...data.value,
+            vacancy_platform_id: String(vacancyPlatformId),
+            publication_id: vacancyPlatformId,
+            jobly_vacancy_id: props.editingVacancy?.id,
+          };
           platformResponse = await publishVacancyToHh(payload);
         } else if (platformId === 2) {
           const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
@@ -2376,11 +2551,12 @@ const savePublication = async () => {
     }
   }
   if (currentPlatform === 'hh') {
+    const hhForm = { ...data.value, jobly_vacancy_id: props.editingVacancy?.id };
     if (isDraft.value || isDraft.value === 'true'
     ) {
-      response = await addDraftHh(data.value)
+      response = await addDraftHh(hhForm)
     } else {
-      response = await publishVacancyToHh(data.value)
+      response = await publishVacancyToHh(hhForm)
     }
   }
   if (currentPlatform === 'rabota') {
@@ -2456,6 +2632,12 @@ watch(() => data.value.description, (newValue) => {
 
 
 onBeforeMount(async () => {
+})
+
+onMounted(() => {
+  if (props.editingVacancy?.id) {
+    emit('form-ready')
+  }
 })
 
 </script>

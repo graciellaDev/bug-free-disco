@@ -34,17 +34,21 @@
               v-if="isDropDownVisible">
               <template v-for="(option, index) in props.options" :key="index">
                 <div
-                  class="option font-normal py-13px px-15px hover:bg-athens-gray cursor-pointer first:rounded-t-ten last:rounded-b-ten"
-                   @click="toggleOptionSelect(option)">
-                    <div class="text-sm items-center text-domain mb-8px">
-                        {{ option.name }} 
-                            <span class="text-slate-custom" v-if="option.available_publications_count > 0">
-                                ({{ option.available_publications_count }})
-                            </span>
-                    </div>
-                    <div class="text-13px text-slate-custom">
-                        {{ option.description }}
-                    </div>
+                  class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer first:rounded-t-ten last:rounded-b-ten"
+                  @click="toggleOptionSelect(option)"
+                >
+                  <div class="flex min-w-0 items-center gap-2 text-sm font-normal">
+                    <span class="min-w-0 flex-1 truncate">{{ option.name }}</span>
+                    <span
+                      v-if="option.available_publications_count > 0"
+                      class="shrink-0 text-slate-custom text-13px"
+                    >
+                      ({{ option.available_publications_count }})
+                    </span>
+                  </div>
+                  <div v-if="option.description" class="text-13px text-slate-custom mt-1">
+                    {{ option.description }}
+                  </div>
                 </div>
               </template>   
             </div>
@@ -129,8 +133,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.text-domain {
-    width: 272px;
-    max-width: 50%;
+/* Как в MultiSelect («Водительские права»): линия между пунктами */
+.option:not(:last-child) {
+  border-bottom: 1px solid #f4f6f8;
 }
 </style>

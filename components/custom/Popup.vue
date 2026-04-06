@@ -34,7 +34,8 @@
       noOuterPadding?: boolean;
       /**
        * true = не резервировать место справа под скролл (pr-[15px] у контента).
-       * Для коротких модалок даёт симметричные отступы слева и справа.
+       * Плюс полоса прокрутки у правого края белой карточки: внешний padding только слева/сверху/снизу,
+       * справа 0; от контента до края — внутренний pr на обёртке слота.
        */
       noScrollbarGutter?: boolean;
     }>(),
@@ -83,6 +84,10 @@
   };
 
   const updateStyles = () => {
+    if (props.noScrollbarGutter) {
+      customStyles.value = {};
+      return;
+    }
     if (hasScrollbar.value) {
       customStyles.value = { paddingRight: '15px' };
     } else {
@@ -135,7 +140,11 @@
       @click.self="closePopup"
       class="absolute w-full rounded-fifteen bg-white"
       :class="[
-        props.noOuterPadding ? 'p-0' : 'p-25px',
+        props.noOuterPadding
+          ? 'p-0'
+          : noScrollbarGutter
+            ? 'pl-25px pt-25px pb-25px pr-0'
+            : 'p-25px',
         props.allowDropdownOverflow || props.disableOverflowHidden
           ? 'overflow-visible'
           : 'overflow-hidden',
@@ -150,7 +159,7 @@
         :class="[
           contentRounded ? 'rounded-fifteen' : 'rounded-none',
           contentPadding ? 'p-25px' : 'p-0',
-          { 'pr-2.5': customStyles },
+          { 'pr-2.5': hasScrollbar && !noScrollbarGutter },
         ]"
         :style="{
           maxWidth: width,
@@ -191,7 +200,13 @@
           >
             ✖
           </button>
-          <slot />
+          <template v-if="noScrollbarGutter">
+            <!-- Отступ справа у контента задаётся внутри слота у overflow-контейнера, иначе полоса оказывается левее края -->
+            <div class="min-h-0">
+              <slot />
+            </div>
+          </template>
+          <slot v-else />
         </div>
       </div>
     </div>
@@ -201,15 +216,25 @@
 <style scoped>
   ::-webkit-scrollbar {
     width: 10px;
-    margin-right: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
   ::-webkit-scrollbar-thumb {
+    border: none;
     background-color: #79869a;
     border-radius: 5px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
     background-color: #5a6a7f;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 </style>

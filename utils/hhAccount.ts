@@ -223,89 +223,102 @@ export const getPublications = async (includeArchived: boolean = false) => {
   }
 }
 
-export const getAllPublications = async () => {
+/** Бэкенд может долго мержить страницы HH (per_page≤50); обрыв клиента раньше даёт «вечную» загрузку без результата. */
+const HH_PUBLICATIONS_FETCH_TIMEOUT_MS = 300_000;
+
+export type GetAllHhPublicationsOptions = {
+  /** Только первая страница от HH — быстрый предпросмотр; полный список без флага. */
+  firstPageOnly?: boolean;
+};
+
+export const getAllPublications = async (options?: GetAllHhPublicationsOptions) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
   }
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });
+  const firstPageOnly = options?.firstPageOnly === true;
+  const listParams = firstPageOnly ? { first_page_only: '1' } : {};
 
   try {
-    // Получаем активные публикации
-    const activeResponse = await $fetch<PlatformHhResponse>('/hh/publications', {
-      baseURL: config.public.apiBase as string,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${serverToken}`,
-        'X-Auth-User': userToken,
-      },
-    });
+    const headers = {
+      Accept: 'application/json',
+      Authorization: `Bearer ${serverToken}`,
+      'X-Auth-User': userToken,
+    };
+    const base = config.public.apiBase as string;
 
+    const fetchOpts = {
+      baseURL: base,
+      headers,
+      timeout: HH_PUBLICATIONS_FETCH_TIMEOUT_MS,
+    };
+
+    const [activeSettled, archivedSettled] = await Promise.allSettled([
+      $fetch<PlatformHhResponse>('/hh/publications', {
+        ...fetchOpts,
+        params: { ...listParams },
+      }),
+      $fetch<PlatformHhResponse>('/hh/publications', {
+        ...fetchOpts,
+        params: { archived: true, ...listParams },
+      }),
+    ]);
+
+    if (activeSettled.status === 'rejected') {
+      throw activeSettled.reason;
+    }
+
+    const activeResponse = activeSettled.value;
     const activeItems = activeResponse.data?.items || [];
-    
-    // Помечаем активные публикации, если статус не указан
     const activeWithStatus = activeItems.map((item: any) => ({
       ...item,
       status: item.status || 'published',
     }));
 
-    let allItems = [...activeWithStatus];
+    let archivedFailed = false;
+    let allItems: any[];
 
-    // Пытаемся получить архивные публикации
-    try {
-      const archivedResponse = await $fetch<PlatformHhResponse>('/hh/publications', {
-        baseURL: config.public.apiBase as string,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${serverToken}`,
-          'X-Auth-User': userToken,
-        },
-        params: { archived: true },
-      });
-
-      const archivedItems = archivedResponse.data?.items || [];
-      
-      // Помечаем архивные публикации
+    if (archivedSettled.status === 'fulfilled') {
+      const archivedItems = archivedSettled.value.data?.items || [];
       const archivedWithStatus = archivedItems.map((item: any) => ({
         ...item,
         status: 'archived',
       }));
-
       allItems = [...activeWithStatus, ...archivedWithStatus];
-    } catch (archivedErr: any) {
-      // Если запрос архивных публикаций не поддерживается, 
-      // проверяем статус в активных публикациях
-      console.log('Архивные публикации не доступны через отдельный запрос, проверяем статус в активных');
-      
-      // Фильтруем публикации по статусу, если он есть в ответе
-      const itemsWithStatus = activeItems.map((item: any) => {
-        // Если статус уже есть и он архивный, оставляем его
+    } else {
+      archivedFailed = true;
+      console.warn(
+        'Архивные публикации hh.ru: запрос не удался, используем только активные',
+        archivedSettled.reason
+      );
+      allItems = activeItems.map((item: any) => {
         if (item.status && (item.status === 'archived' || item.status === 'closed')) {
-          return {
-            ...item,
-            status: 'archived',
-          };
+          return { ...item, status: 'archived' };
         }
-        return {
-          ...item,
-          status: item.status || 'published',
-        };
+        return { ...item, status: item.status || 'published' };
       });
-      
-      allItems = itemsWithStatus;
     }
 
     result.value.roles = {
       ...activeResponse.data,
       items: allItems,
     };
-  } catch (err: any) {
-    if (err.response?.status === 404) {
-      result.value.errorRoles = err.response._data.message;
+
+    if (allItems.length === 0 && archivedFailed) {
+      result.value.errorRoles =
+        'Не удалось загрузить архивные вакансии с hh.ru, а активных публикаций нет. Попробуйте обновить страницу или повторить позже.';
     }
-    if (err.response?.status === 401) {
+  } catch (err: any) {
+    const status = err.response?.status;
+    if (status === 404) {
+      result.value.errorRoles = err.response?._data?.message ?? 'Публикации не найдены';
+    } else if (status === 401) {
       handle401Error();
+    } else {
+      result.value.errorRoles =
+        err.response?._data?.message ?? err.message ?? 'Ошибка при загрузке публикаций с hh.ru';
     }
   } finally {
     return result.value;
@@ -392,6 +405,9 @@ export const addDraft = async (data: DraftDataHh) => {
   const bodyData = new FormData();
   
   Object.entries(data).forEach(([key, value]) => {
+    if (key === 'jobly_vacancy_id') {
+      return;
+    }
     // Специальная обработка для vacancy_properties
     if (key === 'vacancy_properties') {
       if (typeof value === 'object' && value !== null) {
@@ -445,6 +461,10 @@ export const addDraft = async (data: DraftDataHh) => {
     //     bodyData.append(key, value);
     // }
   })
+
+  if (data.jobly_vacancy_id != null && data.jobly_vacancy_id !== '') {
+    bodyData.append('jobly_vacancy_id', String(data.jobly_vacancy_id));
+  }
 
   try {
     const response = await $fetch<PlatformHhResponse>('/hh/drafts', {
@@ -676,6 +696,9 @@ export const publishVacancy = async (data: DraftDataHh) => {
 
   const bodyData = new FormData();
   Object.entries(data).forEach(([key, value]) => {
+    if (key === 'jobly_vacancy_id') {
+      return;
+    }
     // Пропускаем null, undefined и функции
     if (value === null || value === undefined || typeof value === 'function') {
       return;
@@ -867,6 +890,10 @@ export const publishVacancy = async (data: DraftDataHh) => {
       }
     }
   })
+
+  if (data.jobly_vacancy_id != null && data.jobly_vacancy_id !== '') {
+    bodyData.append('jobly_vacancy_id', String(data.jobly_vacancy_id));
+  }
 
   // Логируем содержимое FormData для отладки
   for (const [key, value] of bodyData.entries()) {
