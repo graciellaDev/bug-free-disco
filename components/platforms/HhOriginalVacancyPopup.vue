@@ -577,13 +577,12 @@ import {
   type HhPublicationOriginalApiData,
 } from '@/utils/getVacancies';
 import {
-  getRoles,
   getAreas,
   getAddresses,
   getLanguages,
   getLanguageLevels,
-  getProfile,
-  getAvailablePublications,
+  getPublishFormReference,
+  postAvailablePublicationsCounts,
   publishVacancy,
   addDraft,
 } from '@/utils/hhAccount';
@@ -666,6 +665,8 @@ const hhTariffsLoading = ref(false);
 const hhPublishTariffs = ref<HhTariffOption[]>([]);
 const selectedHhPublishTariff = ref<HhTariffOption | null>(null);
 const hhTariffsLoadError = ref<string | null>(null);
+/** Ответ GET /hh/local/publish-form-reference (роли + шаблоны тарифов). */
+const publishFormRefData = ref<Awaited<ReturnType<typeof getPublishFormReference>> | null>(null);
 const savingDraft = ref(false);
 
 const publishJoblyActionsDisabled = computed(
@@ -683,40 +684,75 @@ function onHhTariffSelected(option: HhTariffOption | null) {
   selectedHhPublishTariff.value = option;
 }
 
-async function loadHhTariffsForJoblyPublish() {
+/** Шаблоны тарифов из локального бандла (без остатков с hh.ru). */
+function buildJoblyTariffsFromLocalBundle() {
+  if (!joblyPublishPrefill.value) return;
+  hhTariffsLoadError.value = null;
+  const raw = publishFormRefData.value?.data?.tariff_templates;
+  const templates = Array.isArray(raw) ? raw : [];
+  hhPublishTariffs.value = templates.map((t, i) => ({
+    id: typeof t.id === 'number' ? t.id : i + 1,
+    name: String(t.name ?? 'Тариф'),
+    property_type: Array.isArray(t.property_type) ? t.property_type : [],
+    description: typeof t.description === 'string' ? t.description : '',
+    available_publications_count: undefined,
+  }));
+  selectedHhPublishTariff.value = hhPublishTariffs.value[0] ?? null;
+}
+
+function stablePropertyTypeKey(req: unknown): string {
+  const arr = Array.isArray(req) ? [...req].map(String).sort() : [];
+  return JSON.stringify(arr);
+}
+
+function publicationVariantRequiredKey(v: unknown): string {
+  if (!v || typeof v !== 'object') return '[]';
+  const req = (v as { vacancy_properties?: { required?: unknown } }).vacancy_properties?.required;
+  return stablePropertyTypeKey(req);
+}
+
+/** Подмешать остатки размещений с hh.ru в локальные шаблоны тарифов. */
+function mergePublicationCountsFromHhPayload(hhData: unknown) {
+  const variants = (hhData as { publication_variants?: unknown[] })?.publication_variants;
+  if (!Array.isArray(variants)) return;
+  const countByKey = new Map<string, number>();
+  for (const v of variants) {
+    const key = publicationVariantRequiredKey(v);
+    const n = Number((v as { available_publications_count?: unknown }).available_publications_count ?? 0);
+    if (Number.isFinite(n)) countByKey.set(key, n);
+  }
+  const next = hhPublishTariffs.value.map((row) => {
+    const key = stablePropertyTypeKey(row.property_type);
+    const c = countByKey.get(key);
+    return {
+      ...row,
+      available_publications_count: c !== undefined ? c : row.available_publications_count ?? 0,
+    };
+  });
+  hhPublishTariffs.value = next;
+  const firstWithBalance = next.find((x) => Number(x.available_publications_count ?? 0) > 0);
+  if (firstWithBalance) {
+    selectedHhPublishTariff.value = firstWithBalance;
+  } else if (next.length > 0 && !selectedHhPublishTariff.value) {
+    selectedHhPublishTariff.value = next[0];
+  }
+}
+
+/** Остатки публикаций с hh.ru после отображения окна (без getProfile на фронте). */
+async function refreshHhPublicationCounts() {
   if (!joblyPublishPrefill.value) return;
   hhTariffsLoading.value = true;
   hhTariffsLoadError.value = null;
-  hhPublishTariffs.value = [];
-  selectedHhPublishTariff.value = null;
   try {
-    const profileRes = await getProfile();
-    if (!profileRes || profileRes.error) {
-      hhTariffsLoadError.value = profileRes?.error ?? 'Не удалось загрузить профиль hh.ru';
+    const { data, error } = await postAvailablePublicationsCounts();
+    if (error) {
+      hhTariffsLoadError.value = error;
       return;
     }
-    const body = profileRes.data as Record<string, unknown> | null | undefined;
-    const hhPayload = (body?.data as Record<string, unknown> | undefined) ?? body;
-    const employerRaw = hhPayload?.employer as { id?: string } | undefined;
-    const employerId = employerRaw?.id;
-    if (!employerId) {
-      hhTariffsLoadError.value =
-        'Не удалось определить работодателя hh.ru. Проверьте привязку профиля.';
-      return;
-    }
-    const tariffsRes = await getAvailablePublications(String(employerId));
-    if (tariffsRes?.error && (!tariffsRes.types || tariffsRes.types.length === 0)) {
-      hhTariffsLoadError.value = tariffsRes.error ?? 'Ошибка при загрузке тарифов';
-      return;
-    }
-    const types = (tariffsRes?.types as HhTariffOption[]) ?? [];
-    hhPublishTariffs.value = Array.isArray(types) ? types : [];
-    if (hhPublishTariffs.value.length > 0) {
-      selectedHhPublishTariff.value = hhPublishTariffs.value[0];
-    }
+    mergePublicationCountsFromHhPayload(data ?? null);
   } catch (e) {
     hhTariffsLoadError.value =
-      e instanceof Error ? e.message : 'Не удалось загрузить тарифы публикации';
+      e instanceof Error ? e.message : 'Не удалось загрузить остатки размещений';
   } finally {
     hhTariffsLoading.value = false;
   }
@@ -1538,15 +1574,17 @@ let hhDictionariesPromise: Promise<void> | null = null;
 async function loadHhDictionaries() {
   if (!hhDictionariesPromise) {
     hhDictionariesPromise = (async () => {
-      const [rolesRes, areasRes] = await Promise.all([getRoles(), getAreas()]);
-      const cats = (rolesRes as { roles?: { categories?: Array<Record<string, unknown>> } })?.roles
-        ?.categories;
+      const [bundleRes, areasRes] = await Promise.all([
+        getPublishFormReference(),
+        getAreas(),
+      ]);
+      publishFormRefData.value = bundleRes;
+      const cats = bundleRes?.data?.professional_roles?.categories;
       if (Array.isArray(cats)) hhRoleCategories.value = cats;
       const areaData = (areasRes as { data?: Array<{ id: string; name: string }> })?.data;
       if (Array.isArray(areaData)) cities.value = dedupeAreasByName(areaData);
 
       await Promise.all([
-        getAddresses().catch(() => undefined),
         getLanguages()
           .then((res) => {
             const langs = (res as { data?: Array<{ id: string; name: string; is_popular?: boolean }> })?.data;
@@ -1694,7 +1732,8 @@ async function initJoblyPublishDraft() {
   errorMessage.value = null;
   apiData.value = null;
   try {
-    await Promise.all([loadHhDictionaries(), loadHhTariffsForJoblyPublish()]);
+    await loadHhDictionaries();
+    buildJoblyTariffsFromLocalBundle();
     if (joblyPublishPrefill.value && props.initialHhDraftFromJobly === undefined) {
       return;
     }
@@ -1721,6 +1760,14 @@ async function initJoblyPublishDraft() {
     if (!stillWaitingPrefill) {
       loading.value = false;
     }
+  }
+  const stillWaiting =
+    joblyPublishPrefill.value && props.initialHhDraftFromJobly === undefined;
+  if (!stillWaiting && joblyPublishPrefill.value) {
+    void nextTick(() => {
+      void refreshHhPublicationCounts();
+      void getAddresses().catch(() => undefined);
+    });
   }
 }
 

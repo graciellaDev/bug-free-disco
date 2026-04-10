@@ -580,7 +580,7 @@ import {
     hhProfileIndicatesConnected,
     unlinkProfile, 
     publishVacancy as publishVacancyToHh, 
-    getRoles, 
+    getPublishFormReference,
     getAvailableTypes,
     getVacancyCountViews,
     getVacancyResponses,
@@ -1074,7 +1074,13 @@ async function refreshPublicationPlatformsStats() {
 
 function startPublicationStatsPolling() {
     clearPublicationStatsPolling();
-    void refreshPublicationPlatformsStats();
+    // Откладываем первый опрос HH после кадра отрисовки, чтобы не конкурировать с показом таблицы из кэша.
+    const runStats = () => void refreshPublicationPlatformsStats();
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(runStats));
+    } else {
+        setTimeout(runStats, 0);
+    }
     publicationStatsPollId = setInterval(() => {
         void refreshPublicationPlatformsStats();
     }, PUBLICATION_STATS_INTERVAL_MS);
@@ -1193,14 +1199,20 @@ async function openPublishPopup(platformName) {
 
         // Загружаем данные о ролях и индустриях для hh.ru
         if (!hhRolesData.value) {
-            console.log('Загружаем данные ролей...');
-            const { roles, errorRoles } = await getRoles();
-            if (errorRoles) {
-                console.error('Ошибка загрузки ролей:', errorRoles);
+            console.log('Загружаем данные ролей (локальный каталог hh.ru)...');
+            try {
+                const pubRef = await getPublishFormReference();
+                const pr = pubRef?.data?.professional_roles;
+                if (!pr || !Array.isArray(pr.categories) || pr.categories.length === 0) {
+                    publishError.value = 'Не удалось загрузить каталог специализаций hh.ru';
+                    return;
+                }
+                hhRolesData.value = pr;
+            } catch (e) {
+                console.error('Ошибка загрузки ролей:', e);
                 publishError.value = 'Ошибка при загрузке данных для публикации';
                 return;
             }
-            hhRolesData.value = roles;
             console.log('Данные ролей загружены:', hhRolesData.value);
             console.log('Структура данных:', {
                 hasCategories: !!hhRolesData.value?.categories,
@@ -2273,13 +2285,15 @@ async function confirmUnlink() {
 }
 
 async function refreshPlatformAuthStatus() {
-    const hhProfile = await getProfile();
+    const [hhProfile, avitoProfile, rabotaProfile, superjobProfile] = await Promise.all([
+        getProfile(),
+        getProfileAvito(),
+        getProfileRabota(),
+        getProfileSuperjob(),
+    ]);
     platformsAuth.value['hh.ru'] = hhProfileIndicatesConnected(hhProfile);
-    const avitoProfile = await getProfileAvito();
     platformsAuth.value['avito.ru'] = !!(avitoProfile && !avitoProfile.error && avitoProfile.data);
-    const rabotaProfile = await getProfileRabota();
     platformsAuth.value['rabota.ru'] = !!(rabotaProfile && !rabotaProfile.error && rabotaProfile.data);
-    const superjobProfile = await getProfileSuperjob();
     platformsAuth.value['superjob'] = !!(superjobProfile && !superjobProfile.error && superjobProfile.data);
 }
 
@@ -2292,7 +2306,9 @@ onMounted(async () => {
       cartStore.setRatesData(ratesData),
     ])
 
-    await refreshPlatformAuthStatus();
+    const publicationsLoad =
+        currentVacancyId.value ? loadPublicationPlatforms() : Promise.resolve();
+    await Promise.all([refreshPlatformAuthStatus(), publicationsLoad]);
 
     // Обработка редиректа после авторизации
     const query = useRoute().query;
@@ -2382,15 +2398,10 @@ onMounted(async () => {
         // Редирект на исходную страницу
         await navigateTo(redirectUrl);
     }
-
-    if (currentVacancyId.value) {
-        await loadPublicationPlatforms();
-    }
   })
 
   onActivated(() => {
-    void refreshPlatformAuthStatus();
-    void refreshPublicationPlatformsStats();
+    void Promise.all([refreshPlatformAuthStatus(), refreshPublicationPlatformsStats()]);
   });
 
   onBeforeUnmount(() => {
@@ -2731,17 +2742,18 @@ const openPopupNewPublication = async (platformName) => {
         const vid = currentVacancyId.value;
         void (async () => {
             try {
-                const [vac, mapRows, rolesRes, fieldsRes, langPack, levPack] = await Promise.all([
+                const [vac, mapRows, pubRef, fieldsRes, langPack, levPack] = await Promise.all([
                     vid ? getVacancy(vid) : Promise.resolve(null),
                     getHhVacancyExportMap(),
-                    getRoles(),
+                    getPublishFormReference(),
                     getVacancyFields(),
                     getLanguages(),
                     getLanguageLevels(),
                 ]);
                 const categories =
-                    rolesRes?.roles?.categories && Array.isArray(rolesRes.roles.categories)
-                        ? rolesRes.roles.categories
+                    pubRef?.data?.professional_roles?.categories &&
+                    Array.isArray(pubRef.data.professional_roles.categories)
+                        ? pubRef.data.professional_roles.categories
                         : [];
                 const langData = langPack?.data;
                 const levData = levPack?.data;

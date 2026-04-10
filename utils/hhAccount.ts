@@ -354,6 +354,56 @@ export const getAvailableTypes = async (employerId: string, managerId: string) =
   }
 }
 
+/** Локальные JSON-справочники формы публикации (роли + шаблоны тарифов), без api.hh.ru. */
+export const getPublishFormReference = async () => {
+  const config = useRuntimeConfig();
+  return $fetch<{
+    message?: string;
+    data: {
+      professional_roles: { categories?: unknown[] };
+      tariff_templates: Array<{
+        id?: number;
+        name?: string;
+        description?: string;
+        property_type?: unknown[];
+      }>;
+    };
+  }>('/hh/local/publish-form-reference', {
+    method: 'GET',
+    baseURL: config.public.apiBase as string,
+    headers: { Accept: 'application/json' },
+  });
+};
+
+/**
+ * Остатки размещений с hh.ru для текущего работодателя (employer_id из токена middleware).
+ * Тело запроса пустое — без предварительного getProfile на фронте.
+ */
+export const postAvailablePublicationsCounts = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null as PlatformHhResponse['data'] | null, error: 'Нет авторизации' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  try {
+    const response = await $fetch<PlatformHhResponse>('/hh/available-publications', {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: createAuthHeaders(serverToken, userToken),
+      body: {},
+    });
+    return { data: response.data, error: null as string | null };
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error(true);
+    }
+    return {
+      data: null,
+      error: err.response?._data?.message || err.message || 'Ошибка при получении остатков публикаций',
+    };
+  }
+};
+
 export const getAvailablePublications = async (employer_id: string) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
