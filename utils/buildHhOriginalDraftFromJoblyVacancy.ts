@@ -107,6 +107,20 @@ function pickNonEmptyString(v: VacancyLike, keys: string[]): string {
   return '';
 }
 
+/**
+ * Поле для сопоставления с каталогом hh.ru professional_roles (полное дерево на бекенде).
+ * Приоритет: specializations → professional_role → role (если приходят с API/формы).
+ */
+function joblySpecializationSourceForHh(v: VacancyLike): unknown {
+  const s = v.specializations;
+  if (s != null && s !== '') return s;
+  const pr = (v as { professional_role?: unknown }).professional_role;
+  if (pr != null && pr !== '') return pr;
+  const role = (v as { role?: unknown }).role;
+  if (role != null && role !== '') return role;
+  return null;
+}
+
 /** Формат как в HhOriginalVacancyPopup: VacancyContacts для PUT hh. */
 function buildHhContactsPayloadFromStrings(
   name: string,
@@ -429,8 +443,9 @@ export function buildFullHhOriginalDraftFromJoblyVacancy(
     draft.education_level = form.education_level;
   }
 
+  /** Специализация из формы Jobly: строка/объект в specializations или объект professional_role (как в InfoTab). */
   const specHit = findHhRoleInFullCatalog(
-    vacancy.specializations,
+    joblySpecializationSourceForHh(vacancy),
     roleCategories as Array<{ roles?: Array<Record<string, unknown>> }>
   );
   if (specHit?.role) {
