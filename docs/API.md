@@ -174,8 +174,88 @@ Authorization: Bearer <token>
 | DELETE | `/api/candidates/{id}/tags/{tag}` | Отвязать тег от кандидата |
 | GET | `/api/candidates/{id}/events` | События по кандидату |
 | GET | `/api/candidates/{id}/vacancies/{vacancyId}/events` | События по кандидату и вакансии |
+| GET | `/api/candidates/rejection-by-stage` | Отчёт по отказам по этапам вакансии (`vacancy_id`, опционально `date_from`, `date_to` в формате `Y-m-d`) |
+| GET | `/api/reports/recruiters` | Отчёт по рекрутерам и их вакансиям (метрики воронки по периоду и фильтрам — см. [ниже](#отчёт-по-рекрутерам)) |
 | POST | `/api/candidates/{id}/chats` | Создать сообщение в чате кандидата |
 | POST | `/api/candidates/{id}/vacancies/{vacancyId}/chats` | Создать сообщение в чате по кандидату и вакансии |
+
+### Отчёт по рекрутерам
+
+Эндпоинт: **`GET /api/reports/recruiters`**. Авторизация как у остальных методов раздела кандидатов.
+
+**Query-параметры (все опциональны, кроме смысловых ограничений домена):**
+
+| Параметр | Описание |
+|----------|----------|
+| `date_from`, `date_to` | Период агрегации, формат `Y-m-d`. Если не переданы — бэкенд может вернуть данные «за всё время» или за последний месяц (на усмотрение реализации). |
+| `vacancy_id` | Ограничить одной вакансией (число). |
+| `participant_ids` | Список id сотрудников/рекрутеров через запятую (например `12,34`) — только их вакансии и метрики. |
+| `department_ids` | Id отделов через запятую. |
+| `cities` | Названия городов через запятую (как в справочнике вакансий). |
+
+**Успешный ответ:** тело `data` (или корень ответа, если у вас иначе) — объект со полем **`recruiters`**: массив групп по рекрутеру. Допустим также корневой массив в `data` (список рекрутеров без обёртки) — фронт его разберёт.
+
+Каждый элемент **`recruiters`**:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `recruiter_id` | number | Id пользователя/рекрутера. |
+| `name` | string | ФИО (как в UI). |
+| `position_title` | string \| null | Должность в скобках у имени («Ведущий рекрутер»). |
+| `vacancies_count` | number | Число вакансий в группе (для подписи «N вакансий на M чел.»). Если не передано — можно считать `vacancies.length`. |
+| `target_headcount` | number | Суммарная цель по штату по вакансиям рекрутера («M чел.»). Если не передано — фронт суммирует `hired_target` по вакансиям. |
+| `vacancies` | array | Строки вакансий (см. ниже). |
+
+Элемент **`vacancies`**:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `vacancy_id` | number | Id вакансии. |
+| `title` | string | Название вакансии. |
+| `status` | string | Например `active`, `on_pause` — при признаке паузы UI показывает подпись «На паузе». |
+| `candidates_added_count` | number | Добавленные в вакансию кандидаты за период (или всего — по правилу продукта). |
+| `hired_count` | number | Принято по цели. |
+| `hired_target` | number | Целевое количество наймов по вакансии. |
+| `hired_percentage` | number \| null | Прогресс к цели, **проценты** (0–100). Если `null` — фронт считает от `hired_count` / `hired_target`. |
+| `rejections_count` | number | Количество отказов. |
+| `rejections_percentage` | number \| null | Доля отказов от **добавленных** кандидатов, **проценты**. Если `null` — фронт считает от `rejections_count` / `candidates_added_count`. |
+| `avg_days_to_hire` | number \| null | Среднее число дней до найма; `null` — показать «—». |
+| `avg_days_to_close` | number \| null | Среднее число дней до закрытия вакансии. |
+
+**Пример JSON (`data`):**
+
+```json
+{
+  "date_from": "2026-01-01",
+  "date_to": "2026-04-13",
+  "recruiters": [
+    {
+      "recruiter_id": 1,
+      "name": "Вельтищев Александр",
+      "position_title": "Ведущий рекрутер",
+      "vacancies_count": 4,
+      "target_headcount": 9,
+      "vacancies": [
+        {
+          "vacancy_id": 10,
+          "title": "Дизайнер",
+          "status": "on_pause",
+          "candidates_added_count": 200,
+          "hired_count": 4,
+          "hired_target": 10,
+          "hired_percentage": 40,
+          "rejections_count": 50,
+          "rejections_percentage": 25,
+          "avg_days_to_hire": 21,
+          "avg_days_to_close": 30
+        }
+      ]
+    }
+  ]
+}
+```
+
+Фронт допускает альтернативные имена полей (`rows` вместо `recruiters`, `full_name` вместо `name`, дробные 0–1 для процентов с последующим переводом в проценты и т.д.) — см. `parseRecruitersReport` в `src/api/reports.ts`.
 
 ---
 

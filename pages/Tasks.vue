@@ -695,22 +695,14 @@
         <div data-task-actions-root class="relative shrink-0">
           <button
             type="button"
-            class="flex h-[40px] w-[40px] items-center justify-center rounded-[10px] transition-colors"
-            :class="
-              openTaskMenuId === task.id
-                ? 'border border-zumthor bg-zumthor text-dodger'
-                : 'text-space hover:bg-athens-gray'
-            "
+            class="flex h-10 w-10 items-center justify-center rounded-ten border border-athens bg-athens-gray text-slate-custom outline-none transition-all hover:border-zumthor hover:bg-zumthor hover:text-dodger focus:outline-none"
+            :class="{ '!border-zumthor !bg-zumthor !text-dodger': openTaskMenuId === task.id }"
             :aria-expanded="openTaskMenuId === task.id"
             aria-haspopup="menu"
             aria-label="Действия с задачей"
             @click.stop="toggleTaskMenu(task.id)"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="21" height="6" viewBox="0 0 21 6" class="text-current">
-              <circle cx="3" cy="3" r="2.5" fill="currentColor" />
-              <circle cx="10.5" cy="3" r="2.5" fill="currentColor" />
-              <circle cx="18" cy="3" r="2.5" fill="currentColor" />
-            </svg>
+            <svg-icon name="dots-dropdown" width="22" height="6" />
           </button>
           <Transition name="slide-fade">
             <ul
