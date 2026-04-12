@@ -501,3 +501,26 @@ export interface StageAverageDurationReport {
     closure_overdue: number;
     stages: StageAverageDurationRow[];
 }
+
+/** Сегмент «по причинам отказа» в строке отчёта по этапам (если отдаёт бэкенд). */
+export interface RejectionByStageReasonSegment {
+    label: string;
+    count: number;
+    color?: string;
+}
+
+/** GET /candidates/rejection-by-stage — одна строка: этап, кандидаты на этапе, отказы с этапа. */
+export interface RejectionByStageRow {
+    stage_id: number;
+    stage_name: string;
+    candidates_count: number;
+    rejections_count: number;
+    reasons?: RejectionByStageReasonSegment[];
+}
+
+export interface RejectionByStageData {
+    vacancy_id: number;
+    date_from?: string;
+    date_to?: string;
+    rows: RejectionByStageRow[];
+}

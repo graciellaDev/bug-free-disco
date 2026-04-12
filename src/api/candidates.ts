@@ -23,6 +23,9 @@ import type {
     FunnelMetricsSort,
     StageAverageDurationReport,
     StageAverageDurationRow,
+    RejectionByStageData,
+    RejectionByStageReasonSegment,
+    RejectionByStageRow,
 } from '~/types/candidates';
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -55,6 +58,30 @@ export async function getCandidates(page = 1, filters?: Record<string, any>) {
             pagination: { total: 0, current_page: 1, last_page: 1, per_page: 15 },
         };
     }
+}
+
+const MAX_CANDIDATE_PAGES = 80;
+
+/** Все страницы списка (для отчётов), пока last_page не исчерпан. */
+export async function getCandidatesAllPages(
+    filters?: Record<string, any>
+): Promise<Candidate[]> {
+    const all: Candidate[] = [];
+    let page = 1;
+    let lastPage = 1;
+    try {
+        do {
+            const res = await getCandidates(page, filters);
+            const batch = res.candidates ?? [];
+            all.push(...batch);
+            lastPage = Math.max(1, res.pagination.last_page);
+            page++;
+            if (page > MAX_CANDIDATE_PAGES) break;
+        } while (page <= lastPage);
+    } catch (e) {
+        console.error('getCandidatesAllPages:', e);
+    }
+    return all;
 }
 
 export async function getCandidateById(id: number): Promise<ApiResponseById> {
@@ -275,8 +302,11 @@ function normalizePlatformMessage(raw: Record<string, unknown>): CandidatePlatfo
             : typeof raw.createdAt === 'string'
                 ? raw.createdAt
                 : new Date().toISOString();
+    const rawId = raw.id;
+    const id =
+        typeof rawId === 'string' || typeof rawId === 'number' ? rawId : createdAt;
     return {
-        id: raw.id ?? createdAt,
+        id,
         body: text,
         created_at: createdAt,
         direction: typeof raw.direction === 'string' ? raw.direction : (raw.direction as string | null) ?? null,
@@ -624,6 +654,104 @@ export async function getCandidateStageAverageDuration(
             params.date_from,
             params.date_to
         );
+    } catch {
+        return null;
+    }
+}
+
+function parseRejectionReasonSegment(raw: unknown): RejectionByStageReasonSegment | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    const label =
+        typeof o.label === 'string'
+            ? o.label
+            : typeof o.name === 'string'
+                ? o.name
+                : typeof o.reason === 'string'
+                    ? o.reason
+                    : '';
+    const count = Number(o.count ?? o.cnt ?? o.total);
+    if (!label.trim() || !Number.isFinite(count) || count < 0) return null;
+    const color = typeof o.color === 'string' ? o.color : undefined;
+    return { label: label.trim(), count, color };
+}
+
+function parseRejectionByStageReport(raw: unknown, vacancyId: number): RejectionByStageData | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const root = raw as Record<string, unknown>;
+    const nested =
+        root.data && typeof root.data === 'object' && !Array.isArray(root.data)
+            ? (root.data as Record<string, unknown>)
+            : null;
+    const rowsRaw = Array.isArray(root.rows)
+        ? root.rows
+        : nested && Array.isArray(nested.rows)
+            ? nested.rows
+            : null;
+    if (!rowsRaw) return null;
+    const meta =
+        nested && nested.rows === rowsRaw ? { ...root, ...nested } : root;
+    const rows: RejectionByStageRow[] = [];
+    for (const item of rowsRaw) {
+        if (!item || typeof item !== 'object') continue;
+        const row = item as Record<string, unknown>;
+        const stageName =
+            typeof row.stage_name === 'string'
+                ? row.stage_name
+                : typeof row.name === 'string'
+                    ? row.name
+                    : typeof row.stage === 'string'
+                        ? row.stage
+                        : '';
+        const stageId = Number(row.stage_id ?? row.stageId ?? row.id);
+        const candidatesCount = Number(
+            row.candidates_count ?? row.candidates ?? row.on_stage ?? row.total_candidates ?? row.candidates_on_stage
+        );
+        const rejectionsCount = Number(
+            row.rejections_count ?? row.rejections ?? row.refused ?? row.rejection_count
+        );
+        if (!stageName.trim()) continue;
+        if (!Number.isFinite(candidatesCount) || candidatesCount < 0) continue;
+        if (!Number.isFinite(rejectionsCount) || rejectionsCount < 0) continue;
+        const reasonsRaw = row.reasons ?? row.segments ?? row.by_reason ?? row.rejection_reasons;
+        let reasons: RejectionByStageReasonSegment[] | undefined;
+        if (Array.isArray(reasonsRaw)) {
+            const parsed = reasonsRaw.map(parseRejectionReasonSegment).filter(Boolean) as RejectionByStageReasonSegment[];
+            if (parsed.length > 0) reasons = parsed;
+        }
+        rows.push({
+            stage_id: Number.isFinite(stageId) ? stageId : 0,
+            stage_name: stageName.trim(),
+            candidates_count: candidatesCount,
+            rejections_count: rejectionsCount,
+            reasons,
+        });
+    }
+    return {
+        vacancy_id: Number(meta.vacancy_id) || vacancyId,
+        date_from: typeof meta.date_from === 'string' ? meta.date_from : undefined,
+        date_to: typeof meta.date_to === 'string' ? meta.date_to : undefined,
+        rows,
+    };
+}
+
+/**
+ * Отчёт «Отказ с этапа»: кандидаты на этапе и число отказов с этапа (доли по причинам — опционально).
+ * GET /candidates/rejection-by-stage
+ */
+export async function getCandidateRejectionByStage(
+    params: { vacancy_id: number; date_from?: string; date_to?: string },
+    opts?: { signal?: AbortSignal }
+): Promise<RejectionByStageData | null> {
+    try {
+        const query: Record<string, string | number> = { vacancy_id: params.vacancy_id };
+        if (params.date_from) query.date_from = params.date_from;
+        if (params.date_to) query.date_to = params.date_to;
+        const response = await apiGet<unknown>('/candidates/rejection-by-stage', query, {
+            signal: opts?.signal,
+            skipLoader: true,
+        });
+        return parseRejectionByStageReport(response.data, params.vacancy_id);
     } catch {
         return null;
     }

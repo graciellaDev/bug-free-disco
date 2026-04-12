@@ -28,5 +28,6 @@ temp/
 !.env.example
 
 *constants.ts
+!utils/hhVacancyPayloadConstants.ts
 public/img/
 /roadmaps
