@@ -6,6 +6,7 @@ import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
 import { getVacancies, getVacancyCities } from '~/utils/getVacancies';
 import { clientsList } from '~/utils/clientsList';
 import { getDepartments } from '~/utils/executorsList';
+import { getVacancyById, getVacanciesByBaseVacancyId } from '@/src/api/vacancies';
 import {
   getCandidatesAllPages,
   getCandidateFunnelMetrics,
@@ -42,6 +43,8 @@ const selectedVacancy = ref<number | null>(null);
 const vacancyStages = ref<{ id: number; name: string; count: number }[]>([]);
 const vacancyCandidates = ref<Candidate[]>([]);
 const candidatesLoading = ref(false);
+const selectedVacancyRaw = ref<any | null>(null);
+const vacancyPlatformViewsBySourceKey = ref<Record<string, number>>({});
 /** Смена ключа перезапускает анимацию радиальных блоков «Возможные источники». */
 const possibleSourcesRadialAnimKey = ref(0);
 
@@ -232,15 +235,15 @@ watch(
           per_page: 'all',
           ...buildCandidateFilters(),
         };
-        const [list, allCandidates] = await Promise.all([
-          getVacancies(`filters[id]=${vacancyId}`),
+        const [vacancy, allCandidates] = await Promise.all([
+          getVacancyById(String(vacancyId)),
           getCandidatesAllPages(candidateFilters),
         ]);
-      const items = Array.isArray(list) ? list : [];
-      const vacancy = items.find((v: { id?: number }) => v.id === vacancyId) ?? items[0];
-      const footerStages = vacancy?.footerData?.stages;
-      if (Array.isArray(footerStages) && footerStages.length > 0) {
-        vacancyStages.value = footerStages
+      selectedVacancyRaw.value = vacancy ?? null;
+      void hydrateVacancyPlatformViews(vacancyId);
+      const stagesRaw = vacancy?.stages;
+      if (Array.isArray(stagesRaw) && stagesRaw.length > 0) {
+        vacancyStages.value = stagesRaw
           .filter((s: { id?: number }) => s.id != null)
           .map((s: { id: number; name: string; count?: number }) => ({
             id: s.id,
@@ -253,12 +256,16 @@ watch(
       vacancyCandidates.value = allCandidates as Candidate[];
       possibleSourcesRadialAnimKey.value += 1;
     } catch {
+      selectedVacancyRaw.value = null;
+      vacancyPlatformViewsBySourceKey.value = {};
       vacancyStages.value = [];
       vacancyCandidates.value = [];
     } finally {
       candidatesLoading.value = false;
     }
   } else {
+    selectedVacancyRaw.value = null;
+    vacancyPlatformViewsBySourceKey.value = {};
     vacancyStages.value = [];
     vacancyCandidates.value = [];
     candidatesLoading.value = false;
@@ -290,6 +297,16 @@ const fallbackTableData = [
 ];
 
 const activeSortColumn = ref('responses');
+const tableSortAsc = ref<0 | 1>(0);
+
+function toggleTableSort(columnKey: string) {
+  if (activeSortColumn.value === columnKey) {
+    tableSortAsc.value = tableSortAsc.value === 1 ? 0 : 1;
+  } else {
+    activeSortColumn.value = columnKey;
+    tableSortAsc.value = columnKey === 'source' ? 1 : 0;
+  }
+}
 
 const REJECTION_STAGE_NAME = 'Отказ';
 
@@ -306,6 +323,52 @@ function candidateStageId(c: Candidate): number | null {
 function stageNameById(stageId: number | null): string | null {
   if (stageId == null) return null;
   return vacancyStages.value.find((s) => s.id === stageId)?.name ?? null;
+}
+
+function viewsForSourceFromVacancy(sourceLabel: string): number {
+  const key = normalizeSourceColorKey(sourceLabel);
+  const alias = SOURCE_COLOR_ALIASES[key] ?? key;
+  const map = vacancyPlatformViewsBySourceKey.value;
+  return map[alias] ?? map[key] ?? 0;
+}
+
+let vacancyViewsAbort: AbortController | null = null;
+let vacancyViewsReqId = 0;
+
+async function hydrateVacancyPlatformViews(baseVacancyId: number | null) {
+  vacancyViewsAbort?.abort();
+  vacancyViewsAbort = new AbortController();
+  const signal = vacancyViewsAbort.signal;
+  const reqId = ++vacancyViewsReqId;
+
+  if (!baseVacancyId) {
+    vacancyPlatformViewsBySourceKey.value = {};
+    return;
+  }
+
+  try {
+    const list = await getVacanciesByBaseVacancyId(baseVacancyId, { signal });
+    if (reqId !== vacancyViewsReqId) return;
+    const out: Record<string, number> = {};
+    const rows = Array.isArray(list) ? list : [];
+    for (const v of rows) {
+      const views = Number((v as any)?.views ?? 0);
+      const n = Number.isFinite(views) ? views : 0;
+      const plats: any[] = Array.isArray((v as any)?.platforms_data) ? (v as any).platforms_data : [];
+      if (!plats.length) continue;
+      for (const p of plats) {
+        const name = String(p?.name ?? '').trim();
+        if (!name) continue;
+        const key = normalizeSourceColorKey(name);
+        out[key] = (out[key] ?? 0) + n;
+      }
+    }
+    vacancyPlatformViewsBySourceKey.value = out;
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'name' in e && (e as { name: string }).name === 'AbortError') return;
+    if (reqId !== vacancyViewsReqId) return;
+    vacancyPlatformViewsBySourceKey.value = {};
+  }
 }
 
 const firstVacancyStageId = computed(() => vacancyStages.value[0]?.id ?? null);
@@ -338,6 +401,7 @@ const possibleSourcesTableRows = computed(() => {
   }[] = [];
   for (const [source, arr] of bySource) {
     const responses = arr.length;
+    const views = viewsForSourceFromVacancy(source);
     const funnel = arr.filter((c) => {
       const sid = candidateStageId(c);
       return sid != null && firstId != null && sid !== firstId;
@@ -350,7 +414,7 @@ const possibleSourcesTableRows = computed(() => {
     rows.push({
       source,
       sourceIcon: true,
-      views: '—',
+      views,
       responses,
       funnel,
       rejections,
@@ -387,6 +451,7 @@ function conicGradientFromPlatformSegments(segments: { color: string; ratio: num
 const possibleSourcesRadialCharts = computed(() => {
   const rows = possibleSourcesTableRows.value;
 
+  const totalViews = rows.reduce((s, r) => s + (typeof r.views === 'number' ? r.views : 0), 0);
   const sum = (k: 'responses' | 'funnel' | 'rejections') =>
     rows.reduce((s, r) => s + r[k], 0);
 
@@ -405,7 +470,7 @@ const possibleSourcesRadialCharts = computed(() => {
 
   return [
     {
-      value: '0',
+      value: String(totalViews),
       label: 'просмотры',
       gradient: 'conic-gradient(from -90deg, #e2e8f0 0% 100%)',
     },
@@ -429,15 +494,36 @@ const possibleSourcesRadialCharts = computed(() => {
 
 const sortedPossibleSourcesRows = computed(() => {
   const col = activeSortColumn.value;
+  const asc = tableSortAsc.value === 1;
   const rows = [...possibleSourcesTableRows.value];
   rows.sort((a, b) => {
     const va = a[col as keyof typeof a];
     const vb = b[col as keyof typeof b];
     if (col === 'source') {
-      return String(a.source).localeCompare(String(b.source), 'ru');
+      const res = String(a.source).localeCompare(String(b.source), 'ru');
+      return asc ? res : -res;
     }
     if (typeof va === 'number' && typeof vb === 'number') {
-      return vb - va;
+      return asc ? va - vb : vb - va;
+    }
+    return 0;
+  });
+  return rows;
+});
+
+const sortedFallbackRows = computed(() => {
+  const col = activeSortColumn.value;
+  const asc = tableSortAsc.value === 1;
+  const rows = [...fallbackTableData];
+  rows.sort((a, b) => {
+    const va = a[col as keyof typeof a];
+    const vb = b[col as keyof typeof b];
+    if (col === 'source') {
+      const res = String(a.source).localeCompare(String(b.source), 'ru');
+      return asc ? res : -res;
+    }
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return asc ? va - vb : vb - va;
     }
     return 0;
   });
@@ -445,12 +531,6 @@ const sortedPossibleSourcesRows = computed(() => {
 });
 
 /** Отчёт «Поток кандидатов» (GET /candidates/funnel-metrics) */
-const funnelBucketOptions = [
-  { value: 'day' as const, name: 'День' },
-  { value: 'week' as const, name: 'Неделя' },
-  { value: 'month' as const, name: 'Месяц' },
-];
-const funnelBucket = ref<'day' | 'week' | 'month'>('week');
 const funnelSort = ref<FunnelMetricsSort>('period');
 const funnelAsc = ref<0 | 1>(1);
 const funnelMetrics = ref<Awaited<ReturnType<typeof getCandidateFunnelMetrics>> | null>(null);
@@ -460,7 +540,135 @@ const funnelError = ref<string | null>(null);
 const funnelBarAnimKey = ref(0);
 let funnelMetricsAbort: AbortController | null = null;
 
-const funnelRows = computed(() => funnelMetrics.value?.rows ?? []);
+function ymdToUtcDate(ymd: string): Date | null {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+  return new Date(Date.UTC(y, mo - 1, d));
+}
+
+function formatYmdDot(ymd: string): string {
+  return convertDateFromApi(ymd) ?? ymd;
+}
+
+function formatYmdDdMmSlash(ymd: string): string {
+  const d = ymdToUtcDate(ymd);
+  if (!d) return ymd;
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}`;
+}
+
+type FunnelAggRow = {
+  period_label: string;
+  period_from: string;
+  period_to: string;
+  responses: number;
+  funnel_movements: number;
+};
+
+function buildTenBuckets(fromYmd: string, toYmd: string): { fromYmd: string; toYmd: string; label: string }[] {
+  const from = ymdToUtcDate(fromYmd);
+  const to = ymdToUtcDate(toYmd);
+  if (!from || !to) return [];
+  const min = Math.min(from.getTime(), to.getTime());
+  const max = Math.max(from.getTime(), to.getTime());
+  const spanMs = Math.max(1, max - min);
+
+  const raw: { fromYmd: string; toYmd: string; label: string }[] = [];
+  for (let i = 0; i < 10; i++) {
+    const segStart = min + (spanMs * i) / 10;
+    const segEnd = i === 9 ? max : min + (spanMs * (i + 1)) / 10;
+    const dFrom = new Date(segStart);
+    const dTo = new Date(segEnd);
+    const df = new Date(Date.UTC(dFrom.getUTCFullYear(), dFrom.getUTCMonth(), dFrom.getUTCDate()));
+    const dt = new Date(Date.UTC(dTo.getUTCFullYear(), dTo.getUTCMonth(), dTo.getUTCDate()));
+    const fromIso = df.toISOString().slice(0, 10);
+    const toIso = dt.toISOString().slice(0, 10);
+    raw.push({
+      fromYmd: fromIso,
+      toYmd: toIso,
+      label: `${formatYmdDdMmSlash(fromIso)} - ${formatYmdDdMmSlash(toIso)}`,
+    });
+  }
+
+  // Если период короткий, часть сегментов будет одинаковой — убираем повторы.
+  const uniq: typeof raw = [];
+  for (const b of raw) {
+    const prev = uniq[uniq.length - 1];
+    if (prev && prev.fromYmd === b.fromYmd && prev.toYmd === b.toYmd) continue;
+    uniq.push(b);
+  }
+  return uniq;
+}
+
+const funnelAggRows = computed<FunnelAggRow[]>(() => {
+  const fromYmd = datePickerToYmd(dateRange.value?.from);
+  const toYmd = datePickerToYmd(dateRange.value?.to);
+  const raw = funnelMetrics.value?.rows ?? [];
+  if (!fromYmd || !toYmd) return [];
+  if (!raw.length) return [];
+
+  // Забираем дневные точки (bucket=day) и складываем по дню.
+  const byDay = new Map<string, { responses: number; funnel_movements: number }>();
+  for (const r of raw) {
+    const day = r.period_from;
+    if (!day) continue;
+    const prev = byDay.get(day) ?? { responses: 0, funnel_movements: 0 };
+    byDay.set(day, {
+      responses: prev.responses + (r.responses ?? 0),
+      funnel_movements: prev.funnel_movements + (r.funnel_movements ?? 0),
+    });
+  }
+
+  const buckets = buildTenBuckets(fromYmd, toYmd);
+  if (!buckets.length) return [];
+
+  const out: FunnelAggRow[] = [];
+  for (const b of buckets) {
+    const start = ymdToUtcDate(b.fromYmd)!.getTime();
+    const end = ymdToUtcDate(b.toYmd)!.getTime();
+    let sumResp = 0;
+    let sumMove = 0;
+    for (const [day, v] of byDay) {
+      const dt = ymdToUtcDate(day);
+      if (!dt) continue;
+      const t = dt.getTime();
+      if (t >= start && t <= end) {
+        sumResp += v.responses;
+        sumMove += v.funnel_movements;
+      }
+    }
+    out.push({
+      period_label: b.label,
+      period_from: b.fromYmd,
+      period_to: b.toYmd,
+      responses: sumResp,
+      funnel_movements: sumMove,
+    });
+  }
+  return out;
+});
+
+const funnelRows = computed(() => {
+  const rows = funnelAggRows.value;
+  const col = funnelSort.value;
+  const asc = funnelAsc.value === 1;
+  const out = [...rows];
+  out.sort((a, b) => {
+    if (col === 'period') {
+      const res = a.period_from.localeCompare(b.period_from);
+      return asc ? res : -res;
+    }
+    const va = a[col] ?? 0;
+    const vb = b[col] ?? 0;
+    return asc ? va - vb : vb - va;
+  });
+  return out;
+});
 const maxFunnelChartValue = computed(() => {
   let m = 1;
   for (const r of funnelRows.value) {
@@ -469,11 +677,27 @@ const maxFunnelChartValue = computed(() => {
   return m;
 });
 
-/** Подписи оси Y (0 … max, равномерно). */
+function scaleDesignTicks(max: number): number[] {
+  // В макете: 10 / 100 / 300 / 500 / 900 (не линейная шкала).
+  // Масштабируем относительно текущего max, сохраняя форму шкалы.
+  const base = [10, 100, 300, 500, 900];
+  const safeMax = Math.max(1, max);
+  const factor = safeMax / 900;
+  const scaled = base.map((x) => Math.max(0, Math.round(x * factor)));
+  // Убираем повторы и гарантируем, что последний тик == max (чтобы столбики не упирались в “потолок”).
+  const uniq: number[] = [];
+  for (const t of scaled) {
+    const prev = uniq[uniq.length - 1];
+    if (prev === t) continue;
+    uniq.push(t);
+  }
+  if (uniq.length) uniq[uniq.length - 1] = Math.max(uniq[uniq.length - 1] ?? 0, safeMax);
+  return uniq;
+}
+
+/** Подписи оси Y (как в макете). */
 const funnelChartYTicks = computed(() => {
-  const max = maxFunnelChartValue.value;
-  const n = 5;
-  return Array.from({ length: n }, (_, i) => Math.round((max * i) / (n - 1)));
+  return scaleDesignTicks(maxFunnelChartValue.value);
 });
 
 function funnelBarHeightPct(value: number) {
@@ -519,9 +743,10 @@ async function fetchFunnelMetrics() {
         vacancy_id: vid,
         date_from: from,
         date_to: to,
-        bucket: funnelBucket.value,
-        sort: funnelSort.value,
-        asc: funnelAsc.value,
+        bucket: 'day',
+        // Сортировка на API фиксирована; интерактивная сортировка делается на фронте без рефетча.
+        sort: 'period',
+        asc: 1,
       },
       { signal }
     );
@@ -557,7 +782,8 @@ function applyReportsFilters() {
 }
 
 watch(
-  [metric, selectedVacancy, dateRange, funnelBucket, funnelSort, funnelAsc],
+  // Сортировка меняет только порядок отображения (без перезагрузки данных).
+  [metric, selectedVacancy, dateRange],
   () => {
     void fetchFunnelMetrics();
   },
@@ -1051,6 +1277,283 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
   };
 }
 
+/** --- Экспорт CSV (данные как на экране) --- */
+
+function csvEscapeCell(value: string | number | null | undefined): string {
+  if (value == null) return '';
+  const s = String(value);
+  if (/[\r\n",]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function rowsToCsvContent(rows: (string | number | null | undefined)[][]): string {
+  return rows.map((line) => line.map(csvEscapeCell).join(',')).join('\r\n');
+}
+
+function downloadUtf8Csv(filename: string, content: string) {
+  if (!import.meta.client) return;
+  const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeFilenamePart(raw: string): string {
+  return raw
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/\s+/g, '_')
+    .slice(0, 72);
+}
+
+function exportCsvFilename(): string {
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `otchet_${safeFilenamePart(metric.value)}_${stamp}.csv`;
+}
+
+function selectedVacancyTitleForExport(): string {
+  const id = selectedVacancy.value;
+  if (id == null) return '';
+  const o = vacancyOptions.value.find((v) => v.value === id);
+  return (o?.name ?? '').trim() || `Вакансия #${id}`;
+}
+
+function periodLabelForExport(): string {
+  const from = dateRange.value?.from;
+  const to = dateRange.value?.to;
+  if (!from && !to) return '';
+  return `${from ?? ''} — ${to ?? ''}`;
+}
+
+function pushExportMetaRows(out: (string | number | null | undefined)[][]) {
+  out.push(['Отчёт', metric.value]);
+  const vn = selectedVacancyTitleForExport();
+  if (vn) out.push(['Вакансия', vn]);
+  const p = periodLabelForExport();
+  if (p) out.push(['Период (фильтр)', p]);
+  if (selectedParticipants.value.length) {
+    const names = selectedParticipants.value
+      .map((id) => participantOptions.value.find((o) => o.value === id)?.name ?? String(id))
+      .join('; ');
+    out.push(['Участники', names]);
+  }
+  if (filterDepartment.value.length) {
+    const names = filterDepartment.value
+      .map((id) => departmentsFilterOptions.value.find((o) => o.value === id)?.name ?? String(id))
+      .join('; ');
+    out.push(['Отделы', names]);
+  }
+  if (filterCity.value.length) {
+    out.push(['Города', filterCity.value.join('; ')]);
+  }
+  out.push([]);
+}
+
+function stageSourcesSummaryForExport(stageId: number): string {
+  const bySource = stageSourceBreakdown.value[stageId] ?? {};
+  const parts: string[] = [];
+  for (const src of stagesLegendSources.value) {
+    const n = bySource[src.name] ?? 0;
+    if (n > 0) parts.push(`${src.name}: ${n}`);
+  }
+  return parts.join('; ');
+}
+
+function rejectionReasonsForExport(row: RejectionByStageRow): string {
+  if (!row.reasons?.length) return '';
+  return row.reasons
+    .filter((r) => r.count > 0)
+    .map((r) => `${r.label}: ${r.count}`)
+    .join('; ');
+}
+
+function buildCsvFunnelStatus(): string {
+  if (!selectedVacancy.value || vacancyStages.value.length === 0) return '';
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  rows.push(['Этап', 'Кандидатов (как на экране)', '% от всех кандидатов', 'Разбивка по источникам (кол-во)']);
+  vacancyStages.value.forEach((stage, rowIndex) => {
+    rows.push([
+      stage.name,
+      stageDisplayCounts.value[rowIndex] ?? 0,
+      `${stagePercentOfTotal.value[rowIndex] ?? 0}%`,
+      stageSourcesSummaryForExport(stage.id),
+    ]);
+  });
+  rows.push([]);
+  rows.push(['Источник (легенда)', 'Количество']);
+  for (const s of stagesLegendSources.value) {
+    rows.push([s.name, s.count]);
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCsvRejections(): string {
+  if (!selectedVacancy.value) return '';
+  if (rejectionReportLoading.value || rejectionReportError.value) return '';
+  const list = rejectionReportDisplayRows.value;
+  if (!list.length) return '';
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  rows.push(['Этап', 'Кандидатов', 'Отказы', 'Процент отказов', 'Доли по причинам']);
+  for (const row of list) {
+    rows.push([
+      row.stage_name,
+      row.candidates_count,
+      row.rejections_count,
+      `${rejectionReportRowPct(row)}%`,
+      rejectionReasonsForExport(row),
+    ]);
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCsvFunnelFlow(): string {
+  if (!selectedVacancy.value || !dateRange.value?.from || !dateRange.value?.to) return '';
+  if (funnelLoading.value || funnelError.value) return '';
+  const list = funnelRows.value;
+  if (!list.length) return '';
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  rows.push(['Интервалы графика', '1/10 выбранного периода (агрегация на фронте)']);
+  rows.push([]);
+  rows.push(['Период', 'Отклики', 'Движение по воронке']);
+  for (const row of list) {
+    rows.push([row.period_label, row.responses, row.funnel_movements]);
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCsvStageAverage(): string {
+  if (!selectedVacancy.value || !dateRange.value?.from || !dateRange.value?.to) return '';
+  if (stageAvgLoading.value) return '';
+  const rep = stageAvgEffective.value;
+  if (!rep) return '';
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  rows.push(['Показатель', 'Значение']);
+  rows.push(['Средний срок закрытия (дни)', rep.avg_close_days]);
+  rows.push(['Средний срок просрочки (дни)', rep.avg_overdue_days]);
+  rows.push(['Нанято кандидатов', `${rep.hired_count} из ${rep.hired_total}`]);
+  rows.push(['Из закрытых позиций закрыты в срок, %', rep.closure_on_time_percent]);
+  rows.push(['Позиций закрыто в срок', rep.closure_on_time]);
+  rows.push(['Позиций просрочено', rep.closure_overdue]);
+  rows.push([]);
+  rows.push(['Этап', 'Среднее время (дни)']);
+  for (const s of rep.stages) {
+    rows.push([s.stage_name, s.avg_days]);
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCsvRecruiters(): string {
+  if (recruitersReportLoading.value || recruitersReportError.value) return '';
+  const recs = recruitersReportData.value?.recruiters ?? [];
+  if (!recs.length) return '';
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  rows.push([
+    'Тип строки',
+    'Рекрутер',
+    'Должность',
+    'Сводка (вакансии / чел.)',
+    'Вакансия',
+    'На паузе',
+    'Добавленные кандидаты',
+    'Нанято',
+    'Цель найма',
+    'Прогресс найма',
+    'Отказы',
+    '% отказов от добавленных',
+    'Ср. срок найма',
+    'Ср. срок закрытия',
+  ]);
+  for (const rec of recs) {
+    const summary = `${rec.vacancies_count} ${vacanciesCountWord(rec.vacancies_count)} на ${rec.target_headcount} чел.`;
+    rows.push(['Рекрутер', rec.name, rec.position_title ?? '', summary, '', '', '', '', '', '', '', '', '', '']);
+    for (const vac of rec.vacancies) {
+      rows.push([
+        'Вакансия',
+        rec.name,
+        rec.position_title ?? '',
+        summary,
+        vac.title,
+        vacancyIsOnPause(vac.status) ? 'Да' : '',
+        vac.candidates_added_count,
+        vac.hired_count,
+        vac.hired_target,
+        hiredProgressPercent(vac) ?? '—',
+        vac.rejections_count,
+        rejectionsRatePercent(vac) ?? '—',
+        formatAvgDaysDays(vac.avg_days_to_hire),
+        formatAvgDaysDays(vac.avg_days_to_close),
+      ]);
+    }
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCsvPossibleSources(): string {
+  if (!selectedVacancy.value) return '';
+  if (candidatesLoading.value) return '';
+  const list = sortedPossibleSourcesRows.value;
+  if (!list.length) return '';
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  rows.push(['Источник', 'Просмотры', 'Отклики', 'Движение по воронке', 'Отказы']);
+  for (const r of list) {
+    rows.push([r.source, r.views, r.responses, r.funnel, r.rejections]);
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCsvFallback(): string {
+  const rows: (string | number | null | undefined)[][] = [];
+  pushExportMetaRows(rows);
+  for (const item of fallbackChartData) {
+    rows.push([item.label, item.value]);
+  }
+  rows.push([]);
+  rows.push(tableColumns.map((c) => c.label));
+  for (const r of fallbackTableData) {
+    rows.push([r.source, r.views, r.responses, r.funnel, r.rejections]);
+  }
+  return rowsToCsvContent(rows);
+}
+
+function buildCurrentReportCsv(): string {
+  switch (metric.value) {
+    case 'Воронка статусов по вакансии':
+      return buildCsvFunnelStatus();
+    case 'Отчет по отказам':
+      return buildCsvRejections();
+    case 'Поток кандидатов':
+      return buildCsvFunnelFlow();
+    case 'Среднее время на этапе':
+      return buildCsvStageAverage();
+    case 'Отчет по рекрутерам':
+      return buildCsvRecruiters();
+    case 'Возможные источники':
+      return buildCsvPossibleSources();
+    default:
+      return buildCsvFallback();
+  }
+}
+
+function exportReportsCsv() {
+  const body = buildCurrentReportCsv();
+  if (!body.trim()) {
+    window.alert('Нет данных для экспорта по текущему отчёту и фильтрам.');
+    return;
+  }
+  downloadUtf8Csv(exportCsvFilename(), body);
+}
+
 </script>
 
 <template>
@@ -1083,6 +1586,8 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
             variant="semiaction"
             size="semiaction"
             class="bg-space text-white hover:bg-space/90"
+            type="button"
+            @click="exportReportsCsv"
           >
             Экспорт CSV
           </UiButton>
@@ -1351,19 +1856,6 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
 
     <template v-else-if="metric === 'Поток кандидатов'">
       <div class="flex flex-col gap-[25px] rounded-fifteen bg-white p-25px shadow-sm">
-        <div class="flex flex-wrap items-end gap-4">
-          <div class="min-w-[200px] flex-1 sm:max-w-xs">
-            <label class="mb-2 block text-sm font-medium text-space">Интервал</label>
-            <MyDropdown
-              v-model="funnelBucket"
-              :options="funnelBucketOptions"
-              placeholder="Неделя"
-              trigger-variant="semiaction"
-              class="w-full"
-            />
-          </div>
-        </div>
-
         <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
           <p class="py-8 text-center text-slate-custom">Выберите вакансию и период в фильтрах выше.</p>
         </template>
@@ -1387,7 +1879,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
             </span>
           </div>
 
-          <div class="flex gap-3 overflow-x-auto pb-2 sm:pl-[60px]">
+          <div class="flex gap-3 overflow-x-auto pb-2 sm:pl-[0] md:overflow-x-visible">
             <div
               class="flex shrink-0 flex-col justify-between py-1 text-right text-xs text-slate-custom"
               :style="{ height: '220px' }"
@@ -1397,15 +1889,21 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
             <div
               class="relative min-h-[220px] min-w-0 flex-1 border-b border-athens bg-[length:100%_20%] bg-[linear-gradient(to_bottom,#edeff5_1px,transparent_1px)]"
             >
-              <div :key="funnelBarAnimKey" class="flex h-[220px] items-end gap-2 px-1">
+              <!-- key нужен только чтобы переиграть анимацию столбиков после загрузки данных -->
+              <TransitionGroup
+                :key="funnelBarAnimKey"
+                name="reorder"
+                tag="div"
+                class="flex h-[220px] items-end gap-2 px-1"
+              >
                 <div
                   v-for="(row, ri) in funnelRows"
-                  :key="row.period_from + '-' + row.period_to + '-' + ri"
-                  class="flex min-w-[110px] flex-col items-center justify-end gap-2"
+                  :key="row.period_from + '-' + row.period_to"
+                  class="flex min-w-[82px] flex-1 flex-col items-center justify-end gap-2 md:min-w-0"
                 >
                   <div class="flex h-[200px] w-full items-end justify-center gap-1">
                     <div
-                      class="funnel-bar-fill w-[49px] max-w-[49px] shrink-0 rounded-[5px] bg-space"
+                      class="funnel-bar-fill w-[42px] max-w-[42px] shrink-0 rounded-[5px] bg-space md:w-[49px] md:max-w-[49px]"
                       :style="{
                         height: funnelBarHeightPct(row.responses),
                         animationDelay: `${ri * 45}ms`,
@@ -1413,7 +1911,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                       :title="'Отклики: ' + row.responses"
                     />
                     <div
-                      class="funnel-bar-fill w-[49px] max-w-[49px] shrink-0 rounded-[5px] bg-[#FFBA08]"
+                      class="funnel-bar-fill w-[42px] max-w-[42px] shrink-0 rounded-[5px] bg-[#FFBA08] md:w-[49px] md:max-w-[49px]"
                       :style="{
                         height: funnelBarHeightPct(row.funnel_movements),
                         animationDelay: `${ri * 45 + 55}ms`,
@@ -1422,11 +1920,11 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                     />
                   </div>
                   <span
-                    class="max-w-[96px] text-center text-[10px] leading-tight text-slate-custom sm:text-xs"
+                    class="max-w-[84px] text-center text-[10px] leading-tight text-slate-custom sm:text-xs md:max-w-none"
                     :title="row.period_label"
                   >{{ row.period_label }}</span>
                 </div>
-              </div>
+              </TransitionGroup>
             </div>
           </div>
 
@@ -1438,7 +1936,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                     <button
                       type="button"
                       class="inline-flex items-center gap-1 hover:text-dodger"
-                      :class="{ 'border-b-2 border-dodger text-dodger': funnelSort === 'period' }"
+                      :class="{ 'text-dodger': funnelSort === 'period' }"
                       @click="toggleFunnelSort('period')"
                     >
                       Период
@@ -1450,9 +1948,9 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                         :class="[
                           funnelSort === 'period'
                             ? funnelAsc === 1
-                              ? '-rotate-90'
-                              : 'rotate-90'
-                            : 'rotate-90 opacity-40',
+                              ? 'rotate-180'
+                              : 'rotate-0'
+                            : 'rotate-0 opacity-40',
                         ]"
                       />
                     </button>
@@ -1461,7 +1959,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                     <button
                       type="button"
                       class="inline-flex w-full items-center justify-end gap-1 hover:text-dodger"
-                      :class="{ 'border-b-2 border-dodger text-dodger': funnelSort === 'responses' }"
+                      :class="{ 'text-dodger': funnelSort === 'responses' }"
                       @click="toggleFunnelSort('responses')"
                     >
                       Отклики
@@ -1473,9 +1971,9 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                         :class="[
                           funnelSort === 'responses'
                             ? funnelAsc === 1
-                              ? '-rotate-90'
-                              : 'rotate-90'
-                            : 'rotate-90 opacity-40',
+                              ? 'rotate-180'
+                              : 'rotate-0'
+                            : 'rotate-0 opacity-40',
                         ]"
                       />
                     </button>
@@ -1484,7 +1982,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                     <button
                       type="button"
                       class="inline-flex w-full items-center justify-end gap-1 hover:text-dodger"
-                      :class="{ 'border-b-2 border-dodger text-dodger': funnelSort === 'funnel_movements' }"
+                      :class="{ 'text-dodger': funnelSort === 'funnel_movements' }"
                       @click="toggleFunnelSort('funnel_movements')"
                     >
                       Движение по воронке
@@ -1496,26 +1994,26 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                         :class="[
                           funnelSort === 'funnel_movements'
                             ? funnelAsc === 1
-                              ? '-rotate-90'
-                              : 'rotate-90'
-                            : 'rotate-90 opacity-40',
+                              ? 'rotate-180'
+                              : 'rotate-0'
+                            : 'rotate-0 opacity-40',
                         ]"
                       />
                     </button>
                   </th>
                 </tr>
               </thead>
-              <tbody class="bg-white">
+              <TransitionGroup name="reorder" tag="tbody" class="bg-white">
                 <tr
                   v-for="(row, idx) in funnelRows"
-                  :key="'tbl-' + idx + '-' + row.period_label"
+                  :key="row.period_from + '-' + row.period_to + '-tbl'"
                   class="border-b border-athens last:border-0"
                 >
                   <td class="py-3 pl-15px pr-25px text-space">{{ row.period_label }}</td>
                   <td class="py-3 pl-15px pr-25px text-right text-slate-custom">{{ row.responses }}</td>
                   <td class="py-3 pl-15px pr-25px text-right text-slate-custom">{{ row.funnel_movements }}</td>
                 </tr>
-              </tbody>
+              </TransitionGroup>
             </table>
           </div>
         </template>
@@ -1767,9 +2265,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
         </div>
 
         <div class="overflow-hidden rounded-fifteen bg-athens shadow-sm">
-          <p class="border-b border-athens bg-white px-15px py-3 text-xs text-bali">
-            Кольца «отклики», «воронка» и «отказы» — доли по платформам (цвета совпадают с таблицей). «Просмотры» в CRM по площадкам не разбиваются; кольцо нейтральное. Список кандидатов подгружается постранично. Без поля источника — «{{ PLATFORM_SOURCE_LABEL }}». Движение по воронке — не на первом этапе; отказы — этап «{{ REJECTION_STAGE_NAME }}».
-          </p>
+      
           <div class="overflow-x-auto">
             <table class="w-full min-w-[600px] text-left text-sm">
               <thead>
@@ -1781,25 +2277,35 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                     v-for="col in tableColumns.slice(1)"
                     :key="col.key"
                     class="cursor-pointer py-3 pl-15px pr-25px font-medium text-space hover:text-dodger"
-                    :class="{ 'border-b-2 border-dodger text-dodger': activeSortColumn === col.key }"
-                    @click="activeSortColumn = col.key"
+                    :class="{ 'text-dodger': activeSortColumn === col.key }"
+                    @click="toggleTableSort(col.key)"
                   >
                     <span class="inline-flex items-center gap-1">
                       {{ col.label }}
-                      <svg-icon name="dropdown-arrow" width="16" height="16" class="rotate-90 text-slate-custom" />
+                      <svg-icon
+                        name="dropdown-arrow"
+                        width="16"
+                        height="16"
+                        class="text-slate-custom transition-transform"
+                        :class="[
+                          activeSortColumn === col.key
+                            ? (tableSortAsc === 1 ? 'rotate-180' : 'rotate-0')
+                            : 'rotate-0 opacity-40',
+                        ]"
+                      />
                     </span>
                   </th>
                 </tr>
               </thead>
-              <tbody class="bg-white">
-                <tr v-if="sortedPossibleSourcesRows.length === 0">
+              <TransitionGroup name="reorder" tag="tbody" class="bg-white">
+                <tr v-if="sortedPossibleSourcesRows.length === 0" :key="'empty-possible-sources'">
                   <td colspan="5" class="py-8 text-center text-slate-custom">
                     Нет кандидатов за выбранные фильтры.
                   </td>
                 </tr>
                 <tr
                   v-for="(row, idx) in sortedPossibleSourcesRows"
-                  :key="row.source + '-' + idx"
+                  :key="row.source"
                   class="border-b border-athens last:border-0"
                 >
                   <td class="py-3 pl-15px pr-25px">
@@ -1812,12 +2318,12 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                       {{ row.source }}
                     </span>
                   </td>
-                  <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.views }}</td>
+                  <td class="py-3 pl-15px pr-25px text-slate-custom test">{{ row.views }}</td>
                   <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.responses }}</td>
                   <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.funnel }}</td>
                   <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.rejections }}</td>
                 </tr>
-              </tbody>
+              </TransitionGroup>
             </table>
           </div>
         </div>
@@ -1864,20 +2370,30 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                   v-for="col in tableColumns.slice(1)"
                   :key="col.key"
                   class="cursor-pointer py-3 pl-15px pr-25px font-medium text-space hover:text-dodger"
-                  :class="{ 'border-b-2 border-dodger text-dodger': activeSortColumn === col.key }"
-                  @click="activeSortColumn = col.key"
+                  :class="{ 'text-dodger': activeSortColumn === col.key }"
+                  @click="toggleTableSort(col.key)"
                 >
                   <span class="inline-flex items-center gap-1">
                     {{ col.label }}
-                    <svg-icon name="dropdown-arrow" width="16" height="16" class="rotate-90 text-slate-custom" />
+                    <svg-icon
+                      name="dropdown-arrow"
+                      width="16"
+                      height="16"
+                      class="text-slate-custom transition-transform"
+                      :class="[
+                        activeSortColumn === col.key
+                          ? (tableSortAsc === 1 ? 'rotate-180' : 'rotate-0')
+                          : 'rotate-0 opacity-40',
+                      ]"
+                    />
                   </span>
                 </th>
               </tr>
             </thead>
-            <tbody class="bg-white">
+            <TransitionGroup name="reorder" tag="tbody" class="bg-white">
               <tr
-                v-for="(row, idx) in fallbackTableData"
-                :key="idx"
+                v-for="(row, idx) in sortedFallbackRows"
+                :key="row.source"
                 class="border-b border-athens last:border-0"
               >
                 <td class="py-3 pl-15px pr-25px">
@@ -1894,7 +2410,7 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
                 <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.funnel }}</td>
                 <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.rejections }}</td>
               </tr>
-            </tbody>
+            </TransitionGroup>
           </table>
         </div>
       </div>
@@ -1915,12 +2431,14 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
 .funnel-bar-fill {
   transform-origin: bottom;
   animation: funnel-bar-grow 0.55s cubic-bezier(0.33, 1, 0.68, 1) both;
+  transition: height 220ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .funnel-bar-fill {
     animation: none;
     transform: none;
+    transition: none;
   }
 }
 
@@ -1943,6 +2461,24 @@ function rejectionReportBarTrackStyle(row: RejectionByStageRow) {
     animation: none;
     transform: none;
   }
+}
+
+/* Плавная перестановка элементов при сортировке (FLIP). */
+.reorder-move {
+  transition: transform 260ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.reorder-enter-active,
+.reorder-leave-active {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.reorder-enter-from,
+.reorder-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 
 @keyframes possible-sources-donut-in {
