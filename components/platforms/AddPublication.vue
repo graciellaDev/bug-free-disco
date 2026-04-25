@@ -389,7 +389,8 @@
           <div class="w-full justify-between flex gap-25px mb-6">
             <div class="w-full">
               <MyCheckbox :id="'show_metro_only'" :label="'Показывать только станцию метро в вакансии'"
-                v-model="data.address.show_metro_only" />
+                :model-value="data.address?.show_metro_only ?? false"
+                @update:model-value="(v) => (data.address = { ...(data.address || {}), show_metro_only: v })" />
             </div>
           </div>
         </template>
@@ -406,20 +407,23 @@
                   Заработная плата / мес
                 </p>
                 <div class="w-full flex gap-x-2.5">
-                  <MyInput placeholder="От" type="Number" v-model="data.salary_range.from"
+                  <MyInput placeholder="От" type="Number"
+                    :model-value="data.salary_range?.from ?? null"
                     @update:model-value="($event) => handleSalaryRangeUpdate('from', $event)" />
-                  <MyInput placeholder="До" type="Number" v-model="data.salary_range.to"
+                  <MyInput placeholder="До" type="Number"
+                    :model-value="data.salary_range?.to ?? null"
                     @update:model-value="($event) => handleSalaryRangeUpdate('to', $event)" />
                 </div>
               </div>
               <div class="w-full">
                 <p class="text-sm font-medium text-space mb-3.5">Валюта</p>
                 <MyDropdown :options="ArrayCurrency"
-                  :model-value="ArrayCurrency.find(c => c.id === data.salary_range.currency)?.value"
+                  :model-value="ArrayCurrency.find(c => c.id === data.salary_range?.currency)?.value"
                   @update:model-value="($event) => handleSalaryRangeUpdate('currency', ArrayCurrency.find(c => c.value === $event))" />
               </div>
               <div class="w-full">
-                <DropDownTypes :options=HH_SALARY_TYPE :selected="HH_SALARY_TYPE[0]" v-model="data.salary_range.mode"
+                <DropDownTypes :options=HH_SALARY_TYPE :selected="HH_SALARY_TYPE[0]"
+                  :model-value="data.salary_range?.mode ?? null"
                   @update:model-value="($event) => handleSalaryRangeUpdate('mode', $event)">
                 </DropDownTypes>
               </div>
@@ -427,7 +431,7 @@
             <div class="w-full  items-end justify-between flex mb-6 gap-25px">
               <RadioGroup default-value="full-cash" class="w-full flex gap-[18px]"
                 :model-value="data.salary_range?.gross === true ? 'full-cash' : 'past-cash'"
-                @update:model-value="(value) => data.salary_range.gross = value === 'full-cash'">
+                @update:model-value="(value) => (data.salary_range = { ...(data.salary_range || {}), gross: value === 'full-cash' })">
                 <div class="my-checkbox">
                   <Label for="past-cash" class="cursor-pointer flex items-center">
                     <RadioGroupItem id="past-cash" value="past-cash" class="mr-5px" />
@@ -448,7 +452,7 @@
                   Частота выплаты
                 </p>
                 <DropDownTypes :options=HH_SALARY_FREQUENCY :selected="HH_SALARY_FREQUENCY[3]"
-                  v-model="data.salary_range.frequency"
+                  :model-value="data.salary_range?.frequency ?? null"
                   @update:model-value="($event) => handleSalaryRangeUpdate('frequency', $event)">
                 </DropDownTypes>
               </div>
@@ -712,6 +716,7 @@ import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
 import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
+import { getRabotaVacancyExportMap } from '@/utils/getVacancies'
 
 /** Возможные сетевые запросы при инициализации — перечень: `utils/addPublicationRemoteLoads.ts` (`ADD_PUBLICATION_REMOTE_LOADS`). */
 
@@ -774,6 +779,7 @@ const rabotaEmploymentTypes = ref([])
 const rabotaWorkSchedules = ref([])
 const rabotaExperienceLevels = ref([])
 const rabotaEducationLevels = ref([])
+const rabotaExportMapRows = ref([])
 
 // Справочники для avito.ru
 const avitoProfessions = ref([])
@@ -1066,6 +1072,7 @@ const handleIndustryChange = async (industry) => {
 }
 
 const handleSalaryRangeUpdate = (property, value) => {
+  if (!data.value.salary_range) data.value.salary_range = { from: null, to: null }
   if (property === 'from' || property === 'to') {
     data.value.salary_range[property] = value ? Number(value) : null
   } else if (property === 'currency') {
@@ -2115,9 +2122,7 @@ async function loadInitialFormData() {
         }
       }
     }
-  }
-
-  const fromPublishCardOnly = !props.editingVacancy?.id && Boolean(props.selectedPlatform)
+}
 
   async function applyVacancyToFormFields() {
     const pdHh = props.editingVacancy?.platforms_data?.[0]
@@ -2155,7 +2160,7 @@ async function loadInitialFormData() {
   }
 
   // Карточка «Опубликовать»: только локальный provide(vacancyCurrect), без GET вакансии и без ожидания совпадения id с URL (черновик).
-  if (fromPublishCardOnly) {
+  if (isNewPublicationFromCard) {
     if (globCurrentVacancy.value || vacancyData.value) {
       await applyVacancyToFormFields()
     }
@@ -2287,6 +2292,71 @@ if (targetPlatformFromProps) {
     } else if (targetPlatformFromProps === 'rabota') {
       await loadDictionaries('rabota')
     }
+  }
+}
+
+function applyConnectedExportMapToForm(rowKeys, platform) {
+  // Сейчас используем только «обнуление» неподключённых полей после префилла.
+  // Это безопаснее, чем пытаться маппить поля до заполнения (форма сложная и зависит от справочников).
+  const has = (k) => rowKeys.has(k)
+
+  // Общие поля
+  if (!has('name')) data.value.name = ''
+  if (!has('description')) data.value.description = ''
+
+  // Специализация (в нашей форме: industry + professional_roles[0])
+  if (!has('specializations')) {
+    data.value.industry = null
+    data.value.professional_roles = [null]
+  }
+
+  // Условия/классификаторы
+  if (!has('employment')) data.value.employment_form = null
+  if (!has('schedule')) data.value.work_schedule_by_days = null
+  if (!has('experience')) data.value.experience = null
+  if (!has('education')) data.value.education_level = null
+
+  // Локация
+  if (!has('area')) data.value.area = null
+  if (!has('address')) data.value.address = null
+
+  // Зарплата (в форме HH — salary_range, для rabota сейчас переиспользуем ту же структуру, если она есть)
+  if (!has('salary_amounts') && !has('currency') && !has('salary_mode') && !has('salary_payment_freq')) {
+    if ('salary_range' in (data.value || {})) {
+      data.value.salary_range = null
+    }
+    if ('salary' in (data.value || {})) {
+      data.value.salary = null
+    }
+    data.value.salary_from = null
+    data.value.salary_to = null
+  }
+}
+
+// debug: avoid `alert` here — component can execute during SSR/hydration
+if (import.meta.client) {
+  console.log('AddPublication init:', { targetPlatformFromProps, isNewPublicationFromCard })
+}
+// rabota.ru: при открытии модалки «Опубликовать» подгружаем маппинг полей (аналог hh-export-map)
+if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
+  try {
+    rabotaExportMapRows.value = await getRabotaVacancyExportMap()
+  } catch (e) {
+    rabotaExportMapRows.value = []
+    console.warn('Не удалось загрузить маппинг полей rabota.ru:', e)
+  }
+}
+
+// Применяем маппинг после заполнения формы значениями из вакансии
+if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
+  const rows = Array.isArray(rabotaExportMapRows.value) ? rabotaExportMapRows.value : []
+  const connectedKeys = new Set(
+    rows
+      .filter((r) => r?.connected === true && typeof r?.row_key === 'string' && r.row_key.trim() !== '')
+      .map((r) => String(r.row_key).trim())
+  )
+  if (connectedKeys.size > 0) {
+    applyConnectedExportMapToForm(connectedKeys, 'rabota')
   }
 }
 
