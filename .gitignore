@@ -31,3 +31,5 @@ temp/
 !utils/hhVacancyPayloadConstants.ts
 public/img/
 /roadmaps
+
+/.cursor

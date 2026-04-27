@@ -40,7 +40,7 @@
     @close="emit('close')"
     width="490px"
     :showCloseButton="false"
-    :lgSize="true"
+    :lgSize="false"
     :parentRounded="true"
     :contentRounded="false"
     :contentPadding="false"
@@ -58,7 +58,7 @@
       <div class="flex gap-x-3">
         <button
           type="button"
-          class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-red-500 hover:bg-red-600 text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold disabled:opacity-60"
+          class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-pink border border-semired text-red-custom p-border-semi-btn text-sm rounded-ten leading-normal h-fit font-medium hover:bg-pink hover:text-red-custom hover:border-semired disabled:opacity-60"
           :disabled="loading"
           @click="emit('confirm')"
         >
