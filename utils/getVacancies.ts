@@ -190,6 +190,39 @@ export const getHhVacancyExportMap = async (): Promise<HhVacancyExportMapRow[]> 
   }
 };
 
+/**
+ * Карта полей Jobly → rabota.ru и флаги «подключено».
+ * Бэкенд: эндпоинт-«аналог hh-export-map» (по договорённости).
+ */
+export const getRabotaVacancyExportMap = async (): Promise<HhVacancyExportMapRow[]> => {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return [];
+  }
+  try {
+    const response = await $fetch<{ message?: string; data?: HhVacancyExportMapRow[] }>(
+      `/vacancies/rabota-export-map`,
+      {
+        method: 'GET',
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+      }
+    );
+    return Array.isArray(response?.data) ? response.data : [];
+  } catch (err: unknown) {
+    console.warn('getRabotaVacancyExportMap:', err);
+    return [];
+  }
+};
+
 export interface HhPublicationOriginalApiData {
   hh_vacancy_id: string;
   synced_at: string | null;
@@ -493,8 +526,13 @@ export const resolvePhraseNamesToIds = async (phraseNamesStr: string): Promise<n
     .filter((s) => s.length >= 3 && s.length <= 50);
   if (names.length === 0) return [];
 
-  const { data: phrasesList } = await getPhrases();
-  const list = Array.isArray(phrasesList) ? phrasesList : (phrasesList && (phrasesList as any).data) ? (phrasesList as any).data : [];
+  const phrasesRes = await getPhrases();
+  const phrasesList = (phrasesRes as any)?.data ?? null;
+  const list = Array.isArray(phrasesList)
+    ? phrasesList
+    : phrasesList && (phrasesList as any).data
+      ? (phrasesList as any).data
+      : [];
   const byName = new Map<string, { id: number }>();
   (list || []).forEach((p: any) => {
     const n = (p?.name ?? p?.title ?? '').trim();
