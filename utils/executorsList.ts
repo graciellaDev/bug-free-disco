@@ -97,7 +97,7 @@ export async function  executorsList() {
         return { executors };
 };
 
-export async function getRoles(): Promise<{ id: number; name: string }[]> {
+export async function getCrmRoles(): Promise<{ id: number; name: string }[]> {
     const config = useRuntimeConfig();
     const authToken = useCookie('auth_token').value;
     const authUser = useCookie('auth_user').value;
@@ -116,7 +116,7 @@ export async function getRoles(): Promise<{ id: number; name: string }[]> {
             return response.data.map((r: ApiRole) => ({ id: r.id, name: r.name }));
         }
     } catch (e) {
-        console.warn('getRoles:', (e as Error)?.message || e);
+        console.warn('getCrmRoles:', (e as Error)?.message || e);
     }
     return [
         { id: 1, name: 'Администратор' },

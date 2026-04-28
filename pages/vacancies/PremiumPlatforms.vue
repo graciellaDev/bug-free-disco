@@ -26,7 +26,7 @@
   import FormAuthPlatform from '~/components/custom/page-parts/FormAuthPlatform.vue'
   import ConnectedPlatform from '~/components/custom/page-parts/ConnectedPlatform.vue'
   import CardPlatform from '@/components/custom/page-parts/CardPlatform.vue'
-  import { getProfile as profileHh, getAvailableTypes as typesHh } from '@/utils/hhAccount'
+  import { getHhProfile as profileHh, getAvailableTypes as typesHh } from '@/utils/hhAccount'
   import { capitalize } from '@/helpers/handlers'
   import { resolveOAuthApiPrefix } from '@/utils/resolveOAuthApiPrefix'
 

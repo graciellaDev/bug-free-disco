@@ -1,7 +1,7 @@
 import { createAuthHeaders, getAuthTokens, getFetchErrorMeta, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
 
-export const getProfile = async () => {
+export const getHhProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -37,7 +37,7 @@ export function hhProfileIndicatesConnected(res: ApiHhResult | null): boolean {
   return d.message === 'Success';
 }
 
-export const auth = async () => {
+export const authHh = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -65,7 +65,7 @@ export const auth = async () => {
   }
 };
 
-export const unlinkProfile = async () => {
+export const unlinkHhProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -186,7 +186,7 @@ export const archivePublication = async (publicationId: string | number) => {
   }
 };
 
-export const getPublications = async (includeArchived: boolean = false) => {
+export const getHhPublications = async (includeArchived: boolean = false) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -231,7 +231,7 @@ export type GetAllHhPublicationsOptions = {
   firstPageOnly?: boolean;
 };
 
-export const getAllPublications = async (options?: GetAllHhPublicationsOptions) => {
+export const getAllHhPublications = async (options?: GetAllHhPublicationsOptions) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -377,7 +377,7 @@ export const getPublishFormReference = async () => {
 
 /**
  * Остатки размещений с hh.ru для текущего работодателя (employer_id из токена middleware).
- * Тело запроса пустое — без предварительного getProfile на фронте.
+ * Тело запроса пустое — без предварительного getHhProfile на фронте.
  */
 export const postAvailablePublicationsCounts = async () => {
   const authTokens = getAuthTokens();
@@ -641,7 +641,7 @@ function buildHhVacancyFormData(data: DraftDataHh, omitBillingFields: boolean): 
   return bodyData;
 }
 
-export const addDraft = async (data: DraftDataHh) => {
+export const addHhDraft = async (data: DraftDataHh) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -675,7 +675,7 @@ export const addDraft = async (data: DraftDataHh) => {
   }
 }
 
-export const getRoles = async () => {
+export const getHhRoles = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -871,7 +871,7 @@ export const getData = async (url: any) => {
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
-export const publishVacancy = async (data: DraftDataHh) => {
+export const publishHhVacancy = async (data: DraftDataHh) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -912,7 +912,7 @@ export const publishVacancy = async (data: DraftDataHh) => {
     // });
 
     result.value.data = response.data;
-    console.log('publishVacancy: response.data', response.data);
+    console.log('publishHhVacancy: response.data', response.data);
   } catch (err: any) {
     if (err.response?.status === 401) {
       handle401Error();

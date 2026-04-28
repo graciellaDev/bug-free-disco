@@ -11,7 +11,7 @@ import education from '~/src/data/education.json';
 /**
  * Интерфейс данных вакансии из InfoTab
  */
-export interface VacancyFormData {
+export interface HhVacancyFormData {
   name?: string;
   code?: string;
   description?: string;
@@ -198,7 +198,7 @@ function mapPhrases(phrases: string | number[] | undefined): number[] {
  * Основная функция маппинга данных вакансии из формы в формат hh.ru API
  */
 export function mapVacancyToHhFormat(
-  vacancyData: VacancyFormData,
+  vacancyData: HhVacancyFormData,
   industryData?: any,
   professionalRoleData?: any
 ): DraftDataHh {

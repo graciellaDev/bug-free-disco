@@ -574,12 +574,12 @@ import GeoInput from '~/components/custom/GeoInput.vue';
 import MyDropdown from '~/components/custom/MyDropdown.vue';
 import { RadioGroup } from '@/components/ui/radio-group';
 import { 
-    getPublications, 
-    getAllPublications, 
-    getProfile,
+    getHhPublications as getPublications, 
+    getAllHhPublications as getAllPublications, 
+    getHhProfile as getProfile,
     hhProfileIndicatesConnected,
-    unlinkProfile, 
-    publishVacancy as publishVacancyToHh, 
+    unlinkHhProfile as unlinkProfile, 
+    publishHhVacancy as publishVacancyToHh, 
     getPublishFormReference,
     getAvailableTypes,
     getVacancyCountViews,
@@ -592,14 +592,14 @@ import {
     getLanguages,
     getLanguageLevels,
 } from "~/utils/hhAccount";
-import { getProfile as getProfileAvito, auth as authAvito, unlinkProfile as unlinkProfileAvito, getPublications as getPublicationsAvito, getAllPublications as getAllPublicationsAvito, archivePublication as archivePublicationAvito } from "~/utils/avitoAccount";
-import { getProfile as getProfileRabota, auth as authRabota, unlinkProfile as unlinkProfileRabota, getPublications as getPublicationsRabota, getAllPublications as getAllPublicationsRabota, archivePublication as archivePublicationRabota } from "~/utils/rabotaAccount";
-import { getProfile as getProfileSuperjob, auth as authSuperjob, unlinkProfile as unlinkProfileSuperjob, getAllPublications as getAllPublicationsSuperjob, archivePublication as archivePublicationSuperjob } from "~/utils/superjobAccount";
+import { getAvitoProfile as getProfileAvito, authAvito, unlinkAvitoProfile as unlinkProfileAvito, getAvitoPublications as getPublicationsAvito, getAllAvitoPublications as getAllPublicationsAvito, archiveAvitoPublication as archivePublicationAvito } from "~/utils/avitoAccount";
+import { getRabotaProfile as getProfileRabota, authRabota, unlinkRabotaProfile as unlinkProfileRabota, getRabotaPublications as getPublicationsRabota, getAllRabotaPublications as getAllPublicationsRabota, archiveRabotaPublication as archivePublicationRabota } from "~/utils/rabotaAccount";
+import { getSuperjobProfile as getProfileSuperjob, authSuperjob, unlinkSuperjobProfile as unlinkProfileSuperjob, getAllSuperjobPublications as getAllPublicationsSuperjob, archiveSuperjobPublication as archivePublicationSuperjob } from "~/utils/superjobAccount";
 import { dateStringToDayMonth } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
-import { getVacancy, getVacancies, getHhVacancyExportMap, getVacancyFields, updateVacancy, resolveDriverNamesToDbIds, postPublicationPlatformStatsCache, buildDriverDbIdToNameMap } from '@/utils/getVacancies'
+import { getVacancy, getVacancies, getHhVacancyExportMap, getVacancyFields, updateVacancyApi as updateVacancy, resolveDriverNamesToDbIds, postPublicationPlatformStatsCache, buildDriverDbIdToNameMap } from '@/utils/getVacancies'
 import { buildHhOriginalDraftFromJoblyForPublish } from '@/utils/buildHhOriginalDraftFromJoblyVacancy'
 import { deleteVacancy } from '@/utils/deleteVacancy'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'

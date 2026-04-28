@@ -140,7 +140,7 @@ import { teamList, employeesList, removeFromTeam } from "@/utils/executorsList";
 import ResponseInput from "~/components/custom/ResponseInput.vue";
 import TableUsers from "@/components/custom/TableUsers.vue";
 import { useRoute } from 'vue-router'
-import { updateVacancy } from '@/utils/getVacancies';
+import { updateVacancyApi as updateVacancy } from '@/utils/getVacancies';
 
 const props = defineProps({
     id: { type: [String, Number], default: null },
