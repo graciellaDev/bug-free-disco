@@ -7,7 +7,7 @@ import { mapVacancyToAvitoFormat, ensureAvitoPayloadTypes } from "@/utils/mapVac
  * @param data - Данные вакансии в формате DraftDataHh или из формы AddPublication
  * @returns Результат создания черновика
  */
-export const addDraft = async (data: DraftDataHh | any) => {
+export const addAvitoDraft = async (data: DraftDataHh | any) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден', errorDraft: null };
@@ -54,7 +54,7 @@ export const addDraft = async (data: DraftDataHh | any) => {
  * Получение профиля пользователя Avito
  * @returns Профиль пользователя
  */
-export const getProfile = async () => {
+export const getAvitoProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -86,7 +86,7 @@ export const getProfile = async () => {
  * Авторизация на Avito
  * @returns Результат авторизации
  */
-export const auth = async () => {
+export const authAvito = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -125,7 +125,7 @@ export const auth = async () => {
  * Отвязка профиля Avito
  * @returns Результат отвязки
  */
-export const unlinkProfile = async () => {
+export const unlinkAvitoProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -172,7 +172,7 @@ function normalizeAvitoItem(item: any): any {
 /**
  * Получение одной публикации Avito по id
  */
-export const getPublication = async (id: string | number) => {
+export const getAvitoPublication = async (id: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -208,7 +208,7 @@ export const getPublication = async (id: string | number) => {
  * Перевод публикации в архив на Avito (снятие с публикации).
  * @param publicationId - ID объявления на платформе (platform_id из platforms_data)
  */
-export const archivePublication = async (publicationId: string | number) => {
+export const archiveAvitoPublication = async (publicationId: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -239,7 +239,7 @@ export const archivePublication = async (publicationId: string | number) => {
  * @param includeArchived - Включать ли архивные публикации
  * @returns Список публикаций
  */
-export const getPublications = async (includeArchived: boolean = false) => {
+export const getAvitoPublications = async (includeArchived: boolean = false) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -287,7 +287,7 @@ export const getPublications = async (includeArchived: boolean = false) => {
  * Получение всех публикаций Avito.ru (активных и архивных)
  * @returns Список всех публикаций
  */
-export const getAllPublications = async () => {
+export const getAllAvitoPublications = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -384,7 +384,7 @@ export const getAllPublications = async () => {
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
-export const publishVacancy = async (draftData: DraftDataHh) => {
+export const publishAvitoVacancy = async (draftData: DraftDataHh) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -433,7 +433,7 @@ export const publishVacancy = async (draftData: DraftDataHh) => {
  * @param search - Поисковый запрос по названию (опционально)
  * @returns Список профессий
  */
-export const getProfessions = async (search?: string) => {
+export const getAvitoProfessions = async (search?: string) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };

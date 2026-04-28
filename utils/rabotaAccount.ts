@@ -5,7 +5,7 @@ import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
  * Получение профиля пользователя Rabota.ru
  * @returns Профиль пользователя
  */
-export const getProfile = async () => {
+export const getRabotaProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -57,7 +57,7 @@ export const getProfile = async () => {
  * Авторизация на Rabota.ru
  * @returns Результат авторизации
  */
-export const auth = async () => {
+export const authRabota = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -88,7 +88,7 @@ export const auth = async () => {
  * Отвязка профиля Rabota.ru
  * @returns Результат отвязки
  */
-export const unlinkProfile = async () => {
+export const unlinkRabotaProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -118,7 +118,7 @@ export const unlinkProfile = async () => {
 /**
  * Получение одной публикации Rabota.ru по id
  */
-export const getPublication = async (id: string | number) => {
+export const getRabotaPublication = async (id: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -154,7 +154,7 @@ export const getPublication = async (id: string | number) => {
  * Перевод публикации в архив на Rabota.ru (снятие с публикации).
  * @param publicationId - ID публикации на платформе (platform_id из platforms_data)
  */
-export const archivePublication = async (publicationId: string | number) => {
+export const archiveRabotaPublication = async (publicationId: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -185,7 +185,7 @@ export const archivePublication = async (publicationId: string | number) => {
  * @param includeArchived - Включать ли архивные публикации
  * @returns Список публикаций
  */
-export const getPublications = async (includeArchived: boolean = false) => {
+export const getRabotaPublications = async (includeArchived: boolean = false) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -226,7 +226,7 @@ export const getPublications = async (includeArchived: boolean = false) => {
  * Получение всех публикаций Rabota.ru (активных и архивных)
  * @returns Список всех публикаций
  */
-export const getAllPublications = async () => {
+export const getAllRabotaPublications = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -490,7 +490,7 @@ export const getAllPublications = async () => {
  * Получение справочника профессий rabota.ru
  * @returns Список профессий
  */
-export const getProfessions = async () => {
+export const getRabotaProfessions = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -803,7 +803,7 @@ const mapDataToRabotaFormat = (data: DraftDataHh): Record<string, any> => {
  * @param data - Данные вакансии в формате DraftDataHh
  * @returns Результат создания черновика
  */
-export const addDraft = async (data: DraftDataHh) => {
+export const addRabotaDraft = async (data: DraftDataHh) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден', errorDraft: null };
@@ -858,7 +858,7 @@ export const addDraft = async (data: DraftDataHh) => {
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
-export const publishVacancy = async (draftData: DraftDataHh) => {
+export const publishRabotaVacancy = async (draftData: DraftDataHh) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };

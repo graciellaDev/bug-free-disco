@@ -583,8 +583,8 @@ import {
   getLanguageLevels,
   getPublishFormReference,
   postAvailablePublicationsCounts,
-  publishVacancy,
-  addDraft,
+  publishHhVacancy as publishVacancy,
+  addHhDraft as addDraft,
 } from '@/utils/hhAccount';
 import type { DraftDataHh } from '@/types/platform';
 import {

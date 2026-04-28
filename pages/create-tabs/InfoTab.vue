@@ -24,7 +24,7 @@ import SkillsDropdown from '~/components/custom/SkillsDropdown.vue'
 import { getDepartments, executorsList } from '~/utils/executorsList'
 import { useRoute } from 'vue-router'
 import { createError } from '#app'
-import { getRoles as getRolesHh, getLanguages, getLanguageLevels } from '@/utils/hhAccount'
+import { getHhRoles as getRolesHh, getLanguages, getLanguageLevels } from '@/utils/hhAccount'
 
 import schedule from '~/src/data/work-schedule.json'
 import experience from '~/src/data/experience.json'

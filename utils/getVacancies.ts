@@ -353,7 +353,7 @@ export const getVacanciesNames = async () => {
   );
 };
 
-export const updateVacancy = async (id: string | number, data: UpdateVacancyData) => {
+export const updateVacancyApi = async (id: string | number, data: UpdateVacancyData) => {
     const config = useRuntimeConfig();
 
     // Токен сервера из cookie

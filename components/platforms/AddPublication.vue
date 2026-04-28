@@ -686,29 +686,29 @@ const emit = defineEmits(['saved', 'cancel', 'form-ready'])
 const isEditingMode = computed(() => props.editingVacancy != null)
 
 import {
-  getProfile as profileHh,
+  getHhProfile as profileHh,
   getAvailableTypes as typesHh,
-  addDraft as addDraftHh,
-  publishVacancy as publishVacancyToHh,
-  getRoles as getRolesHh,
+  addHhDraft as addDraftHh,
+  publishHhVacancy as publishVacancyToHh,
+  getHhRoles as getRolesHh,
   getAreas as getAreasHh,
   getAddresses as getAddressesHh,
   getAvailablePublications as getAvailablePublicationsHh,
   getPublication as getHhPublicationById,
 } from '@/utils/hhAccount'
-import { addDraft as addDraftAvito, getProfile as profileAvito, publishVacancy as publishVacancyToAvito, getProfessions as getProfessionsAvito, getSpecializations as getSpecializationsAvito } from '@/utils/avitoAccount'
+import { addAvitoDraft as addDraftAvito, getAvitoProfile as profileAvito, publishAvitoVacancy as publishVacancyToAvito, getAvitoProfessions as getProfessionsAvito, getSpecializations as getSpecializationsAvito } from '@/utils/avitoAccount'
 import {
-  getProfile as profileRabota,
-  addDraft as addDraftRabota,
-  publishVacancy as publishVacancyToRabota,
-  getProfessions as getProfessionsRabota,
+  getRabotaProfile as profileRabota,
+  addRabotaDraft as addDraftRabota,
+  publishRabotaVacancy as publishVacancyToRabota,
+  getRabotaProfessions as getProfessionsRabota,
   getRegions as getRegionsRabota,
   getEmploymentTypes as getEmploymentTypesRabota,
   getWorkSchedules as getWorkSchedulesRabota,
   getExperienceLevels as getExperienceLevelsRabota,
   getEducationLevels as getEducationLevelsRabota
 } from '@/utils/rabotaAccount'
-import { updatePublication as updatePublicationSuperjob, getVacancy as getSuperjobVacancy, getCatalogues as getSuperjobCatalogues, getTowns as getSuperjobTowns, publishVacancy as publishVacancyToSuperjob } from '@/utils/superjobAccount'
+import { updateSuperjobPublication as updatePublicationSuperjob, getSuperjobVacancy, getCatalogues as getSuperjobCatalogues, getTowns as getSuperjobTowns, publishSuperjobVacancy as publishVacancyToSuperjob } from '@/utils/superjobAccount'
 import { mapVacancyToSuperjobPayload } from '@/utils/mapVacancyToSuperjob'
 import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFields, buildDriverDbIdToNameMap } from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'

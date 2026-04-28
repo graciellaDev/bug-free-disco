@@ -4,7 +4,7 @@ import type { PlatformHhResponse } from "@/types/platform";
 /**
  * Получение профиля пользователя SuperJob
  */
-export const getProfile = async () => {
+export const getSuperjobProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -52,7 +52,7 @@ export const getProfile = async () => {
 /**
  * Авторизация на SuperJob (редирект на OAuth)
  */
-export const auth = async () => {
+export const authSuperjob = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -82,7 +82,7 @@ export const auth = async () => {
 /**
  * Отвязка профиля SuperJob
  */
-export const unlinkProfile = async () => {
+export const unlinkSuperjobProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -179,7 +179,7 @@ export const getTowns = async (params?: { keyword?: string; all?: 1 }) => {
 /**
  * Получение одной вакансии SuperJob по id
  */
-export const getVacancy = async (id: string | number) => {
+export const getSuperjobVacancy = async (id: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -215,7 +215,7 @@ export const getVacancy = async (id: string | number) => {
  * Перевод вакансии в архив на SuperJob (снятие с публикации).
  * @param vacancyId - ID вакансии на платформе (platform_id из platforms_data)
  */
-export const archivePublication = async (vacancyId: string | number) => {
+export const archiveSuperjobPublication = async (vacancyId: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -245,7 +245,7 @@ export const archivePublication = async (vacancyId: string | number) => {
  * Создание и публикация вакансии на SuperJob (POST /2.0/vacancies/).
  * @param formData - Данные из формы AddPublication (mapVacancyToSuperjobPayload вызывается внутри)
  */
-export const publishVacancy = async (formData: Record<string, any>) => {
+export const publishSuperjobVacancy = async (formData: Record<string, any>) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -282,7 +282,7 @@ export const publishVacancy = async (formData: Record<string, any>) => {
  * @param vacancyId - ID вакансии на платформе (platform_id из platforms_data)
  * @param payload - Данные вакансии в формате формы (name, description, salary_range, employment и т.д.)
  */
-export const updatePublication = async (vacancyId: string | number, payload: Record<string, any>) => {
+export const updateSuperjobPublication = async (vacancyId: string | number, payload: Record<string, any>) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -315,7 +315,7 @@ export const updatePublication = async (vacancyId: string | number, payload: Rec
  * Получение списка вакансий SuperJob (прокси к GET /api/superjob/vacancies)
  * Ответ бэкенда может повторять структуру API SuperJob: { objects: [...], total } или { data: { objects } }
  */
-export const getPublications = async (_includeArchived: boolean = false) => {
+export const getSuperjobPublications = async (_includeArchived: boolean = false) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
@@ -353,7 +353,7 @@ export const getPublications = async (_includeArchived: boolean = false) => {
  * Получение всех вакансий SuperJob (активные; у SuperJob нет отдельного архива в том же API)
  * По аналогии с getAllPublications для hh.ru/rabota.ru — один запрос, нормализованный список.
  */
-export const getAllPublications = async () => {
+export const getAllSuperjobPublications = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return null;
