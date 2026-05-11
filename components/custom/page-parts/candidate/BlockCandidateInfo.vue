@@ -31,7 +31,7 @@
     sendCandidateEmail,
     createCandidateComment,
   } from '@/src/api/candidates';
-  import { getCandidateProfileExternalUrl, getCandidateResumePdfUrl } from '@/utils/candidateSourceLinks';
+  import { getCandidateProfileExternalUrl, getCandidateResumePdfUrl, getCandidateViewOnSourceMenuLabel } from '@/utils/candidateSourceLinks';
   import { displayCandidateEmailOrEmpty } from '@/utils/candidateDisplayEmail';
   import { buildCandidateCopyPayload } from '@/utils/buildCandidateCopyPayload';
 
@@ -316,8 +316,8 @@
     const items: string[] = [];
     const profileUrl = getCandidateProfileExternalUrl(c);
     if (profileUrl) {
-      const src = c?.source?.trim();
-      items.push(src ? `Смотреть на ${src}` : 'Смотреть на сайте источника');
+      const label = getCandidateViewOnSourceMenuLabel(c?.source);
+      items.push(`Смотреть на ${label}`);
     }
     if (getCandidateResumePdfUrl(c)) {
       items.push('Скачать резюме');

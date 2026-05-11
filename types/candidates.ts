@@ -48,8 +48,31 @@ export type HhEducationAdditionalEntry = {
 /** Сертификат из HH (`certificate` в резюме) для отображения в карточке */
 export type HhCertificateDisplayItem = {
     title: string;
+    /** Выдавшая организация (rabota certificates и др.) */
+    organization?: string;
     year?: string;
     url?: string;
+};
+
+/** Награда (rabota.ru `awards[]` и др.) для блока «Награды» в карточке */
+export type CandidateAwardDisplayItem = {
+    name: string;
+    year?: string;
+    issuer?: string;
+};
+
+/** Тест (rabota.ru `tests[]` и др.) */
+export type CandidateResumeTestItem = {
+    name: string;
+    score?: string;
+    max_score?: string;
+};
+
+/** Пункт портфолио (rabota.ru `portfolio[]` и др.) */
+export type CandidatePortfolioItem = {
+    title: string;
+    url?: string;
+    description?: string;
 };
 
 /** Одна запись опыта работы (компания, период, должность, описание) */
@@ -136,6 +159,8 @@ export interface Candidate {
     link?: string | null;
     /** Общий опыт (строка, напр. "28 лет 4 месяца") для заголовка блока */
     experience?: string | null;
+    /** Стаж в полных годах (импорт Avito: cv_job_api.params.experience) — блок «Дополнительно» */
+    experience_years?: number | null;
     /** Навыки из HH (может прийти строкой или массивом строк) */
     skill_set?: string | string[] | null;
     /** Языки из HH (может прийти строкой JSON/текстом или массивом объектов) */
@@ -157,6 +182,12 @@ export interface Candidate {
     coverLetter?: string | null;
     /** Сертификаты из HH (массив объектов в ответе API) */
     certificate?: unknown;
+    /** Награды (rabota.ru и др., массив { name, year?, issuer? }) */
+    awards?: CandidateAwardDisplayItem[] | null;
+    /** Тесты (rabota.ru и др.) */
+    tests?: CandidateResumeTestItem[] | null;
+    /** Портфолио (rabota.ru и др.) */
+    portfolio?: CandidatePortfolioItem[] | null;
     source?: string | null;
     /** Тип отклика (вкладка «Поля»): Не указан / Прямой отклик / Холодный поиск */
     response_type?: string | null;
@@ -183,6 +214,12 @@ export interface Candidate {
     commuteTime?: string | null;
     businessTrips?: string | null;
     citizenship?: string | null;
+    /** Rabota и др.: воинский учёт (не показываем «Не указано») */
+    military_service_summary?: string | null;
+    /** Rabota: семейное положение */
+    marital_status_summary?: string | null;
+    /** Rabota: дети («да» / «нет») */
+    children_summary?: string | null;
     /** Разрешение на работу (HH `work_ticket`, API: `work_ticket`) */
     work_ticket?: string | null;
     workPermit?: string | null;
@@ -300,9 +337,16 @@ export interface CandidateCreateRequest {
     skill_set?: string[] | unknown[] | null;
     recommendation?: unknown[] | null;
     certificate?: unknown[] | null;
+    awards?: CandidateAwardDisplayItem[] | null;
+    tests?: CandidateResumeTestItem[] | null;
+    portfolio?: CandidatePortfolioItem[] | null;
     citizenship?: string | null;
+    military_service_summary?: string | null;
+    marital_status_summary?: string | null;
+    children_summary?: string | null;
     link?: string | null;
     experience?: string;
+    experience_years?: number | null;
     experiences?: ExperienceEntryCandidate[] | null;
     telegram?: string | null;
     messengerMax?: string | null;
