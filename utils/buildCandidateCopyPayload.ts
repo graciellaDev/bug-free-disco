@@ -117,7 +117,22 @@ export function buildCandidateCopyPayload(
       | undefined,
     recommendation: normalizeArrayForCreate(c.recommendation),
     certificate: normalizeArrayForCreate(c.certificate),
+    awards:
+      Array.isArray(c.awards) && c.awards.length > 0
+        ? c.awards.map(a => ({ ...a }))
+        : undefined,
+    tests:
+      Array.isArray(c.tests) && c.tests.length > 0
+        ? c.tests.map(t => ({ ...t }))
+        : undefined,
+    portfolio:
+      Array.isArray(c.portfolio) && c.portfolio.length > 0
+        ? c.portfolio.map(p => ({ ...p }))
+        : undefined,
     citizenship: c.citizenship?.trim() || undefined,
+    military_service_summary: c.military_service_summary?.trim() || undefined,
+    marital_status_summary: c.marital_status_summary?.trim() || undefined,
+    children_summary: c.children_summary?.trim() || undefined,
     link: c.link?.trim() || undefined,
     experience: c.experience?.trim() || undefined,
     experiences:

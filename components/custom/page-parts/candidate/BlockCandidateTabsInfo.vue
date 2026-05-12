@@ -53,6 +53,9 @@
     HhEducationPrimaryEntry,
     HhEducationAdditionalEntry,
     HhCertificateDisplayItem,
+    CandidateAwardDisplayItem,
+    CandidateResumeTestItem,
+    CandidatePortfolioItem,
   } from '@/types/candidates';
   import type {
     LocalCandidateCustomField,
@@ -1963,6 +1966,7 @@
         const name =
           (typeof obj.name === 'string' && obj.name.trim()) ||
           (typeof obj.title === 'string' && obj.title.trim()) ||
+          (typeof obj.language === 'string' && obj.language.trim()) ||
           '';
         if (!name) return null;
         const levelObj =
@@ -1972,6 +1976,7 @@
         const level =
           (typeof levelObj?.name === 'string' && levelObj.name.trim()) ||
           (typeof obj.level === 'string' && obj.level.trim()) ||
+          (typeof obj.language_level === 'string' && obj.language_level.trim()) ||
           undefined;
         const isNative =
           obj.native === true ||
@@ -2031,6 +2036,7 @@
           if (s.includes('НАЧАЛЬНЫЙ')) return 41;
           if (s.includes('СРЕДНИЙ')) return 51;
           if (s.includes('ПРОДВИНУТ')) return 60;
+          if (s.includes('СВОБОД')) return 59;
           return 1;
         };
         const byLevel = levelOrder(b.level) - levelOrder(a.level);
@@ -2043,18 +2049,22 @@
     name: string;
     position?: string;
     company?: string;
+    /** Текст рекомендации (rabota.ru и др.) */
+    text?: string;
   };
 
   function parseHhRecommendationItem(item: unknown): HhRecommendationItem | null {
     if (!item || typeof item !== 'object') return null;
     const obj = item as Record<string, unknown>;
 
+    const author =
+      (typeof obj.author === 'string' && obj.author.trim()) || '';
     const name =
+      author ||
       (typeof obj.name === 'string' && obj.name.trim()) ||
       (typeof obj.person_name === 'string' && obj.person_name.trim()) ||
       (typeof obj.fio === 'string' && obj.fio.trim()) ||
       '';
-    if (!name) return null;
 
     const position =
       (typeof obj.position === 'string' && obj.position.trim()) ||
@@ -2067,7 +2077,17 @@
       (typeof obj.company === 'string' && obj.company.trim()) ||
       undefined;
 
-    return { name, position, company };
+    const text =
+      (typeof obj.text === 'string' && obj.text.trim()) || undefined;
+
+    if (!name && !text && !position && !company) return null;
+
+    return {
+      name: name || 'Рекомендация',
+      position,
+      company,
+      ...(text ? { text } : {}),
+    };
   }
 
   const hhRecommendations = computed(() => {
@@ -2124,11 +2144,35 @@
     return { name, organization, result, year, city, level };
   }
 
-  const resumeEducationLevelLabel = computed(() => {
-    const c = props.candidate as Record<string, unknown>;
-    const v = c.education_level_id ?? c.educationLevel;
-    return typeof v === 'string' && v.trim() !== '' ? v.trim() : '';
-  });
+  /** Уровни образования: если в БД нет education_level_id (часто импорт Avito), но education начинается с уровня. */
+  const KNOWN_EDUCATION_LEVEL_PHRASES = new Set([
+    'высшее',
+    'среднее',
+    'неполное высшее',
+    'незаконченное высшее',
+    'среднее специальное',
+    'незаконченное среднее',
+    'основное общее',
+    'начальное общее',
+    'начальное',
+    'бакалавр',
+    'магистр',
+    'специалист',
+    'аспирант',
+    'кандидат наук',
+    'доктор наук',
+  ]);
+
+  function inferEducationLevelFromEducationField(ed: unknown): string {
+    if (typeof ed !== 'string') return '';
+    const t = ed.trim();
+    if (!t) return '';
+    const first = t.split(/[.\n]/u, 2)[0]?.trim() ?? '';
+    if (!first || first.length > 120) return '';
+    const low = first.toLowerCase();
+    if (KNOWN_EDUCATION_LEVEL_PHRASES.has(low)) return first;
+    return '';
+  }
 
   const hhEducationPrimaryEntries = computed((): HhEducationPrimaryEntry[] => {
     const raw = (props.candidate as { education_primary?: unknown }).education_primary;
@@ -2138,10 +2182,29 @@
       .filter((e): e is HhEducationPrimaryEntry => e !== null);
   });
 
+  const resumeEducationLevelLabel = computed(() => {
+    const c = props.candidate as Record<string, unknown>;
+    const raw = c.education_level_id ?? c.educationLevel;
+    const fromId = typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : '';
+    if (fromId !== '') return fromId;
+    if (hhEducationPrimaryEntries.value.length > 0) return '';
+    return inferEducationLevelFromEducationField(props.candidate.education);
+  });
+
   const legacyEducationFallback = computed(() => {
     if (hhEducationPrimaryEntries.value.length > 0) return '';
     const ed = props.candidate.education;
-    return typeof ed === 'string' && ed.trim() !== '' ? ed.trim() : '';
+    if (typeof ed !== 'string' || ed.trim() === '') return '';
+    let fallback = ed.trim();
+    const level = resumeEducationLevelLabel.value.trim();
+    if (level !== '' && fallback.toLowerCase() === level.toLowerCase()) {
+      return '';
+    }
+    if (level !== '') {
+      const esc = level.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      fallback = fallback.replace(new RegExp(`^${esc}\\s*[.·]\\s*`, 'iu'), '').trim();
+    }
+    return fallback;
   });
 
   function formatHhEducationLine1(entry: HhEducationPrimaryEntry): string {
@@ -2338,8 +2401,16 @@
     if (!title && url) title = 'Сертификат';
     if (!title) return null;
 
+    const organizationRaw =
+      typeof o.organization === 'string' ? o.organization.trim() : '';
+    const organization =
+      organizationRaw !== '' && organizationRaw !== title
+        ? organizationRaw
+        : undefined;
+
     return {
       title,
+      ...(organization ? { organization } : {}),
       ...(year ? { year } : {}),
       ...(url ? { url } : {}),
     };
@@ -2380,12 +2451,237 @@
       .filter((x): x is HhCertificateDisplayItem => x !== null);
   });
 
+  function parseCandidateResumeTestItem(row: unknown): CandidateResumeTestItem | null {
+    if (!row || typeof row !== 'object') return null;
+    const o = row as Record<string, unknown>;
+    const name = typeof o.name === 'string' && o.name.trim() !== '' ? o.name.trim() : '';
+    if (!name) return null;
+    const out: CandidateResumeTestItem = { name };
+    if (typeof o.score === 'string' && o.score.trim() !== '') {
+      out.score = o.score.trim();
+    } else if (typeof o.score === 'number' && !Number.isNaN(o.score)) {
+      out.score = String(o.score);
+    }
+    if (typeof o.max_score === 'string' && o.max_score.trim() !== '') {
+      out.max_score = o.max_score.trim();
+    } else if (typeof o.max_score === 'number' && !Number.isNaN(o.max_score)) {
+      out.max_score = String(o.max_score);
+    }
+    return out;
+  }
+
+  const candidateResumeTestsEntries = computed((): CandidateResumeTestItem[] => {
+    const raw = (props.candidate as { tests?: unknown }).tests;
+    if (raw == null) return [];
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+      const t = raw.trim();
+      if (!t) return [];
+      try {
+        list = JSON.parse(t);
+      } catch {
+        return [];
+      }
+    }
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((row) => parseCandidateResumeTestItem(row))
+      .filter((x): x is CandidateResumeTestItem => x !== null);
+  });
+
+  function parseCandidatePortfolioItem(row: unknown): CandidatePortfolioItem | null {
+    if (!row || typeof row !== 'object') return null;
+    const o = row as Record<string, unknown>;
+    const title =
+      typeof o.title === 'string' && o.title.trim() !== '' ? o.title.trim() : '';
+    if (!title) return null;
+    const out: CandidatePortfolioItem = { title };
+    if (typeof o.url === 'string' && o.url.trim() !== '') {
+      const u = o.url.trim();
+      if (/^https?:\/\//i.test(u)) out.url = u;
+    }
+    if (typeof o.description === 'string' && o.description.trim() !== '') {
+      out.description = o.description.trim();
+    }
+    return out;
+  }
+
+  const candidatePortfolioEntries = computed((): CandidatePortfolioItem[] => {
+    const raw = (props.candidate as { portfolio?: unknown }).portfolio;
+    if (raw == null) return [];
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+      const t = raw.trim();
+      if (!t) return [];
+      try {
+        list = JSON.parse(t);
+      } catch {
+        return [];
+      }
+    }
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((row) => parseCandidatePortfolioItem(row))
+      .filter((x): x is CandidatePortfolioItem => x !== null);
+  });
+
+  function formatTestScoreLine(t: CandidateResumeTestItem): string {
+    const parts: string[] = [];
+    if (t.score?.trim()) parts.push(`балл: ${t.score.trim()}`);
+    if (t.max_score?.trim()) parts.push(`макс.: ${t.max_score.trim()}`);
+    return parts.join(' · ');
+  }
+
+  function parseCandidateAwardItem(row: unknown): CandidateAwardDisplayItem | null {
+    if (!row || typeof row !== 'object') return null;
+    const o = row as Record<string, unknown>;
+    const nameRaw = o.name;
+    const name =
+      typeof nameRaw === 'string' && nameRaw.trim() !== '' ? nameRaw.trim() : '';
+    if (!name) return null;
+    const out: CandidateAwardDisplayItem = { name };
+    if (typeof o.year === 'number' && !Number.isNaN(o.year)) {
+      out.year = String(o.year);
+    } else if (typeof o.year === 'string' && o.year.trim() !== '') {
+      out.year = o.year.trim();
+    }
+    if (typeof o.issuer === 'string' && o.issuer.trim() !== '') {
+      out.issuer = o.issuer.trim();
+    }
+    return out;
+  }
+
+  function formatAwardSecondaryLine(aw: CandidateAwardDisplayItem): string {
+    const parts: string[] = [];
+    if (aw.year?.trim()) parts.push(aw.year.trim());
+    if (aw.issuer?.trim()) parts.push(aw.issuer.trim());
+    return parts.join(' · ');
+  }
+
+  const candidateAwardEntries = computed((): CandidateAwardDisplayItem[] => {
+    const raw = (props.candidate as { awards?: unknown }).awards;
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+      const t = raw.trim();
+      if (!t) return [];
+      if (t.startsWith('[') || t.startsWith('{')) {
+        try {
+          list = JSON.parse(t);
+        } catch {
+          return [];
+        }
+      } else {
+        return [];
+      }
+    }
+    if (list == null) return [];
+    if (!Array.isArray(list)) {
+      const one = parseCandidateAwardItem(list);
+      return one ? [one] : [];
+    }
+    return list
+      .map((row) => parseCandidateAwardItem(row))
+      .filter((x): x is CandidateAwardDisplayItem => x !== null);
+  });
+
   function pickCandidateStr(c: Record<string, unknown>, ...keys: string[]): string {
     for (const key of keys) {
       const v = c[key];
       if (typeof v === 'string' && v.trim() !== '') return v.trim();
     }
     return '';
+  }
+
+  /** Убрать из «Обо мне» строки, перенесённые в блок «Дополнительно» (старый импорт в одном поле). */
+  function stripRabotaProfileLinesFromAboutMe(
+    aboutMe: string | null | undefined
+  ): string {
+    const raw = typeof aboutMe === 'string' ? aboutMe : '';
+    const kept = raw.split(/\r?\n/).filter(line => {
+      const t = line.trim();
+      if (/^Воинский учёт:/i.test(t)) return false;
+      if (/^Семейное положение:/i.test(t)) return false;
+      if (/^Дети:/i.test(t)) return false;
+      return true;
+    });
+    return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  /** Декодируем HTML-сущности из внешних источников (rabota и др.). */
+  function decodeHtmlEntities(text: string): string {
+    if (!text.includes('&')) return text;
+    const named: Record<string, string> = {
+      '&quot;': '"',
+      '&#34;': '"',
+      '&apos;': "'",
+      '&#39;': "'",
+      '&sbquo;': ',',
+      '&bdquo;': '"',
+      '&ldquo;': '"',
+      '&rdquo;': '"',
+      '&laquo;': '"',
+      '&raquo;': '"',
+      '&amp;': '&',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&nbsp;': ' ',
+    };
+    let out = text;
+    for (const [entity, value] of Object.entries(named)) {
+      out = out.replaceAll(entity, value);
+    }
+    out = out
+      .replace(/&#(\d+);/g, (_, code: string) => {
+        const n = Number(code);
+        if (!Number.isFinite(n) || n <= 0) return _;
+        try {
+          return String.fromCodePoint(n);
+        } catch {
+          return _;
+        }
+      })
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+        const n = Number.parseInt(hex, 16);
+        if (!Number.isFinite(n) || n <= 0) return _;
+        try {
+          return String.fromCodePoint(n);
+        } catch {
+          return _;
+        }
+      });
+    return out.replace(/[ \t]{2,}/g, ' ');
+  }
+
+  /** Fallback: разбор старого текста aboutMe, если отдельные поля в API ещё пустые. */
+  function parseRabotaProfileRowsFromAboutMe(
+    aboutMe: string | null | undefined
+  ): { label: string; value: string }[] {
+    const raw = typeof aboutMe === 'string' ? aboutMe : '';
+    const rows: { label: string; value: string }[] = [];
+    if (!raw.trim()) return rows;
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      let m = /^Воинский учёт:\s*(.+)$/i.exec(t);
+      if (m) {
+        const v = m[1].trim();
+        if (v && !/^не указано$/i.test(v)) {
+          rows.push({ label: 'Воинский учёт', value: v });
+        }
+        continue;
+      }
+      m = /^Семейное положение:\s*(.+)$/i.exec(t);
+      if (m) {
+        const v = m[1].trim();
+        if (v) rows.push({ label: 'Семейное положение', value: v });
+        continue;
+      }
+      m = /^Дети:\s*(.+)$/i.exec(t);
+      if (m) {
+        const v = m[1].trim();
+        if (v) rows.push({ label: 'Дети', value: v });
+      }
+    }
+    return rows;
   }
 
   function normalizeDriverLicenseTypes(raw: unknown): string[] {
@@ -2404,35 +2700,65 @@
     return [...new Set(out)];
   }
 
-  /** HH: has_vehicle + driver_license_types → одна строка как на hh.ru */
-  function formatCandidateDrivingLine(c: Record<string, unknown>): string {
-    const vehicle = pickCandidateStr(c, 'has_vehicle', 'hasCar');
-    const licenses = normalizeDriverLicenseTypes(c.driver_license_types);
-    const chunks: string[] = [];
-    if (vehicle === 'Да') {
-      chunks.push('Есть своя машина');
-    } else if (vehicle === 'Нет') {
-      chunks.push('Нет собственного автомобиля');
-    } else if (vehicle) {
-      chunks.push(vehicle);
-    }
-    if (licenses.length > 0) {
-      chunks.push(`права категории ${licenses.join(', ')}`);
-    }
-    return chunks.join(', ');
+  function capitalizeFirstLetter(value: string): string {
+    const t = value.trim();
+    if (!t) return '';
+    return t.charAt(0).toUpperCase() + t.slice(1);
   }
+
+  /** HH/Rabota: наличие автомобиля. */
+  function formatCandidateVehicleLine(c: Record<string, unknown>): string {
+    const vehicle = pickCandidateStr(c, 'has_vehicle', 'hasCar');
+    if (vehicle === 'Да') {
+      return 'Есть своя машина';
+    }
+    if (vehicle === 'Нет') {
+      return 'Нет собственного автомобиля';
+    }
+    return vehicle;
+  }
+
+  /** HH/Rabota: категории водительских прав отдельной строкой. */
+  function formatCandidateDriverLicensesLine(c: Record<string, unknown>): string {
+    const licenses = normalizeDriverLicenseTypes(c.driver_license_types);
+    if (licenses.length > 0) {
+      return licenses.join(', ');
+    }
+    return pickCandidateStr(c, 'hasDriverLicense');
+  }
+
+  const rabotaProfileRowsFromDb = computed(() => {
+    const c = props.candidate as Record<string, unknown>;
+    const rows: { label: string; value: string }[] = [];
+    const military = pickCandidateStr(c, 'military_service_summary');
+    if (military) rows.push({ label: 'Воинский учёт', value: military });
+    const marital = pickCandidateStr(c, 'marital_status_summary');
+    if (marital) rows.push({ label: 'Семейное положение', value: marital });
+    const children = pickCandidateStr(c, 'children_summary');
+    if (children) rows.push({ label: 'Дети', value: children });
+    return rows;
+  });
+
+  const rabotaProfileRowsEffective = computed(() => {
+    if (rabotaProfileRowsFromDb.value.length > 0) {
+      return rabotaProfileRowsFromDb.value;
+    }
+    return parseRabotaProfileRowsFromAboutMe(props.candidate.aboutMe);
+  });
 
   const candidateAdditionalRows = computed(() => {
     const c = props.candidate as Record<string, unknown>;
+    const relocation = pickCandidateStr(c, 'relocation_readiness');
     const commute = pickCandidateStr(c, 'commute_time', 'commuteTime');
     const business = pickCandidateStr(c, 'business_trip_readiness', 'businessTrips');
     const citizenship = pickCandidateStr(c, 'citizenship');
     const workPermit = pickCandidateStr(c, 'work_ticket', 'workPermit');
-    const driving = formatCandidateDrivingLine(c);
-    const licenseLegacy = pickCandidateStr(c, 'hasDriverLicense');
-    const drivingFinal = driving || licenseLegacy;
+    const vehicle = formatCandidateVehicleLine(c);
+    const driverLicenses = formatCandidateDriverLicensesLine(c);
 
     return [
+      ...rabotaProfileRowsEffective.value,
+      { label: 'Готовность к переезду', value: relocation },
       {
         label: 'Желательное время в пути до работы',
         value: commute,
@@ -2440,8 +2766,9 @@
       { label: 'Командировки', value: business },
       { label: 'Гражданство', value: citizenship },
       { label: 'Разрешение на работу', value: workPermit },
-      { label: 'Опыт вождения', value: drivingFinal },
-    ] as const;
+      { label: 'Наличие автомобиля', value: vehicle },
+      { label: 'Водительские права', value: driverLicenses },
+    ];
   });
 
   const hasCoverLetter = computed(() => {
@@ -2449,20 +2776,54 @@
     return typeof t === 'string' && t.trim() !== '';
   });
 
-  const hasAboutMeText = computed(() => {
-    const t = props.candidate.aboutMe;
-    return typeof t === 'string' && t.trim() !== '';
+  const aboutMeDisplayText = computed(() =>
+    decodeHtmlEntities(stripRabotaProfileLinesFromAboutMe(props.candidate.aboutMe))
+  );
+
+  const hasAboutMeText = computed(() => aboutMeDisplayText.value.trim() !== '');
+
+  const experienceEntries = computed(() => {
+    const raw = props.candidate.experiences;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+
+    const normalize = (v: unknown) =>
+      typeof v === 'string' ? v.trim().toLowerCase() : '';
+    const aggregate = normalize(props.candidate.experience ?? '');
+    const hasText = (v: unknown) => normalize(v) !== '';
+
+    return raw.filter((exp) => {
+      const company = normalize(exp.company);
+      const dates = normalize(exp.dates);
+      const duration = normalize(exp.duration);
+      const hasStrongDetails =
+        (company !== '' && company !== aggregate) ||
+        hasText(exp.job_title) ||
+        hasText(exp.description) ||
+        hasText(exp.location) ||
+        hasText(exp.industry) ||
+        hasText(exp.start_date) ||
+        hasText(exp.end_date) ||
+        hasText(exp.role_dates);
+
+      if (hasStrongDetails) return true;
+      if (company === '' && dates === '' && duration === '') return false;
+      if (aggregate && (company === aggregate || dates === aggregate || duration === aggregate)) {
+        return false;
+      }
+      return true;
+    });
   });
 
   const hasResumeExperienceBlock = computed(() => {
-    const exps = props.candidate.experiences;
-    if (Array.isArray(exps) && exps.length > 0) return true;
+    if (experienceEntries.value.length > 0) return true;
     const agg = props.candidate.experience;
     return typeof agg === 'string' && agg.trim() !== '';
   });
 
   const candidateAdditionalRowsFilled = computed(() =>
-    candidateAdditionalRows.value.filter((row) => row.value.trim() !== '')
+    candidateAdditionalRows.value
+      .map((row) => ({ ...row, value: capitalizeFirstLetter(row.value) }))
+      .filter((row) => row.value.trim() !== '')
   );
 
   const hasAdditionalInfoSection = computed(
@@ -2502,17 +2863,26 @@
               {{ resumeSalaryLine }}
             </p>
           </div>
-          <p class="mb-3 text-sm font-normal leading-150">
+          <p
+            v-if="(candidate.specializations ?? '').toString().trim() !== ''"
+            class="mb-3 text-sm font-normal leading-150"
+          >
             <span class="text-slate-custom">Специализации: </span>
-            <span class="text-space">{{ candidate.specializations || '—' }}</span>
+            <span class="text-space">{{ candidate.specializations }}</span>
           </p>
-          <p class="mb-3 text-sm font-normal leading-150">
+          <p
+            v-if="(candidate.employment ?? '').toString().trim() !== ''"
+            class="mb-3 text-sm font-normal leading-150"
+          >
             <span class="text-slate-custom">Тип занятости: </span>
-            <span class="text-space">{{ candidate.employment || '—' }}</span>
+            <span class="text-space">{{ candidate.employment }}</span>
           </p>
-          <p class="text-sm font-normal leading-150">
+          <p
+            v-if="(candidate.workFormat ?? candidate.work_format ?? '').toString().trim() !== ''"
+            class="text-sm font-normal leading-150"
+          >
             <span class="text-slate-custom">Формат работы: </span>
-            <span class="text-space">{{ candidate.workFormat || candidate.work_format || '—' }}</span>
+            <span class="text-space">{{ candidate.workFormat || candidate.work_format }}</span>
           </p>
         </div>
         <div v-if="hasResumeExperienceBlock" class="mb-px bg-white p-25px">
@@ -2521,7 +2891,7 @@
           </p>
           <div class="space-y-5">
           <div
-            v-for="(exp, idx) in candidate.experiences"
+            v-for="(exp, idx) in experienceEntries"
             :key="exp.id ?? idx"
               class="experience-entry"
           >
@@ -2615,12 +2985,6 @@
               </div>
             </div>
           </div>
-          <p
-            v-if="(!candidate.experiences || candidate.experiences.length === 0) && candidate.experience"
-            class="text-sm leading-150 text-slate-custom"
-          >
-            {{ experienceDisplay }}
-          </p>
         </div>
         <div v-if="hhSkillSetItems.length > 0" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Навыки</p>
@@ -2669,7 +3033,7 @@
             Обо мне
           </p>
           <p class="text-sm leading-150 text-slate-custom">
-            <TextWithLinks :text="candidate.aboutMe || ''" />
+            <TextWithLinks :text="aboutMeDisplayText" />
           </p>
         </div>
         <div v-if="hhRecommendations.length > 0" class="mb-px bg-white p-25px">
@@ -2687,10 +3051,16 @@
                 class="mt-1 text-sm font-normal leading-150 text-slate-custom"
               >
                 {{ rec.position || '—' }}<span v-if="rec.company"> · {{ rec.company }}</span>
-          </p>
-        </div>
-      </div>
+              </p>
+              <p
+                v-if="rec.text"
+                class="mt-2 text-sm font-normal leading-150 text-slate-custom"
+              >
+                <TextWithLinks :text="rec.text" />
+              </p>
+            </div>
           </div>
+        </div>
         <div v-if="hasResumeEducationBlock" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Образование</p>
           <p class="mb-1 text-sm font-normal text-slate-custom">Уровень</p>
@@ -2772,10 +3142,16 @@
                 target="_blank"
                 rel="noopener noreferrer"
                   class="shrink-0 text-sm font-normal text-slate-custom hover:text-dodger"
-              >
+                >
                   Посмотреть &gt;
               </a>
           </div>
+              <p
+                v-if="cert.organization"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                {{ cert.organization }}
+              </p>
               <p
                 v-if="cert.year"
                 class="mt-1 text-xs font-normal leading-normal text-slate-custom"
@@ -2784,6 +3160,77 @@
             </p>
           </div>
         </div>
+        </div>
+        <div v-if="candidateResumeTestsEntries.length > 0" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Тесты</p>
+          <div class="space-y-4">
+            <div
+              v-for="(test, testIdx) in candidateResumeTestsEntries"
+              :key="testIdx"
+              class="min-w-0"
+            >
+              <p class="text-sm font-normal leading-150 text-space">
+                {{ test.name }}
+              </p>
+              <p
+                v-if="formatTestScoreLine(test)"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                {{ formatTestScoreLine(test) }}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div v-if="candidatePortfolioEntries.length > 0" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Портфолио</p>
+          <div class="space-y-5">
+            <div
+              v-for="(pf, pfIdx) in candidatePortfolioEntries"
+              :key="pfIdx"
+              class="min-w-0"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <p class="min-w-0 flex-1 text-sm font-normal leading-150 text-space">
+                  <TextWithLinks :text="pf.title" />
+                </p>
+                <a
+                  v-if="pf.url"
+                  :href="pf.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="shrink-0 text-sm font-normal text-slate-custom hover:text-dodger"
+                >
+                  Открыть &gt;
+                </a>
+              </div>
+              <p
+                v-if="pf.description"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                <TextWithLinks :text="pf.description" />
+              </p>
+            </div>
+          </div>
+        </div>
+        <div v-if="candidateAwardEntries.length > 0" class="mb-px bg-white p-25px">
+          <p class="mb-15px text-15px font-medium text-space">Награды</p>
+          <div class="space-y-4">
+            <div
+              v-for="(aw, awIdx) in candidateAwardEntries"
+              :key="awIdx"
+              class="min-w-0"
+            >
+              <p class="text-sm font-normal leading-150 text-space">
+                <TextWithLinks :text="aw.name" />
+              </p>
+              <p
+                v-if="formatAwardSecondaryLine(aw)"
+                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
+              >
+                <TextWithLinks :text="formatAwardSecondaryLine(aw)" />
+              </p>
+            </div>
+          </div>
         </div>
         <div v-if="hasAdditionalInfoSection" class="mb-px bg-white p-25px">
           <p class="mb-15px text-15px font-medium text-space">Дополнительно</p>

@@ -51,6 +51,18 @@ export function metroLinePart(metroName: string | null | undefined): string {
   return `м. ${t}`;
 }
 
+function metroListLinePart(metroRaw: string | null | undefined): string {
+  const raw = (metroRaw ?? '').trim();
+  if (!raw) return '';
+  const normalized = raw
+    .split(/[;,|/]/)
+    .map((v) => v.trim().replace(/^м\.\s*/i, ''))
+    .filter(Boolean);
+  const unique = [...new Set(normalized)];
+  if (unique.length === 0) return '';
+  return `м. ${unique.join(', ')}`;
+}
+
 export type CandidateLocationLineInput = {
   location?: string | null;
   metro_name?: string | null;
@@ -63,6 +75,8 @@ export type CandidateLocationLineInput = {
   gender_id?: 'male' | 'female' | null;
   /** Текст пола с API (напр. «Женский») */
   gender?: string | null;
+  /** Avito (и др.): переезд/командировки не дублируем в строке адреса — см. вкладку «Поля» / «Дополнительно». */
+  source?: string | null;
 };
 
 /** Женский род для согласования «готов» / «готова» в строке локации. */
@@ -95,22 +109,29 @@ export function buildCandidateLocationLine(
 ): string {
   const parts: string[] = [];
   const loc = candidate.location?.trim();
-  if (loc) parts.push(loc);
-  const metro = metroLinePart(candidate.metro_name);
-  if (metro) parts.push(metro);
-  const rel = relocationLinePart(
-    candidate.relocation_type_id,
-    candidate.relocation_readiness
-  );
-  if (rel) parts.push(rel);
-  const trip = businessTripLinePart(
-    candidate.business_trip_readiness_id,
-    candidate.business_trip_readiness
-  );
-  if (trip) parts.push(trip);
-  let main = parts.join(', ');
   const addr = candidate.address?.trim();
-  if (addr) main = main ? `${main} · ${addr}` : addr;
+  const metro = metroListLinePart(candidate.metro_name);
+  let place = '';
+  if (loc) place = loc;
+  if (addr) place = place ? `${place} · ${addr}` : addr;
+  if (place && metro) place = `${place} (${metro})`;
+  else if (!place && metro) place = metro;
+  if (place) parts.push(place);
+  const sourceNorm = (candidate.source ?? '').trim().toLowerCase();
+  const geoOnly = sourceNorm === 'avito';
+  if (!geoOnly) {
+    const rel = relocationLinePart(
+      candidate.relocation_type_id,
+      candidate.relocation_readiness
+    );
+    if (rel) parts.push(rel);
+    const trip = businessTripLinePart(
+      candidate.business_trip_readiness_id,
+      candidate.business_trip_readiness
+    );
+    if (trip) parts.push(trip);
+  }
+  let main = parts.join(', ');
   if (!main) return 'Город и адрес не указаны';
   if (isFemaleForLocationLine(candidate)) {
     main = applyFeminineReadyPhrases(main);
