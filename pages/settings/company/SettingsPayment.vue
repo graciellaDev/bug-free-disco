@@ -374,7 +374,7 @@ async function loadPartySuggestions() {
   partySuggestError.value = null
   try {
     const res = await $fetch<{ suggestions: PartySuggestion[] }>(
-      '/api/dadata/party-suggest',
+      'http://localhost:8000/api/dadata/party-suggest',
       {
         method: 'POST',
         headers: {

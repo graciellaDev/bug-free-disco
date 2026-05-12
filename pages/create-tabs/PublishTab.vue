@@ -1100,7 +1100,6 @@ function getPlatformIcon(item) {
                         : null;
     
     const platformId = platformData?.id || item.id;
-    console.log('platformId', platformId);
     
     // Маппинг platform_id на иконку (соответствует getPlatformId в mapPublicationToVacancy.ts)
     const platformIconMap = {

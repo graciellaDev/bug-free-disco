@@ -499,7 +499,7 @@ export const getRabotaProfessions = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<PlatformHhResponse>('/rabota/dictionary/professions', {
+    const response = await $fetch<PlatformHhResponse>('/rabota/dictionaries/professions', {
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
@@ -567,7 +567,7 @@ export const getEmploymentTypes = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<PlatformHhResponse>('/rabota/dictionary/employment-types', {
+    const response = await $fetch<PlatformHhResponse>('/rabota/dictionaries/employment', {
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
@@ -601,7 +601,7 @@ export const getWorkSchedules = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<PlatformHhResponse>('/rabota/dictionary/work-schedules', {
+    const response = await $fetch<PlatformHhResponse>('/rabota/dictionaries/schedules', {
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
@@ -635,7 +635,7 @@ export const getExperienceLevels = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    const response = await $fetch<PlatformHhResponse>('/rabota/dictionary/experience-levels', {
+    const response = await $fetch<PlatformHhResponse>('/rabota/dictionaries/education-levels', {
       baseURL: config.public.apiBase as string,
       headers: {
         'Accept': 'application/json',
