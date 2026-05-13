@@ -4,7 +4,7 @@ import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
 export const getHhProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
-    return null;
+    return { data: null, error: 'Токен авторизации не найден' };
   }
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });
@@ -678,7 +678,7 @@ export const addHhDraft = async (data: DraftDataHh) => {
 export const getHhRoles = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
-    return null;
+    return { data: null, error: null, roles: null, errorRoles: 'Токен авторизации не найден' };
   }
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });

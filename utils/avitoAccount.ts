@@ -7,7 +7,7 @@ import { mapVacancyToAvitoFormat, ensureAvitoPayloadTypes } from "@/utils/mapVac
  * @param data - Данные вакансии в формате DraftDataHh или из формы AddPublication
  * @returns Результат создания черновика
  */
-export const addAvitoDraft = async (data: DraftDataHh | any) => {
+export const addAvitoDraft = async (data: DraftDataHh | any, joblyVacancyId?: number | null) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден', errorDraft: null };
@@ -16,7 +16,10 @@ export const addAvitoDraft = async (data: DraftDataHh | any) => {
   const result = ref<ApiHhResult>({ data: null, error: null, errorDraft: null });
   
   // Преобразуем данные в формат Avito API; нормализуем типы (profession и др. — number, не string)
-  const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(data));
+  const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(data)) as Record<string, unknown>;
+  if (typeof joblyVacancyId === 'number' && joblyVacancyId >= 1) {
+    avitoData.jobly_vacancy_id = joblyVacancyId;
+  }
 
   try {
     const response = await $fetch<PlatformHhResponse>('/avito/drafts', {
@@ -57,7 +60,7 @@ export const addAvitoDraft = async (data: DraftDataHh | any) => {
 export const getAvitoProfile = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
-    return null;
+    return { data: null, error: 'Токен авторизации не найден' };
   }
   const { config, serverToken, userToken } = authTokens;
   const result = ref<ApiHhResult>({ data: null, error: null });
@@ -384,7 +387,7 @@ export const getAllAvitoPublications = async () => {
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
-export const publishAvitoVacancy = async (draftData: DraftDataHh) => {
+export const publishAvitoVacancy = async (draftData: DraftDataHh, joblyVacancyId?: number | null) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
     return { data: null, error: 'Токен авторизации не найден' };
@@ -395,7 +398,10 @@ export const publishAvitoVacancy = async (draftData: DraftDataHh) => {
 
   try {
     // Преобразуем данные в формат Avito API; нормализуем типы (profession и др. — number, не string)
-    const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(draftData as any));
+    const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(draftData as any)) as Record<string, unknown>;
+    if (typeof joblyVacancyId === 'number' && joblyVacancyId >= 1) {
+      avitoData.jobly_vacancy_id = joblyVacancyId;
+    }
 
     const response = await $fetch<PlatformHhResponse>('/avito/publications', {
       method: 'POST',
@@ -472,6 +478,76 @@ export const getAvitoProfessions = async (search?: string) => {
 }
 
 /**
+ * Получение списка сфер деятельности Avito (business_area) из локального кэша backend.
+ */
+export const getAvitoBusinessAreas = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/business-areas', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = response.data?.items || response.data || [];
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сфер деятельности Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
+ * Все локально сохраненные каталоги Avito.
+ */
+export const getAvitoCatalogs = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/catalogs', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = response.data?.items || response.data || {};
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении каталогов Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
  * Получение списка специализаций для профессии Avito
  * @param professionId - ID профессии
  * @param search - Поисковый запрос по названию (опционально)
@@ -509,6 +585,42 @@ export const getSpecializations = async (professionId: string | number, search?:
       handle401Error();
     } else {
       result.value.error = err.response?._data?.message || 'Ошибка при получении специализаций Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+/**
+ * Получение таблицы сопоставлений специализаций (hh_id -> avito profession id),
+ * сохраненной в админке.
+ */
+export const getAvitoSpecializationMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/specialization-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = response.data?.items || response.data || {};
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений специализаций Avito';
     }
   } finally {
     return result.value;

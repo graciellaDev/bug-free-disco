@@ -191,6 +191,85 @@ export const getHhVacancyExportMap = async (): Promise<HhVacancyExportMapRow[]> 
 };
 
 /**
+ * Снимок публикации Avito из нашей БД без HTTP к api.avito.ru (`local_only=1`).
+ * Нужен для быстрого открытия модалки редактирования (иначе при зависании внешнего API лоадер не снимается).
+ */
+export async function getAvitoPublicationOriginalLocalOnly(
+  vacancyId: number,
+): Promise<{
+  data?: { payload_original?: Record<string, unknown> | null; original?: Record<string, unknown> };
+  error?: string;
+}> {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return { error: 'no_auth' };
+  }
+  try {
+    const response = await $fetch<{
+      message?: string;
+      data?: { payload_original?: Record<string, unknown> | null; original?: Record<string, unknown> };
+    }>(`/vacancies/${vacancyId}/avito-publication-original`, {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      params: { local_only: '1' },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    return { data: response?.data };
+  } catch (err: unknown) {
+    const e = err as { data?: { message?: string }; message?: string };
+    const msg = e?.data?.message || e?.message || 'request_failed';
+    return { error: String(msg) };
+  }
+}
+
+/**
+ * Снимок публикации rabota.ru из нашей БД без внешнего API (`local_only=1`).
+ */
+export async function getRabotaPublicationOriginalLocalOnly(
+  vacancyId: number,
+): Promise<{
+  data?: { payload_original?: Record<string, unknown> | null; original?: Record<string, unknown> };
+  error?: string;
+}> {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return { error: 'no_auth' };
+  }
+  try {
+    const response = await $fetch<{
+      message?: string;
+      data?: { payload_original?: Record<string, unknown> | null; original?: Record<string, unknown> };
+    }>(`/vacancies/${vacancyId}/rabota-publication-original`, {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      params: { local_only: '1' },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    return { data: response?.data };
+  } catch (err: unknown) {
+    const e = err as { data?: { message?: string }; message?: string };
+    const msg = e?.data?.message || e?.message || 'request_failed';
+    return { error: String(msg) };
+  }
+}
+
+/**
  * Карта полей Jobly → rabota.ru и флаги «подключено».
  * Бэкенд: эндпоинт-«аналог hh-export-map» (по договорённости).
  */
