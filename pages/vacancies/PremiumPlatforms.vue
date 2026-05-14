@@ -1,5 +1,5 @@
 <script setup>
-  import DotsDropdonw from '~/components/custom/DotsDropdown.vue'
+  import DotsDropdown from '~/components/custom/DotsDropdown.vue'
   import MultiDropdown from '~/components/custom/MultiDropdown.vue'
   import CardIcon from '~/components/custom/CardIcon.vue'
   import Popup from '~/components/custom/Popup.vue'
@@ -26,9 +26,13 @@
   import FormAuthPlatform from '~/components/custom/page-parts/FormAuthPlatform.vue'
   import ConnectedPlatform from '~/components/custom/page-parts/ConnectedPlatform.vue'
   import CardPlatform from '@/components/custom/page-parts/CardPlatform.vue'
-  import { getHhProfile as profileHh, getAvailableTypes as typesHh } from '@/utils/hhAccount'
+  import { getHhProfile as profileHh, getAvailableTypes as typesHh, unlinkHhProfile as unlinkProfileHh } from '@/utils/hhAccount'
+  import { getAvitoProfile as getProfileAvito, unlinkAvitoProfile as unlinkProfileAvito } from '@/utils/avitoAccount'
+  import { getRabotaProfile as getProfileRabota, unlinkRabotaProfile as unlinkProfileRabota } from '@/utils/rabotaAccount'
+  import { getSuperjobProfile as getProfileSuperjob, unlinkSuperjobProfile as unlinkProfileSuperjob } from '@/utils/superjobAccount'
   import { capitalize } from '@/helpers/handlers'
   import { resolveOAuthApiPrefix } from '@/utils/resolveOAuthApiPrefix'
+import { oauthClientStartQuery } from '@/utils/oauthClientStartQuery'
 
   import { useCartStore } from '@/stores/cart'
   import { onMounted, ref, onBeforeUnmount } from 'vue'
@@ -115,6 +119,8 @@
   }
 
   const dropItems = ['Импорт публикаций', 'Отвязать профиль']
+  /** У демо-карточек в блоке «Доступные публикации» нет реального профиля — только импорт */
+  const dropItemsImportOnly = ['Импорт публикаций']
 
   const isPopupOpen = ref(false) // control visibility popup
 
@@ -131,6 +137,83 @@
     if (item === 'Импорт публикаций') {
       importPopup.value = true
       disableBodyScroll()
+    }
+  }
+
+  /** Карточка «Подключенные профили»: меню из CardPlatform */
+  const cardUnlinkPopupOpen = ref(false)
+  const cardUnlinkPlatform = ref(null)
+  const cardUnlinkError = ref(null)
+  const cardUnlinking = ref(false)
+
+  function onCardPlatformImport() {
+    importPopup.value = true
+    disableBodyScroll()
+  }
+
+  function onCardPlatformUnlink(platformRow) {
+    cardUnlinkError.value = null
+    cardUnlinkPlatform.value = platformRow
+    cardUnlinkPopupOpen.value = true
+    disableBodyScroll()
+  }
+
+  function closeCardUnlinkPopup() {
+    cardUnlinkPopupOpen.value = false
+    cardUnlinkPlatform.value = null
+    cardUnlinkError.value = null
+    enableBodyScroll()
+  }
+
+  function unlinkKeyForPlatform(p) {
+    if (!p) return null
+    const slug = String(p.platform || '').toLowerCase()
+    const dom = String(p.domain || '').toLowerCase()
+    if (slug === 'hh' || dom === 'hh.ru') return 'hh.ru'
+    if (slug === 'avito' || dom.includes('avito')) return 'avito.ru'
+    if (slug === 'rabota' || dom.includes('rabota')) return 'rabota.ru'
+    if (slug === 'superjob' || dom.includes('superjob')) return 'superjob.ru'
+    return null
+  }
+
+  async function confirmCardUnlink() {
+    const p = cardUnlinkPlatform.value
+    const key = unlinkKeyForPlatform(p)
+    if (!key) {
+      cardUnlinkError.value = 'Не удалось определить платформу для отвязки'
+      return
+    }
+    cardUnlinking.value = true
+    cardUnlinkError.value = null
+    try {
+      let result
+      if (key === 'hh.ru') {
+        result = await unlinkProfileHh()
+      } else if (key === 'avito.ru') {
+        result = await unlinkProfileAvito()
+      } else if (key === 'rabota.ru') {
+        result = await unlinkProfileRabota()
+      } else if (key === 'superjob.ru') {
+        result = await unlinkProfileSuperjob()
+      } else {
+        cardUnlinkError.value = 'Отвязка для этой платформы не поддерживается'
+        return
+      }
+      if (result?.error) {
+        cardUnlinkError.value = result.error
+        return
+      }
+      const idx = platforms.value.findIndex((x) => x.platform === p?.platform)
+      if (idx >= 0) {
+        platforms.value[idx].isAuthenticated = false
+        platforms.value[idx].data = {}
+      }
+      closeCardUnlinkPopup()
+    } catch (e) {
+      console.error(e)
+      cardUnlinkError.value = 'Ошибка при отвязке профиля'
+    } finally {
+      cardUnlinking.value = false
     }
   }
 
@@ -203,28 +286,27 @@
 
   async function authPlatform(platform) {
     errorAuthPlatform.value = null
-    // btnAuthDisabled.value = true
-    // errorAuthPlatform.value = null
-    // if (!authDataPlatform.value.idClient || !authDataPlatform.value.idSecret) {
-    //     errorAuthPlatform.value = 'Пожалуйста, введите данные авторизации';
-    //     return;
-    // }
-    
-    // Сохраняем текущий URL для возврата после авторизации
-    const currentRoute = useRoute();
-    const returnUrl = currentRoute.fullPath; // Сохраняем полный путь с query параметрами
-    setCookie('auth_return_url', returnUrl, 1);
-    
-    if (platform == 'hh') {
-      const config = useRuntimeConfig();
-      const tokenCookie = useCookie('auth_user');
-      setCookie('process_auth', 'true', 1);
-      const apiPrefix = await resolveOAuthApiPrefix(config);
-      const tokenEnc = encodeURIComponent(tokenCookie.value || '');
-      const returnEnc = encodeURIComponent(returnUrl);
-      window.location.href = `${apiPrefix}/code-hh?customerToken=${tokenEnc}&return=${returnEnc}`;
+    const currentRoute = useRoute()
+    const returnUrl = currentRoute.fullPath
+    setCookie('auth_return_url', returnUrl, 1)
+
+    const config = useRuntimeConfig()
+    const tokenCookie = useCookie('auth_user')
+    setCookie('process_auth', 'true', 1)
+    const apiPrefix = await resolveOAuthApiPrefix(config)
+    const tokenEnc = encodeURIComponent(tokenCookie.value || '')
+    const q = oauthClientStartQuery(returnUrl)
+
+    if (platform === 'hh') {
+      window.location.href = `${apiPrefix}/code-hh?customerToken=${tokenEnc}&${q}`
+    } else if (platform === 'avito') {
+      window.location.href = `${apiPrefix}/code-avito?customerToken=${tokenEnc}&${q}`
+    } else if (platform === 'rabota') {
+      window.location.href = `${apiPrefix}/code-rabota?customerToken=${tokenEnc}&${q}`
+    } else if (platform === 'superjob') {
+      window.location.href = `${apiPrefix}/code-superjob?customerToken=${tokenEnc}&${q}`
     } else {
-      errorAuthPlatform.value = `Платформа ${capitalize(platform)} пока неподдерживается :(`
+      errorAuthPlatform.value = `Платформа ${capitalize(platform)} пока не поддерживается :(`
     }
   }
 
@@ -361,46 +443,98 @@ onMounted(async () => {
     let shouldRedirect = false
     let redirectUrl = null
 
-    // После /api/code-hh бэкенд ставит status_auth и текст в message (не литерал «success»)
-    const hhOAuthDone =
+    const platform = typeof query.platform === 'string' ? query.platform : ''
+    const oauthReturn =
         query.popup_account === 'true' &&
-        query.platform === 'hh' &&
-        (query.status_auth === 'true' || query.message === 'success')
-    if (hhOAuthDone) {
+        platform !== '' &&
+        (query.status_auth === 'true' || query.status_auth === 'false' || query.message === 'success')
+
+    if (oauthReturn) {
         const processAuth = useCookie('process_auth')
         if (processAuth.value) {
             if (query.status_auth === 'false') {
                 errorAuthPlatform.value = typeof query.message === 'string'
                     ? decodeURIComponent(String(query.message).replace(/\+/g, ' '))
-                    : 'Ошибка авторизации hh.ru'
-            } else {
+                    : 'Ошибка авторизации'
+            } else if (platform === 'hh') {
                 const profile = await profileHh()
                 if (profile && !profile.error && profile.data?.data) {
                     const p = profile.data.data
-                    platforms.value[0].isAuthenticated = true
-                    platforms.value[0].data = {
-                        email: p.email,
-                        employer_id: p.employer_id,
-                        manager_id: p.manager_id,
+                    const idx = platforms.value.findIndex((x) => x.platform === 'hh')
+                    if (idx >= 0) {
+                        platforms.value[idx].isAuthenticated = true
+                        platforms.value[idx].data = {
+                            email: p.email,
+                            employer_id: p.employer_id,
+                            manager_id: p.manager_id,
+                        }
+                        const empId = p.employer?.id ?? p.employer_id
+                        const { types, errorTypesHh } = await typesHh(String(empId), String(p.manager_id))
+                        if (!errorTypesHh) {
+                            platforms.value[idx].types = types
+                        }
                     }
                     shouldRedirect = true
                 } else {
                     errorAuthPlatform.value = profile?.error || 'Не удалось загрузить профиль hh.ru'
                 }
+            } else if (platform === 'avito') {
+                const profile = await getProfileAvito()
+                if (profile && !profile.error && profile.data) {
+                    const idx = platforms.value.findIndex((x) => x.platform === 'avito')
+                    if (idx >= 0) {
+                        platforms.value[idx].isAuthenticated = true
+                        const d = profile.data?.data ?? profile.data
+                        platforms.value[idx].data = { email: d?.email || 'Подключено' }
+                    }
+                    shouldRedirect = true
+                } else {
+                    errorAuthPlatform.value = profile?.error || 'Не удалось загрузить профиль Avito'
+                }
+            } else if (platform === 'rabota') {
+                const profile = await getProfileRabota()
+                if (profile && !profile.error && profile.data) {
+                    const idx = platforms.value.findIndex((x) => x.platform === 'rabota')
+                    if (idx >= 0) {
+                        platforms.value[idx].isAuthenticated = true
+                        const d = profile.data?.data ?? profile.data
+                        platforms.value[idx].data = { email: d?.email || 'Подключено' }
+                    }
+                    shouldRedirect = true
+                } else {
+                    errorAuthPlatform.value = profile?.error || 'Не удалось загрузить профиль rabota.ru'
+                }
+            } else if (platform === 'superjob') {
+                const profile = await getProfileSuperjob()
+                if (profile && !profile.error && profile.data) {
+                    const idx = platforms.value.findIndex((x) => x.platform === 'superjob')
+                    if (idx >= 0) {
+                        platforms.value[idx].isAuthenticated = true
+                        const d = profile.data?.data ?? profile.data
+                        platforms.value[idx].data = { email: d?.email || d?.login || 'Подключено' }
+                    }
+                    shouldRedirect = true
+                } else {
+                    errorAuthPlatform.value = profile?.error || 'Не удалось загрузить профиль SuperJob'
+                }
             }
             setCookie('process_auth', '', -1)
         }
     }
-    
-    // Редирект на исходную страницу, если была сохранена
+
     if (shouldRedirect && returnUrlCookie.value) {
         redirectUrl = returnUrlCookie.value
-        // Очищаем cookie
         returnUrlCookie.value = null
-        // Удаляем cookie через setCookie с прошедшей датой
         setCookie('auth_return_url', '', -1)
-        // Редирект на исходную страницу
         await navigateTo(redirectUrl)
+    }
+
+    if (useDevMockAvitoConnected()) {
+        const idx = platforms.value.findIndex((x) => x.platform === 'avito')
+        if (idx >= 0 && !platforms.value[idx].isAuthenticated) {
+            platforms.value[idx].isAuthenticated = true
+            platforms.value[idx].data = { email: 'dev: mock Avito' }
+        }
     }
 })
 </script>
@@ -422,8 +556,12 @@ onMounted(async () => {
     <div
       class="grid grid-cols-3 gap-15px mb-35px max-w-[875px]"
     >
-      <div v-for="(item, index) in platforms.filter((el) => el.isAuthenticated)" class="p-25px bg-white rounded-fifteen flex flex-col">
-        <CardPlatform :platform="item" :index="index" />
+      <div v-for="(item, index) in platforms.filter((el) => el.isAuthenticated)" :key="'conn-' + item.platform + '-' + index" class="p-25px bg-white rounded-fifteen flex flex-col">
+        <CardPlatform
+          :platform="item"
+          @import-publications="onCardPlatformImport"
+          @unlink-request="onCardPlatformUnlink"
+        />
       </div>
       <!-- Первая карточка -->
       <div class="p-25px bg-white rounded-fifteen flex flex-col min-h-[404px]"  style="display: none">
@@ -432,7 +570,7 @@ onMounted(async () => {
             <svg-icon name="hh" width="41" height="40" />
             <p class="text-sm font-medium text-slate-custom">hh.ru</p>
           </div>
-          <DotsDropdonw :items="dropItems" @select-item="handleSelectItem" />
+          <DotsDropdown :items="dropItems" @select-item="handleSelectItem" />
         </div>
         <div class="w-full h-[1px] bg-athens mb-3.5"></div>
         <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
@@ -464,7 +602,7 @@ onMounted(async () => {
             <svg-icon name="zarplata" width="41" height="40" />
             <p class="text-sm font-medium text-slate-custom">zarplata.ru</p>
           </div>
-          <DotsDropdonw :items="dropItems" @select-item="handleSelectItem" />
+          <DotsDropdown :items="dropItems" @select-item="handleSelectItem" />
         </div>
         <div class="w-full h-[1px] bg-athens mb-3.5"></div>
         <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
@@ -519,7 +657,7 @@ onMounted(async () => {
             <svg-icon name="hh" width="41" height="40" />
             <p class="text-sm font-medium text-slate-custom">hh.ru</p>
           </div>
-          <DotsDropdonw :items="dropItems" />
+          <DotsDropdown :items="dropItemsImportOnly" @select-item="handleSelectItem" />
         </div>
         <div class="w-full h-[1px] bg-athens mb-3.5"></div>
         <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
@@ -554,7 +692,7 @@ onMounted(async () => {
             <svg-icon name="superjob" width="41" height="40" />
             <p class="text-sm font-medium text-slate-custom">superjob.ru</p>
           </div>
-          <DotsDropdonw :items="dropItems" />
+          <DotsDropdown :items="dropItemsImportOnly" @select-item="handleSelectItem" />
         </div>
         <div class="w-full h-[1px] bg-athens mb-3.5"></div>
         <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
@@ -590,7 +728,7 @@ onMounted(async () => {
             <div class="youla-pic bg-img"></div>
             <p class="text-sm font-medium text-slate-custom">youla.ru</p>
           </div>
-          <DotsDropdonw :items="dropItems" />
+          <DotsDropdown :items="dropItemsImportOnly" @select-item="handleSelectItem" />
         </div>
         <div class="w-full h-[1px] bg-athens mb-3.5"></div>
         <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
@@ -1122,6 +1260,44 @@ onMounted(async () => {
           >
             Отмена
           </UiButton>
+        </div>
+      </Popup>
+    </transition>
+    <transition name="fade" @after-leave="enableBodyScroll">
+      <Popup
+        :isOpen="cardUnlinkPopupOpen"
+        @close="closeCardUnlinkPopup"
+        :showCloseButton="false"
+        :width="'490px'"
+        :height="'fit-content'"
+        :disableOverflowHidden="true"
+      >
+        <div>
+          <p class="text-xl font-semibold text-space mb-2.5">Отвязка профиля</p>
+          <p class="text-sm font-normal text-slate-custom mb-25px">
+            <template v-if="cardUnlinkPlatform">
+              Отвязать профиль <span class="font-medium text-space">{{ cardUnlinkPlatform.domain }}</span>?
+              Повторная публикация на этой площадке потребует авторизации снова.
+            </template>
+            <template v-else>
+              Выберите профиль в списке подключённых.
+            </template>
+          </p>
+          <p v-if="cardUnlinkError" class="text-red-500 text-xs mb-3">{{ cardUnlinkError }}</p>
+          <div class="flex gap-x-15px">
+            <UiButton
+              v-if="cardUnlinkPlatform"
+              variant="delete"
+              size="delete"
+              :disabled="cardUnlinking"
+              @click="confirmCardUnlink"
+            >
+              {{ cardUnlinking ? 'Отвязка...' : 'Отвязать' }}
+            </UiButton>
+            <UiButton variant="back" size="back" @click="closeCardUnlinkPopup">
+              {{ cardUnlinkPlatform ? 'Отмена' : 'Закрыть' }}
+            </UiButton>
+          </div>
         </div>
       </Popup>
     </transition>

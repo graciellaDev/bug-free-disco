@@ -5,18 +5,35 @@ import fs from 'node:fs'
 function patchTailwindConfig(rootDir: string) {
     const tailwindConfigPath = path.join(rootDir, '.nuxt', 'tailwind.config.cjs')
     if (!fs.existsSync(tailwindConfigPath)) return
-    let content = fs.readFileSync(tailwindConfigPath, 'utf8')
-    if (!content.includes('/app/node_modules')) return
-    const root = rootDir.replace(/\\/g, '/')
-    content = content.replace(
-        /require\s*\(\s*"\/app\/node_modules\/@nuxtjs\/tailwindcss\/dist\/runtime\/merger\.js"\s*\)/g,
-        'require(path.resolve(__dirname, "../node_modules/@nuxtjs/tailwindcss/dist/runtime/merger.js"))'
-    )
-    if (content.includes('path.resolve') && !content.includes('const path = require')) {
-        content = 'const path = require("path");\n' + content
+    const content = fs.readFileSync(tailwindConfigPath, 'utf8')
+    let next = content
+    const isDocker = process.env.NUXT_DOCKER === '1'
+
+    // Любой абсолютный require merger (Docker /app, локальный /Users/...) — в путь от .nuxt,
+    // чтобы один и тот же файл .nuxt/tailwind.config.cjs работал и на хосте, и в контейнере.
+    const mergerAbsRequire =
+        /require\s*\(\s*["'][^"']*@nuxtjs\/tailwindcss\/dist\/runtime\/merger\.js["']\s*\)/g
+    if (mergerAbsRequire.test(next)) {
+        mergerAbsRequire.lastIndex = 0
+        next = next.replace(
+            mergerAbsRequire,
+            'require(path.resolve(__dirname, "../node_modules/@nuxtjs/tailwindcss/dist/runtime/merger.js"))'
+        )
     }
-    content = content.replace(/\/app\//g, root.endsWith('/') ? root : root + '/')
-    fs.writeFileSync(tailwindConfigPath, content)
+    if (next.includes('path.resolve') && !next.includes('const path = require')) {
+        next = 'const path = require("path");\n' + next
+    }
+
+    // В Docker content-пути должны оставаться /app/... (иначе Tailwind не найдёт классы).
+    // Для локального запуска без Docker нормализуем только docker-пути из сгенерированного файла.
+    if (!isDocker) {
+        const rootPrefix = rootDir.replace(/\\/g, '/').replace(/\/?$/, '/')
+        next = next.replace(/\/app\//g, rootPrefix)
+    }
+
+    if (next !== content) {
+        fs.writeFileSync(tailwindConfigPath, next)
+    }
 }
 
 export default defineNuxtConfig({
@@ -65,13 +82,52 @@ export default defineNuxtConfig({
     },
     // code bottom answer for deprecated saas library Dark 2.0
     vite: {
+        plugins: [
+            {
+                name: 'jobly-patch-tailwind-docker-paths',
+                enforce: 'pre',
+                configResolved() {
+                    patchTailwindConfig(process.cwd())
+                },
+                buildStart() {
+                    patchTailwindConfig(process.cwd())
+                },
+                configureServer() {
+                    const root = process.cwd()
+                    const nuxtDir = path.join(root, '.nuxt')
+                    patchTailwindConfig(root)
+                    let debounce: ReturnType<typeof setTimeout> | undefined
+                    const schedule = () => {
+                        if (debounce) clearTimeout(debounce)
+                        debounce = setTimeout(() => patchTailwindConfig(root), 50)
+                    }
+                    try {
+                        fs.watch(nuxtDir, { persistent: false }, (event, filename) => {
+                            if (filename === 'tailwind.config.cjs') schedule()
+                        })
+                    } catch {
+                        /* .nuxt может ещё не существовать */
+                    }
+                },
+            },
+        ],
         css: {
             preprocessorOptions: {
                 scss: {
                     api: 'modern-compiler' // or "modern"
                 }
             }
-        }
+        },
+        ...(process.env.NUXT_DOCKER === '1'
+            ? {
+                  server: {
+                      host: true,
+                      strictPort: true,
+                      hmr: { clientPort: 3000 },
+                      watch: { usePolling: true },
+                  },
+              }
+            : {}),
     },
     svgSprite: {
         // input: '~/assets/sprite/'
@@ -98,6 +154,8 @@ export default defineNuxtConfig({
             wsAvitoCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_AVITO_CANDIDATE_MESSAGES_URL || '',
             /** Опционально: WebSocket push чата Rabota.ru. Если пусто — только polling. */
             wsRabotaCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_RABOTA_CANDIDATE_MESSAGES_URL || '',
+            /** Только dev: в кабинете показать Avito как подключённый (без OAuth). */
+            mockAvitoConnected: process.env.NUXT_PUBLIC_MOCK_AVITO_CONNECTED || '',
         }
     },
     pinia: {

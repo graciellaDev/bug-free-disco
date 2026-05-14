@@ -154,7 +154,7 @@
             :showCloseButton="false"
             :disableOverflowHidden="true"
             :contentPadding="false"
-            :noScrollbarGutter="true"
+            :noScrollbarGutter="false"
             :noOuterPadding="true"
             :max-height-value="'90vh'"
         >
@@ -215,7 +215,7 @@
             :parentRounded="true"
             :contentRounded="false"
             :contentPadding="false"
-            :noScrollbarGutter="true"
+            :noScrollbarGutter="false"
         >
             <div class="flex flex-col gap-6 pr-25px">
                 <div class="flex items-start justify-between gap-4">
@@ -313,46 +313,54 @@
             :isOpen="isEditPopupOpen"
             @close="closeEditPopup"
             :width="'900px'"
-            :height="'fit-content'"
+            :height="'auto'"
             :showCloseButton="false"
             :disableOverflowHidden="true"
             :contentPadding="false"
+            :contentRounded="true"
+            :noOuterPadding="true"
             :noScrollbarGutter="true"
-            maxHeight
+            :max-height-value="'90vh'"
         >
-            <div class="max-h-[90vh] overflow-y-auto">
-                <div class="pr-25px">
-                    <div class="flex items-center justify-between mb-15px">
-                        <div>
-                            <p class="text-xl font-semibold text-space mb-1">Редактирование вакансии</p>
-                            <p class="text-sm font-normal text-slate-custom">
-                                Редактирование вакансии из таблицы "Активные публикации"
-                            </p>
-                        </div>
-                        <button @click="closeEditPopup" class="text-slate-custom hover:text-space transition-colors">
-                            <svg-icon name="close" width="20" height="20" />
-                        </button>
+            <div
+                class="flex h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0 w-full flex-col overflow-hidden rounded-fifteen bg-white"
+            >
+                <div class="flex shrink-0 items-center justify-between px-25px pt-25px pb-15px">
+                    <div>
+                        <p class="text-xl font-semibold text-space mb-1">{{ editPublicationTitle }}</p>
+                        <p class="text-sm font-normal text-slate-custom">
+                            {{ editPublicationSubtitle }}
+                        </p>
                     </div>
-                    <div class="mb-15px mt-15px border-t"></div>
-                    <div class="relative min-h-[220px]">
-                        <div
-                            v-if="isEditPublicationLoading"
-                            class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-fifteen bg-white/95 py-12"
-                            aria-busy="true"
-                            aria-live="polite"
-                        >
-                            <div class="loader mb-15px"></div>
-                            <p class="text-sm font-normal text-slate-custom">Загрузка данных вакансии…</p>
-                        </div>
-                        <AddPublication
-                            v-if="editingVacancy"
-                            :key="'edit-pub-' + editingVacancy.id"
-                            :selectedPlatform="null"
-                            :editingVacancy="editingVacancy"
-                            @saved="handleVacancyUpdated"
-                            @cancel="closeEditPopup"
-                            @form-ready="onEditPublicationFormReady"
-                        />
+                    <button
+                        type="button"
+                        @click="closeEditPopup"
+                        class="text-slate-custom hover:text-space transition-colors"
+                    >
+                        <svg-icon name="close" width="20" height="20" />
+                    </button>
+                </div>
+                <div class="relative flex min-h-0 flex-1 flex-col">
+                    <AddPublication
+                        v-if="editingVacancy"
+                        :key="'edit-pub-' + editingVacancy.id"
+                        :selectedPlatform="null"
+                        :editingVacancy="editingVacancy"
+                        fixed-modal-footer
+                        class="min-h-0 flex-1"
+                        @saved="handleVacancyUpdated"
+                        @cancel="closeEditPopup"
+                        @form-ready="onEditPublicationFormReady"
+                    />
+                    <div
+                        v-if="isEditPublicationLoading"
+                        class="absolute inset-0 z-10 flex min-h-[min(420px,calc(90dvh-100px))] flex-1 flex-col items-center justify-center bg-white py-15px"
+                        role="status"
+                        aria-busy="true"
+                        aria-label="Загрузка данных вакансии"
+                    >
+                        <UiDotsLoader class="w-full" />
+                        <span class="sr-only">Загрузка данных вакансии</span>
                     </div>
                 </div>
             </div>
@@ -384,35 +392,38 @@
             :isOpen="isOpenPopup"
             @close="closeCreatePublicationPopup"
             :width="'900px'"
-            :height="'fit-content'"
+            :height="'auto'"
             :showCloseButton="false"
             :disableOverflowHidden="true"
-            :overflowContainer="true"
             :contentPadding="false"
+            :contentRounded="true"
+            :noOuterPadding="true"
             :noScrollbarGutter="true"
-            maxHeight
-            :lgSize="true"
+            :max-height-value="'90vh'"
         >
-            <div class="max-h-[90vh] overflow-y-auto">
-                <div class="pr-25px">
-                    <div class="flex items-center justify-between mb-15px">
-                        <div>
-                            <p class="text-xl font-semibold text-space mb-1">Публикация вакансии</p>
-                            <p class="text-sm font-normal text-slate-custom">
-                                Заполните форму для публикации вакансии на выбранной платформе
-                            </p>
-                        </div>
-                        <button @click="closeCreatePublicationPopup" class="text-slate-custom hover:text-space transition-colors">
-                            <svg-icon name="close" width="20" height="20" />
-                        </button>
+            <div
+                class="flex h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0 w-full flex-col overflow-hidden rounded-fifteen bg-white"
+            >
+                <div class="flex shrink-0 items-center justify-between px-25px pt-25px pb-15px">
+                    <div>
+                        <p class="text-xl font-semibold text-space mb-1">{{ createPublicationTitle }}</p>
+                        <p class="text-sm font-normal text-slate-custom">
+                            Заполните форму для публикации вакансии
+                        </p>
                     </div>
-                    <div class="relative min-h-[220px]">
-                        <AddPublication
-                            :key="'create-publication-' + createPublicationModalKey"
-                            :selectedPlatform="selectedPlatformForPublish"
-                            @cancel="closeCreatePublicationPopup"
-                        />
-                    </div>
+                    <button type="button" @click="closeCreatePublicationPopup" class="text-slate-custom hover:text-space transition-colors">
+                        <svg-icon name="close" width="20" height="20" />
+                    </button>
+                </div>
+                <div class="flex min-h-[min(360px,50dvh)] min-h-0 flex-1 flex-col">
+                    <AddPublication
+                        :key="'create-publication-' + createPublicationModalKey"
+                        :selectedPlatform="selectedPlatformForPublish"
+                        fixed-modal-footer
+                        class="min-h-0 flex-1"
+                        @saved="onCreatePublicationSaved"
+                        @cancel="closeCreatePublicationPopup"
+                    />
                 </div>
             </div>
         </Popup>
@@ -564,6 +575,7 @@ import CardIcon from '~/components/custom/CardIcon.vue';
 import Popup from '~/components/custom/Popup.vue';
 import AddPublication from "~/components/platforms/AddPublication.vue";
 import HhOriginalVacancyPopup from "~/components/platforms/HhOriginalVacancyPopup.vue";
+import UiDotsLoader from "~/components/custom/UiDotsLoader.vue";
 import MultiDropdown from "~/components/custom/MultiDropdown.vue";
 import MyInput from '~/components/custom/MyInput.vue';
 import TiptapEditor from '~/components/TiptapEditor.vue';
@@ -666,13 +678,18 @@ const platformsAuth = ref({
     'rabota.ru': false,
     'superjob': false,
 });
+const runtimeConfig = useRuntimeConfig();
+const isDevMockAvitoConnected = computed(() => {
+    if (!import.meta.dev) return false;
+    return String(runtimeConfig.public?.mockAvitoConnected || '').toLowerCase() === 'true';
+});
 const authError = ref({
     'hh.ru': null,
     'avito.ru': null,
     'rabota.ru': null,
     'superjob': null,
 });
-const platformDropdownOptions = ["Импорт публикаций", "Отвязать профиль"];
+const platformDropdownOptions = ['Импорт публикаций', 'Отвязать профиль']
 
 // Автоматическое скрытие ошибки авторизации через 3 секунды для каждой платформы
 const authErrorTimeouts = {};
@@ -701,6 +718,50 @@ const hhPublishInitialDraft = ref(undefined);
 const hhPublishPopupKey = ref(0);
 const currentVacancy = ref(null);
 const selectedPlatformForPublish = ref(null);
+const createPublicationTitle = computed(() => {
+    const platform = String(selectedPlatformForPublish.value || '').toLowerCase();
+    if (platform === 'avito' || platform === 'avito.ru') {
+        return 'Публикация вакансии на avito';
+    }
+    return 'Публикация вакансии';
+});
+
+const editPublicationSubtitle = 'Заполните форму для публикации вакансии';
+
+const editPublicationTitle = computed(() => {
+    const pd = editingVacancy.value?.platforms_data?.[0];
+    if (!pd) {
+        return 'Редактирование вакансии';
+    }
+    const id = pd.id != null ? Number(pd.id) : NaN;
+    if (id === 2) {
+        return 'Редактирование вакансии на avito';
+    }
+    if (id === 3) {
+        return 'Редактирование вакансии на rabota';
+    }
+    if (id === 4) {
+        return 'Редактирование вакансии на superjob';
+    }
+    if (id === 1) {
+        return 'Редактирование вакансии на hh.ru';
+    }
+    const n = String(pd.name || '').toLowerCase();
+    if (n.includes('avito')) {
+        return 'Редактирование вакансии на avito';
+    }
+    if (n.includes('rabota')) {
+        return 'Редактирование вакансии на rabota';
+    }
+    if (n.includes('superjob')) {
+        return 'Редактирование вакансии на superjob';
+    }
+    if (n.includes('hh')) {
+        return 'Редактирование вакансии на hh.ru';
+    }
+    return 'Редактирование вакансии';
+});
+
 const route = useRoute();
 const currentVacancyId = computed(() => {
     const p = route.params?.id;
@@ -2294,6 +2355,9 @@ async function refreshPlatformAuthStatus() {
     platformsAuth.value['avito.ru'] = !!(avitoProfile && !avitoProfile.error && avitoProfile.data);
     platformsAuth.value['rabota.ru'] = !!(rabotaProfile && !rabotaProfile.error && rabotaProfile.data);
     platformsAuth.value['superjob'] = !!(superjobProfile && !superjobProfile.error && superjobProfile.data);
+    if (isDevMockAvitoConnected.value) {
+        platformsAuth.value['avito.ru'] = true;
+    }
 }
 
 onMounted(async () => {
@@ -2716,6 +2780,23 @@ const closeEditPopup = () => {
 
 function onEditPublicationFormReady() {
     isEditPublicationLoading.value = false;
+}
+
+function onCreatePublicationSaved(payload) {
+    const draft = payload?.isDraft === true;
+    const platform = selectedPlatformForPublish.value;
+    const p = platform != null ? String(platform).toLowerCase() : '';
+    let suffix = '';
+    if (p === 'hh.ru' || p === 'hh') suffix = ' на hh.ru';
+    else if (p === 'avito.ru' || p === 'avito') suffix = ' на Avito';
+    else if (p === 'rabota.ru' || p === 'rabota') suffix = ' на Rabota.ru';
+    else if (p === 'superjob.ru' || p === 'superjob') suffix = ' на SuperJob';
+    showPublicationToastMessage(
+        draft ? `Вакансия сохранена в черновике${suffix}` : `Вакансия опубликована${suffix}`,
+        'success',
+    );
+    closeCreatePublicationPopup();
+    loadPublicationPlatforms();
 }
 
 // Закрытие попапа создания публикации

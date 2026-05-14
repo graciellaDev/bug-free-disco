@@ -27,6 +27,29 @@ export interface VacancyFormDataAvito {
   [key: string]: any;
 }
 
+function normalizeAvitoPhone(
+  phone: unknown
+): { city?: string; country?: string; number?: string } | null {
+  if (phone == null) return null;
+  if (typeof phone === 'string') {
+    const v = phone.trim();
+    return v !== '' ? { number: v } : null;
+  }
+  if (typeof phone === 'object') {
+    const p = phone as Record<string, unknown>;
+    const number = typeof p.number === 'string' ? p.number.trim() : '';
+    const city = typeof p.city === 'string' ? p.city.trim() : '';
+    const country = typeof p.country === 'string' ? p.country.trim() : '';
+    if (!number && !city && !country) return null;
+    return {
+      ...(city ? { city } : {}),
+      ...(country ? { country } : {}),
+      ...(number ? { number } : {}),
+    };
+  }
+  return null;
+}
+
 /**
  * Маппинг типа занятости из формы в формат Avito API
  * Avito использует: full, partial, project, volunteer, probation
@@ -333,14 +356,15 @@ export function mapVacancyToAvitoFormat(
     }
   }
   
-  // Зарплата: по документации Avito — объект salary_range с полями from, to (integer, рубли в месяц)
+  // Зарплата: отправляем в поле salary (совместимо с текущей серверной валидацией).
   if (vacancyData.salary_range && (vacancyData.salary_range.from != null || vacancyData.salary_range.to != null)) {
     const from = vacancyData.salary_range.from != null ? Number(vacancyData.salary_range.from) : undefined;
     const to = vacancyData.salary_range.to != null ? Number(vacancyData.salary_range.to) : undefined;
     if (!isNaN(from as number) || !isNaN(to as number)) {
-      avitoData.salary_range = {
+      avitoData.salary = {
         ...(from != null && !isNaN(from) ? { from: Math.floor(from) } : {}),
         ...(to != null && !isNaN(to) ? { to: Math.floor(to) } : {}),
+        currency: mapCurrencyToAvito(vacancyData.salary_range.currency),
       };
     }
   }
@@ -365,11 +389,18 @@ export function mapVacancyToAvitoFormat(
   
   // Контакты
   if (vacancyData.contacts) {
-    avitoData.contacts = vacancyData.contacts;
+    const c = vacancyData.contacts as Record<string, unknown>;
+    const normalizedPhone = normalizeAvitoPhone(c.phone);
+    avitoData.contacts = {
+      ...(typeof c.name === 'string' && c.name.trim() !== '' ? { name: c.name.trim() } : {}),
+      ...(typeof c.email === 'string' && c.email.trim() !== '' ? { email: c.email.trim() } : {}),
+      ...(normalizedPhone ? { phone: normalizedPhone } : {}),
+    };
   } else if (vacancyData.executor_name || vacancyData.executor_phone || vacancyData.executor_email) {
+    const normalizedPhone = normalizeAvitoPhone(vacancyData.executor_phone);
     avitoData.contacts = {
       name: vacancyData.executor_name || '',
-      phone: vacancyData.executor_phone || null,
+      ...(normalizedPhone ? { phone: normalizedPhone } : {}),
       email: vacancyData.executor_email || null,
     };
   }
@@ -403,6 +434,10 @@ export function mapVacancyToAvitoFormat(
   if (vacancyData.apply_processing) {
     avitoData.apply_processing = vacancyData.apply_processing;
   }
+
+  if (avitoData.contacts && typeof avitoData.contacts === 'object' && Object.keys(avitoData.contacts).length === 0) {
+    delete avitoData.contacts;
+  }
   
   // Удаляем null и undefined значения
   Object.keys(avitoData).forEach(key => {
@@ -435,6 +470,13 @@ export function ensureAvitoPayloadTypes(payload: any): any {
     const to = sr.to != null ? Math.floor(Number(sr.to)) : undefined;
     if (from != null && !isNaN(from)) (out.salary_range as any).from = from;
     if (to != null && !isNaN(to)) (out.salary_range as any).to = to;
+  }
+  if (out.salary && typeof out.salary === 'object') {
+    const s = out.salary as { from?: number; to?: number };
+    const from = s.from != null ? Math.floor(Number(s.from)) : undefined;
+    const to = s.to != null ? Math.floor(Number(s.to)) : undefined;
+    if (from != null && !isNaN(from)) (out.salary as any).from = from;
+    if (to != null && !isNaN(to)) (out.salary as any).to = to;
   }
   // payout_frequency.id — только enum; при невалидном значении подставляем monthlyPay
   if (out.payout_frequency != null && typeof out.payout_frequency === 'object') {

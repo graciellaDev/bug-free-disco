@@ -1,7 +1,10 @@
 <template>
-  <div class="container p-0">
-    <div class="flex gap-x-[24px]">
-      <div class="max-w-[100%] flex-grow bg-white rounded-fifteen">
+  <div :class="fixedModalFooter ? 'flex h-full min-h-0 w-full max-w-full flex-1 flex-col' : 'container p-0'">
+    <div :class="fixedModalFooter ? 'flex min-h-0 flex-1 flex-col' : 'flex gap-x-[24px]'">
+      <div :class="fixedModalFooter ? 'flex min-h-0 w-full flex-1 flex-col bg-transparent' : 'max-w-[100%] flex-grow bg-white rounded-fifteen'">
+        <div
+          :class="fixedModalFooter ? 'min-h-[min(320px,calc(90dvh-220px))] flex-1 overflow-y-auto overscroll-y-contain px-25px pb-25px' : 'contents'"
+        >
         <template v-if="currentPlatform === 'hh'">
           <p class="text-space text-xl font-semibold mb-2">
             {{ HH_PUBLICATION_SECTIONS.basic.titleRu }}
@@ -10,21 +13,315 @@
             {{ HH_PUBLICATION_SECTIONS.basic.subtitleRu }}
           </p>
         </template>
-        <p v-else class="text-space text-xl font-semibold mb-8">
+        <p v-else-if="currentPlatform !== 'avito'" class="text-space text-xl font-semibold mb-8">
           Основная информация
         </p>
+        <template v-if="currentPlatform === 'avito'">
+          <p class="text-space text-xl font-semibold mb-8">Основное</p>
+          <div id="name" class="w-full anchor mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal" :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'">
+              <span class="text-red-custom">*</span>
+              Название вакансии
+            </p>
+            <MyInput
+              placeholder="Например, повар горячего цеха или специалист по установке дверей"
+              v-model="data.name"
+              @update:model-value="($event) => updateValidField('name', $event.trim() !== '')"
+            />
+          </div>
+
+          <div id="professional_roles" class="w-full anchor mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal" :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
+              <span class="text-red-custom">*</span>
+              Профессия
+            </p>
+            <ClientOnly>
+              <SpecializationSelector
+                :options="professionsOptions"
+                :full-catalog="avitoProfessionCatalogForSelector"
+                :model-value="data.professional_roles?.[0] ?? null"
+                placeholder="Выберите из списка"
+                :error="validFields.professional_roles.status === false"
+                :show-catalog-button="false"
+                @update:model-value="($event) => handleIdUpdate('professional_roles', $event)"
+              />
+              <template #fallback>
+                <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
+              </template>
+            </ClientOnly>
+          </div>
+
+          <div id="experience" class="w-full anchor mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal" :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'">
+              <span class="text-red-custom">*</span>
+              Опыт работы по профессии
+            </p>
+            <div class="flex w-full gap-2">
+              <button
+                v-for="opt in experienceOptions"
+                :key="opt.id"
+                type="button"
+                class="flex-1 px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                :class="isExperienceSelectedForSuperjob(opt)
+                  ? 'bg-zumthor border-dodger text-dodger font-normal'
+                  : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                @click="handleIdUpdate('experience', opt)"
+              >
+                {{ opt.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="w-full mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
+              Сфера деятельности компании
+            </p>
+            <ClientOnly>
+              <SpecializationSelector
+                :options="Array.isArray(currectRole) ? currectRole : []"
+                :full-catalog="avitoBusinessAreaCatalogForSelector"
+                :model-value="data.industry ?? null"
+                placeholder="Выберите из списка"
+                :error="validFields.industry?.status === false"
+                :show-catalog-button="false"
+                @update:model-value="handleIndustryChange"
+              />
+              <template #fallback>
+                <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
+              </template>
+            </ClientOnly>
+          </div>
+
+          <div id="description" class="w-full anchor mb-6">
+            <div class="flex items-center justify-between mb-3.5">
+              <p class="text-sm font-medium" :class="validFields.description.status === false ? 'text-red-custom' : 'text-space'">
+                <span class="text-red-custom">*</span>
+                Описание вакансии и компании
+              </p>
+            </div>
+            <TiptapEditor v-model="data.description" @update:model-value="($event) => updateDescriptionValidation($event)" />
+          </div>
+
+          <div class="w-full mb-10">
+            <p class="text-space text-xl font-semibold mb-5">Готовы рассмотреть</p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="opt in additionalConditionsOptions"
+                :key="opt.id"
+                type="button"
+                class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                :class="isArrayItemSelected(data.additional_conditions, opt.id)
+                  ? 'bg-zumthor border-dodger text-dodger font-normal'
+                  : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                @click="toggleArrayItem('additional_conditions', opt.id)"
+              >
+                {{ opt.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-25px mt-25px border-t"></div>
+          <p class="text-space text-xl font-semibold mb-8">Условия</p>
+
+          <div id="employment_form" class="w-full anchor mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal" :class="validFields.employment_form.status === false ? 'text-red-custom' : 'text-space'">
+              <span class="text-red-custom">*</span>
+              Занятость
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="opt in avitoEmploymentOptions"
+                :key="opt.id"
+                type="button"
+                class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                :class="String(data.employment_form?.id || '') === String(opt.id)
+                  ? 'bg-zumthor border-dodger text-dodger font-normal'
+                  : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                @click="handleIdUpdate('employment_form', opt)"
+              >
+                {{ opt.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="w-full mb-6">
+            <MyCheckbox :id="'avito-internship'" :label="'Стажировка'" v-model="data.avito_internship" />
+            <div class="mt-4">
+              <MyCheckbox :id="'avito-side-job'" :label="'Возможна подработка'" v-model="data.is_side_job" />
+            </div>
+          </div>
+
+          <div id="address" class="w-full anchor mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              <span class="text-red-custom">*</span>
+              Место работы
+            </p>
+            <CityAutocomplete
+              :options="addresses"
+              :isOpen="true"
+              :model-value="data.address?.id || null"
+              :error="validFields.address.status === false"
+              @update:model-value="handleAvitoWorkPlaceUpdate"
+              placeholder="Начните вводить адрес, а потом выберите из списка"
+            />
+            <p v-if="validFields.address.status === false" class="text-xs text-red-500 mt-1">
+              Выберите город из списка подсказок
+            </p>
+          </div>
+
+          <div class="w-full mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Вид договора</p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="opt in avitoContractOptions"
+                :key="opt.id"
+                type="button"
+                class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                :class="isAvitoContractSelected(opt)
+                  ? 'bg-zumthor border-dodger text-dodger font-normal'
+                  : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                @click="selectAvitoContract(opt)"
+              >
+                {{ opt.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="w-full mb-6">
+            <p class="text-space text-xl font-semibold mb-5">Зарплата</p>
+            <div class="flex items-end gap-[10px] mb-6">
+              <div class="w-full flex gap-x-2.5">
+                <MyInput placeholder="От" type="Number" :model-value="data.salary_range?.from ?? null"
+                  @update:model-value="($event) => handleSalaryRangeUpdate('from', $event)" />
+                <MyInput placeholder="До" type="Number" :model-value="data.salary_range?.to ?? null"
+                  @update:model-value="($event) => handleSalaryRangeUpdate('to', $event)" />
+              </div>
+              <div class="w-full">
+                <DropDownTypes :options="avitoSalaryModeOptions" :selected="avitoSalaryModeOptions[0]"
+                  :model-value="data.salary_range?.mode ?? null"
+                  @update:model-value="($event) => handleSalaryRangeUpdate('mode', $event)" />
+              </div>
+            </div>
+            <RadioGroup default-value="full-cash" class="w-full flex gap-[18px] mb-6"
+              :model-value="data.salary_range?.gross === true ? 'full-cash' : 'past-cash'"
+              @update:model-value="(value) => (data.salary_range = { ...(data.salary_range || {}), gross: value === 'full-cash' })">
+              <div class="my-checkbox">
+                <Label for="past-cash-avito" class="cursor-pointer flex items-center">
+                  <RadioGroupItem id="past-cash-avito" value="past-cash" class="mr-5px" />
+                  <p>На руки</p>
+                </Label>
+              </div>
+              <div class="my-checkbox">
+                <Label for="full-cash-avito" class="cursor-pointer flex items-center">
+                  <RadioGroupItem id="full-cash-avito" value="full-cash" class="mr-5px" />
+                  <p>До вычета налогов</p>
+                </Label>
+              </div>
+            </RadioGroup>
+            <p class="text-sm font-medium mb-3.5 text-space">Частота выплат</p>
+            <div class="mb-6">
+              <DropDownTypes
+                :options="avitoPayoutFrequencyOptions"
+                :selected="avitoPayoutFrequencyOptions.find((opt) => String(opt.id) === 'monthlyPay') || avitoPayoutFrequencyOptions[0]"
+                :model-value="data.salary_range?.frequency ?? null"
+                @update:model-value="($event) => handleSalaryRangeUpdate('frequency', $event)"
+              />
+            </div>
+            <p class="text-sm font-medium mb-3.5 text-space">Что получают сотрудники</p>
+            <DropDownTypes :options="additionalConditionsOptions" :selected="data.avito_benefit ?? null"
+              @update:model-value="($event) => data.avito_benefit = $event" />
+          </div>
+
+          <div class="mb-25px mt-25px border-t"></div>
+          <p class="text-space text-xl font-semibold mb-8">Требования к кандидату</p>
+          <div class="w-full mb-8">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Резюме</p>
+            <div class="flex gap-2">
+              <button type="button" class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                :class="(data.apply_processing?.apply_type || 'optional') === 'optional'
+                  ? 'bg-zumthor border-dodger text-dodger font-normal'
+                  : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                @click="data.apply_processing = { ...(data.apply_processing || {}), apply_type: 'optional' }">
+                Необязательно
+              </button>
+              <button type="button" class="px-4 py-2.5 text-sm rounded-ten border transition-colors"
+                :class="(data.apply_processing?.apply_type || 'optional') === 'required'
+                  ? 'bg-zumthor border-dodger text-dodger font-normal'
+                  : 'bg-athens-gray border-athens text-bali font-normal hover:bg-dodger hover:border-transparent hover:text-white'"
+                @click="data.apply_processing = { ...(data.apply_processing || {}), apply_type: 'required' }">
+                Обязательно
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-25px mt-25px border-t"></div>
+          <p class="text-space text-xl font-semibold mb-8">Контакты для связи</p>
+          <div class="w-full mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Способ связи</p>
+            <RadioGroup class="w-full flex flex-col gap-3" :model-value="data.avito_contact_method ?? 'messages_only'"
+              @update:model-value="(value) => { data.avito_contact_method = value; data.allow_messages = value !== 'calls_only'; }">
+              <Label for="avito-contact-both" class="cursor-pointer flex items-center">
+                <RadioGroupItem id="avito-contact-both" value="calls_and_messages" class="mr-5px" />
+                <p>Звонки и сообщения</p>
+              </Label>
+              <Label for="avito-contact-calls" class="cursor-pointer flex items-center">
+                <RadioGroupItem id="avito-contact-calls" value="calls_only" class="mr-5px" />
+                <p>Только звонки</p>
+              </Label>
+              <Label for="avito-contact-messages" class="cursor-pointer flex items-center">
+                <RadioGroupItem id="avito-contact-messages" value="messages_only" class="mr-5px" />
+                <p>Только сообщения</p>
+              </Label>
+            </RadioGroup>
+          </div>
+
+          <div class="w-full mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Контактное лицо</p>
+            <MyInput placeholder="Контактное лицо" v-model="data.executor_name" />
+          </div>
+          <div class="w-full mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Телефон</p>
+            <MyInput placeholder="+7 ..." v-model="data.executor_phone" />
+          </div>
+          <div class="w-full mb-6">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Когда вам можно звонить</p>
+            <MyInput placeholder="Например, Каждый день с 09:00 до 18:00" v-model="data.avito_call_time" />
+          </div>
+          <div class="w-full mb-10">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">Код вакансии</p>
+            <MyInput placeholder="Ваш внутренний идентификатор вакансии" v-model="data.code" />
+          </div>
+
+          <div
+            v-if="!fixedModalFooter"
+            class="w-full flex flex-wrap items-center justify-start gap-x-15px gap-y-15px mb-6"
+          >
+            <UiButton @click="savePublication" variant="action" size="semiaction" class="font-semibold">
+              {{ isEditingMode ? 'Обновить' : 'Опубликовать' }}
+            </UiButton>
+            <div class="status" v-if="status">
+              {{ status }}
+            </div>
+            <UiButton variant="semiaction" size="semiaction" class="text-space" @click="emit('cancel')">
+              Отмена
+            </UiButton>
+          </div>
+        </template>
+        <template v-else>
         <div class="w-full justify-between flex gap-25px mb-6">
           <div id="name" class="w-full anchor">
             <p class="text-sm font-medium mb-4 leading-normal"
               :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
               <template v-if="currentPlatform === 'hh'">Название</template>
+              <template v-else-if="currentPlatform === 'avito'">Название вакансии</template>
               <template v-else>Название должности</template>
             </p>
             <MyInput placeholder="Например, Менеджер по продажам" v-model="data.name"
               @update:model-value="($event) => updateValidField('name', $event.trim() !== '')" />
           </div>
-          <div v-if="currentPlatform !== 'hh'" class="w-full">
+          <div v-if="currentPlatform !== 'hh' && currentPlatform !== 'avito'" class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
               Код вакансии
             </p>
@@ -575,7 +872,10 @@
                 @update:model-value="$event => (isDraft = $event)" />
             </div>
           </div>
-          <div class="w-full justify-start flex gap-25px mb-6">
+          <div
+            v-if="!fixedModalFooter"
+            class="w-full flex flex-wrap items-center justify-start gap-x-15px gap-y-15px mb-6"
+          >
             <template v-if="currentPlatform === 'hh' && tariffsOptions.length > 0">
               <DropDownTypes :options="tariffsOptions" :selected="tariffsOptions[0]" placeholder="Выберите тариф"
                 @update:model-value="($event) => handleTariffUpdate($event)"></DropDownTypes>
@@ -608,7 +908,7 @@
               Отмена
             </UiButton>
           </div>
-          <div v-if="statusValidate === false" class="w-full text-red-custom mb-6">
+          <div v-if="statusValidate === false && !fixedModalFooter" class="w-full text-red-custom mb-6">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
               Не заполнены обязательные поля:
             </p>
@@ -627,6 +927,70 @@
             </div>
           </div>
         </div>
+        </template>
+        </div>
+        <div
+          v-if="fixedModalFooter && statusValidate === false"
+          class="w-full shrink-0 border-t border-athens bg-white px-25px py-15px text-red-custom"
+        >
+          <p class="text-sm font-medium mb-4 leading-normal text-space">
+            Не заполнены обязательные поля:
+          </p>
+          <div class="grid grid-cols-2 gap-5px">
+            <template v-for="(field, key) in validFields" :key="key">
+              <div v-if="field.status === false" class="flex flex-col">
+                <a :href="`#${key}`" @click.prevent="scrollToElement(key)"
+                  class="text-red-custom hover:text-red-custom-hover underline cursor-pointer">
+                  {{ field.name }}
+                </a>
+                <span v-if="field.error" class="text-xs text-red-custom mt-1">
+                  {{ field.error }}
+                </span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <footer
+          v-if="fixedModalFooter"
+          class="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-x-15px gap-y-15px rounded-b-fifteen border-t border-athens bg-white px-25px py-15px"
+        >
+          <div class="flex flex-wrap items-center gap-x-15px gap-y-15px">
+            <template v-if="currentPlatform === 'avito'">
+              <UiButton type="button" @click="savePublication" variant="action" size="semiaction" class="font-semibold">
+                {{ isEditingMode ? 'Обновить' : 'Опубликовать' }}
+              </UiButton>
+              <div v-if="status" class="status">{{ status }}</div>
+              <UiButton type="button" variant="semiaction" size="semiaction" class="text-space" @click="emit('cancel')">
+                Отмена
+              </UiButton>
+            </template>
+            <template v-else>
+              <template v-if="currentPlatform === 'hh' && tariffsOptions.length > 0">
+                <DropDownTypes
+                  :options="tariffsOptions"
+                  :selected="tariffsOptions[0]"
+                  placeholder="Выберите тариф"
+                  @update:model-value="($event) => handleTariffUpdate($event)"
+                />
+              </template>
+              <template v-else-if="currentPlatform === 'hh'">
+                <DropDownTypes
+                  :options="HH_BILLING_TYPES"
+                  :selected="data.billing_types"
+                  placeholder="Выберите тариф"
+                  v-model="data.billing_types"
+                />
+              </template>
+              <UiButton type="button" @click="savePublication" variant="action" size="semiaction" class="font-semibold">
+                {{ isEditingMode ? 'Обновить' : 'Опубликовать' }}
+              </UiButton>
+              <div v-if="status" class="status">{{ status }}</div>
+              <UiButton type="button" variant="semiaction" size="semiaction" class="text-space" @click="emit('cancel')">
+                Отмена
+              </UiButton>
+            </template>
+          </div>
+        </footer>
       </div>
     </div>
   </div>
@@ -670,7 +1034,7 @@ import {
 } from '@/src/constants'
 import { HH_OFORMLENIE_MULTISELECT_OPTIONS } from '@/utils/hhVacancyPayloadConstants'
 import experience from '~/src/data/experience.json'
-import { inject, watch, computed, defineProps, nextTick, onMounted } from 'vue'
+import { inject, watch, computed, defineProps, nextTick, onMounted, isRef } from 'vue'
 
 const props = defineProps({
   selectedPlatform: {
@@ -680,6 +1044,11 @@ const props = defineProps({
   editingVacancy: {
     type: Object,
     default: null
+  },
+  /** Оболочка как у попапа hh.ru: нижняя панель с кнопками фиксируется при прокрутке */
+  fixedModalFooter: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -697,7 +1066,14 @@ import {
   getAvailablePublications as getAvailablePublicationsHh,
   getPublication as getHhPublicationById,
 } from '@/utils/hhAccount'
-import { addAvitoDraft as addDraftAvito, getAvitoProfile as profileAvito, publishAvitoVacancy as publishVacancyToAvito, getAvitoProfessions as getProfessionsAvito, getSpecializations as getSpecializationsAvito } from '@/utils/avitoAccount'
+import {
+  addAvitoDraft as addDraftAvito,
+  getAvitoProfile as profileAvito,
+  getAvitoPublication,
+  publishAvitoVacancy as publishVacancyToAvito,
+  getAvitoCatalogs as getAvitoCatalogs,
+  getAvitoSpecializationMappings as getAvitoSpecializationMappings,
+} from '@/utils/avitoAccount'
 import {
   getRabotaProfile as profileRabota,
   addRabotaDraft as addDraftRabota,
@@ -712,13 +1088,7 @@ import {
 } from '@/utils/rabotaAccount'
 import { updateSuperjobPublication as updatePublicationSuperjob, getSuperjobVacancy, getCatalogues as getSuperjobCatalogues, getTowns as getSuperjobTowns, publishSuperjobVacancy as publishVacancyToSuperjob } from '@/utils/superjobAccount'
 import { mapVacancyToSuperjobPayload } from '@/utils/mapVacancyToSuperjob'
-import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFields, buildDriverDbIdToNameMap } from '@/utils/getVacancies';
-import { useRoute } from 'vue-router'
-import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
-import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
-import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
-import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
-import { getRabotaVacancyExportMap } from '@/utils/getVacancies'
+import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFields, buildDriverDbIdToNameMap, getRabotaVacancyExportMap, getAvitoPublicationOriginalLocalOnly, getRabotaPublicationOriginalLocalOnly } from '@/utils/getVacancies';
 
 /** Возможные сетевые запросы при инициализации — перечень: `utils/addPublicationRemoteLoads.ts` (`ADD_PUBLICATION_REMOTE_LOADS`). */
 
@@ -745,14 +1115,15 @@ const scrollToElement = (elementId) => {
   }
 }
 
-/** Нормализация имени платформы: hh.ru -> hh, superjob.ru -> superjob и т.д. */
+/** Нормализация имени платформы: hh.ru -> hh, superjob.ru -> superjob и т.д. (без учёта регистра). */
 function normalizePlatformName(name) {
-  if (!name) return null
-  if (name === 'hh.ru') return 'hh'
-  if (name === 'avito.ru') return 'avito'
-  if (name === 'rabota.ru') return 'rabota'
-  if (name === 'superjob.ru' || name === 'superjob') return 'superjob'
-  return name
+  if (name == null || String(name).trim() === '') return null
+  const lower = String(name).trim().toLowerCase()
+  if (lower === 'hh.ru' || lower === 'hh') return 'hh'
+  if (lower === 'avito.ru' || lower === 'avito') return 'avito'
+  if (lower === 'rabota.ru' || lower === 'rabota') return 'rabota'
+  if (lower === 'superjob.ru' || lower === 'superjob') return 'superjob'
+  return lower
 }
 
 /** Карточка «Опубликовать» на вкладке размещений — не блокируем рендер запросами к HH; данные вакансии из provide. */
@@ -760,8 +1131,25 @@ const isNewPublicationFromCard = Boolean(props.selectedPlatform && !props.editin
 const isNewHhPublicationFromCard =
   isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'hh'
 
-const isDraft = ref(true)
-const platforms = ref(inject('platformsGlobal'))
+/** По умолчанию публикация; черновик — только если пользователь отметил чекбокс (в формах, где он есть). */
+const isDraft = ref(false)
+
+/** PublishTab не делает provide('platformsGlobal') — без дефолта setup падает на `for (… of platforms.value)`. */
+function defaultPlatformsState() {
+  return [
+    { platform: 'hh', isAuthenticated: false, data: {}, types: undefined },
+    { platform: 'avito', isAuthenticated: false, data: {}, types: undefined },
+    { platform: 'rabota', isAuthenticated: false, data: {}, types: undefined },
+    { platform: 'superjob', isAuthenticated: false, data: {}, types: undefined },
+  ]
+}
+function resolvePlatformsInject() {
+  const raw = inject('platformsGlobal', null)
+  if (raw == null) return defaultPlatformsState()
+  const list = isRef(raw) ? raw.value : raw
+  return Array.isArray(list) && list.length > 0 ? list : defaultPlatformsState()
+}
+const platforms = ref(resolvePlatformsInject())
 const isPlatforms = ref(inject('isPlatforms'))
 const vacancyData = inject('vacancyCurrect')
 const currectRole = ref(null)
@@ -961,9 +1349,168 @@ function applyRabotaActivePublicationToForm() {
   void nextTick(() => emit('form-ready'))
 }
 
+/** Ответ GET /avito/publications/:id может быть обёрнут в result/item/data — разворачиваем до «плоской» вакансии. */
+function unwrapAvitoPublicationPayload(raw) {
+  if (raw == null || typeof raw !== 'object') return null
+  if (
+    raw.id != null &&
+    (raw.name != null || raw.title != null || raw.description != null || raw.profession != null)
+  ) {
+    return raw
+  }
+  const nested = raw.result ?? raw.item ?? raw.vacancy ?? raw.publication
+  if (nested && typeof nested === 'object' && nested !== raw) {
+    return unwrapAvitoPublicationPayload(nested)
+  }
+  if (raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)) {
+    return unwrapAvitoPublicationPayload(raw.data)
+  }
+  return raw
+}
+
+/**
+ * После загрузки каталогов Avito подставляем текст и поля из объявления на стороне Avito
+ * (как для rabota.ru: getRabotaPublication + applyRabotaActivePublicationToForm).
+ */
+function applyAvitoActivePublicationToForm() {
+  if (avitoActivePublicationApplied.value) return
+  const raw = avitoActivePublication.value
+  if (!raw || currentPlatform.value !== 'avito') return
+  const pub = unwrapAvitoPublicationPayload(raw)
+  if (!pub || typeof pub !== 'object') return
+
+  const title = pub.name ?? pub.title
+  if (title != null && String(title).trim() !== '') {
+    data.value.name = String(title).trim()
+  }
+
+  const desc =
+    pub.description ??
+    pub.html_description ??
+    pub.body_description ??
+    pub.text ??
+    (typeof pub.params === 'object' && pub.params != null ? (pub.params.description ?? pub.params.text) : null)
+  if (desc != null && String(desc).trim() !== '') {
+    data.value.description = String(desc)
+  }
+
+  const profId = pub.profession ?? pub.profession_id ?? pub.professionId
+  if (profId != null && Array.isArray(avitoProfessions.value) && avitoProfessions.value.length > 0) {
+    const match = findValueByIdOrName(avitoProfessions.value, profId)
+    if (match) {
+      data.value.professional_roles = [{ id: match.id, name: match.name ?? match.title }]
+    } else {
+      data.value.professional_roles = [{
+        id: profId,
+        name: pub.profession_name != null ? String(pub.profession_name) : '',
+      }]
+    }
+  }
+
+  const ba = pub.business_area ?? pub.businessArea
+  const baNum = ba != null && typeof ba === 'object' ? (ba.id ?? ba.value) : ba
+  if (baNum != null && Array.isArray(currectRole.value)) {
+    const match = currectRole.value.find((a) => String(a.id) === String(baNum))
+    if (match) {
+      data.value.industry = { ...match }
+    }
+  }
+
+  const expRaw = pub.experience?.id ?? pub.experience_id ?? pub.experience
+  const expId = expRaw != null ? String(expRaw) : ''
+  if (expId) {
+    const hit = AVITO_EXPERIENCE_OPTIONS.find((e) => e.id === expId)
+    if (hit) {
+      data.value.experience = { id: hit.id, name: hit.name, value: hit.id }
+    }
+  }
+
+  const empRaw = pub.employment
+  const empStr = typeof empRaw === 'string' ? empRaw : empRaw?.id
+  const empMap = {
+    full: 'FULL',
+    partial: 'PART',
+    project: 'PROJECT',
+    volunteer: 'VOLUNTEER',
+    probation: 'PROBATION',
+  }
+  const empKey = empStr != null ? String(empStr).toLowerCase() : ''
+  const empFormId = empKey ? empMap[empKey] : null
+  if (empFormId && Array.isArray(avitoEmploymentOptions)) {
+    const opt = avitoEmploymentOptions.find((o) => o.id === empFormId)
+    if (opt) {
+      data.value.employment_form = { ...opt }
+    }
+  }
+
+  const schedId = pub.schedule?.id ?? pub.schedule_id ?? (typeof pub.schedule === 'string' ? pub.schedule : null)
+  if (schedId != null) {
+    const opts = workSchedulesOptions.value || []
+    const match = findValueByIdOrName(opts, schedId)
+    if (match) {
+      data.value.work_schedule_by_days = [{ id: match.id, name: match.name }]
+    } else {
+      data.value.work_schedule_by_days = [{ id: String(schedId) }]
+    }
+  }
+
+  const sal = pub.salary
+  if (sal && typeof sal === 'object') {
+    data.value.salary_range = {
+      ...(data.value.salary_range || {}),
+      from: sal.from ?? sal.min ?? data.value.salary_range?.from,
+      to: sal.to ?? sal.max ?? data.value.salary_range?.to,
+      gross: sal.gross ?? data.value.salary_range?.gross,
+    }
+  }
+
+  const addr =
+    typeof pub.address === 'string'
+      ? pub.address.trim()
+      : pub.address?.name ?? pub.location?.title ?? pub.location?.name
+  if (addr) {
+    data.value.area = { name: addr }
+    data.value.address = {
+      name: addr,
+      show_metro_only: data.value.address?.show_metro_only ?? false,
+    }
+  }
+
+  const eduRaw = pub.education ?? pub.education_level
+  const eduStr = typeof eduRaw === 'string' ? eduRaw : eduRaw?.id
+  const avitoEduToHh = {
+    SECONDARY: 'secondary',
+    SECONDARY_SPECIAL: 'special_secondary',
+    UNFINISHED_HIGHER: 'unfinished_higher',
+    HIGHER: 'higher',
+  }
+  const hhEduId = eduStr != null ? avitoEduToHh[String(eduStr).toUpperCase()] : null
+  if (hhEduId) {
+    const eduHit = HH_EDUCATION_LAVEL.find((e) => e.id === hhEduId)
+    if (eduHit) {
+      data.value.education_level = { ...eduHit }
+    }
+  }
+
+  const skills = pub.key_skills ?? pub.skills
+  if (Array.isArray(skills) && skills.length > 0) {
+    data.value.key_skills = skills
+      .map((s) => (typeof s === 'string' ? s.trim() : (s?.name ?? s?.title ?? String(s ?? '')).trim()))
+      .filter(Boolean)
+      .map((name) => ({ name }))
+  }
+
+  avitoActivePublicationApplied.value = true
+}
+
 // Справочники для avito.ru
 const avitoProfessions = ref([])
-const avitoSpecializations = ref([])
+const avitoBusinessAreas = ref([])
+const avitoSpecializationMappings = ref({})
+const avitoCatalogs = ref({})
+/** Снимок объявления с Avito API при редактировании активной публикации (platform_id). */
+const avitoActivePublication = ref(null)
+const avitoActivePublicationApplied = ref(false)
 
 const validFields = ref({
   name: {
@@ -1046,9 +1593,11 @@ function isExperienceSelectedForSuperjob(opt) {
   if (!v && opt?.id === 'noExperience') return true
   if (!v) return false
   if (typeof v === 'object') {
-    return String(opt?.id) === String(v?.id) || opt?.value === v?.value
+    const byId = opt?.id != null && v?.id != null && String(opt.id) === String(v.id)
+    const byValue = opt?.value != null && v?.value != null && String(opt.value) === String(v.value)
+    return byId || byValue
   }
-  return String(opt?.id) === String(v) || opt?.value === v || opt?.name === v || String(opt?.value) === String(v)
+  return String(opt?.id) === String(v) || (opt?.value != null && String(opt.value) === String(v)) || opt?.name === v
 }
 
 function toggleSuperjobEmploymentCondition(id) {
@@ -1099,12 +1648,14 @@ const handleIdUpdate = (property, value) => {
         // Если список пуст, сохраняем переданный объект
         data.value.professional_roles = [value]
       }
+      updateValidField('professional_roles', true)
       // Синхронизация с SuperJob: id выбранной специализации уходит в catalogues при обновлении
       if (isSuperjobPlatform.value && (value?.id != null || value?.key != null)) {
         data.value.superjob_catalogue_id = Number(value?.id ?? value?.key) || (value?.id ?? value?.key)
       }
     } else {
       data.value.professional_roles = [null]
+      updateValidField('professional_roles', false)
       if (isSuperjobPlatform.value) data.value.superjob_catalogue_id = null
     }
   } else {
@@ -1173,44 +1724,16 @@ function handleSuperjobProfessionalSphereUpdate(value) {
 const handleIndustryChange = async (industry) => {
   if (!industry) {
     data.value.industry = null
-    data.value.professional_roles = [null]
-    avitoSpecializations.value = []
+    if (currentPlatform.value !== 'avito') {
+      data.value.professional_roles = [null]
+    }
     return
   }
 
-  // Для Avito загружаем специализации при выборе профессии
-  if (currentPlatform.value === 'avito' && industry.id) {
-    try {
-      const specializationsResult = await getSpecializationsAvito(industry.id)
-      if (specializationsResult?.data && !specializationsResult.error) {
-        avitoSpecializations.value = Array.isArray(specializationsResult.data)
-          ? specializationsResult.data
-          : (specializationsResult.data.items || [])
-
-        // Обновляем industry с загруженными специализациями
-        data.value.industry = {
-          ...industry,
-          roles: avitoSpecializations.value.map(spec => ({
-            id: spec.id,
-            name: spec.name || spec.title
-          }))
-        }
-
-        // Выбираем первую специализацию, если есть
-        if (avitoSpecializations.value.length > 0) {
-          const firstSpec = avitoSpecializations.value[0]
-          data.value.professional_roles = [{
-            id: firstSpec.id,
-            name: firstSpec.name || firstSpec.title
-          }]
-        } else {
-          data.value.professional_roles = [null]
-        }
-        return
-      }
-    } catch (error) {
-      console.error('Ошибка при загрузке специализаций Avito:', error)
-    }
+  // Для Avito сфера деятельности и профессия независимы.
+  if (currentPlatform.value === 'avito') {
+    data.value.industry = { ...(industry || {}) }
+    return
   }
 
   // Для других платформ используем существующую логику
@@ -1306,6 +1829,15 @@ data.value.response_letter_required = false
 data.value.billing_types = HH_BILLING_TYPES[0]
 data.value.contacts = null
 data.value.executor_email = null
+data.value.executor_name = ''
+data.value.executor_phone = ''
+data.value.avito_call_time = ''
+data.value.avito_contact_method = 'messages_only'
+data.value.avito_auto_publication = false
+data.value.avito_internship = false
+data.value.avito_contract_key = ''
+data.value.avito_benefit = null
+data.value.apply_processing = { apply_type: 'optional' }
 data.value.vacancy_properties = null
 
 
@@ -1325,7 +1857,8 @@ const platformIdToNameMap = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' }
 const currentPlatform = computed(() => {
   const platformData = props.editingVacancy?.platforms_data?.[0]
   if (platformData) {
-    const byId = platformData.id != null ? platformIdToNameMap[platformData.id] : null
+    const pid = platformData.id != null && String(platformData.id).trim() !== '' ? Number(platformData.id) : NaN
+    const byId = Number.isFinite(pid) && platformIdToNameMap[pid] != null ? platformIdToNameMap[pid] : platformIdToNameMap[platformData.id]
     if (byId) return byId
     const byName = platformData.name ? normalizePlatformName(platformData.name) : null
     if (byName) return byName
@@ -1333,6 +1866,14 @@ const currentPlatform = computed(() => {
   const fromSelected = normalizePlatformName(props.selectedPlatform)
   return fromSelected || 'hh'
 })
+
+watch(
+  currentPlatform,
+  (p) => {
+    validFields.value.address.name = p === 'avito' ? 'Место работы' : 'Город размещения'
+  },
+  { immediate: true },
+)
 // SuperJob может приходить как 'superjob' или 'superjob.ru' — единый UI (одно поле «Профессиональная сфера»)
 const isSuperjobPlatform = computed(() => {
   const p = currentPlatform.value
@@ -1340,13 +1881,33 @@ const isSuperjobPlatform = computed(() => {
 })
 // Скрывать блок «График и часы работы» для SuperJob: по выбранной платформе или по редактируемой вакансии (data.platform может обновиться позже)
 const hideScheduleBlockForSuperjob = computed(() => {
-  return isSuperjobPlatform.value ? true : props.editingVacancy?.platforms_data?.[0]?.id === 4
+  const rawId = props.editingVacancy?.platforms_data?.[0]?.id
+  const pid = rawId != null && String(rawId).trim() !== '' ? Number(rawId) : NaN
+  return isSuperjobPlatform.value ? true : (Number.isFinite(pid) && pid === 4)
 })
 
 // Каталог SuperJob для SpecializationSelector: computed из currectRole, чтобы при loadDictionaries('superjob') данные сразу отображались
 const superjobCatalogForSelector = computed(() =>
   isSuperjobPlatform.value && Array.isArray(currectRole.value) ? currectRole.value : []
 );
+
+const avitoProfessionCatalogForSelector = computed(() => {
+  if (currentPlatform.value !== 'avito') return []
+  return [{
+    id: 'avito-profession',
+    name: 'Профессии Avito',
+    roles: professionsOptions.value,
+  }]
+})
+
+const avitoBusinessAreaCatalogForSelector = computed(() => {
+  if (currentPlatform.value !== 'avito') return []
+  return [{
+    id: 'avito-business-area',
+    name: 'Сферы деятельности компании',
+    roles: Array.isArray(currectRole.value) ? currectRole.value : [],
+  }]
+})
 
 const professionsOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaProfessions.value.length > 0) {
@@ -1357,11 +1918,10 @@ const professionsOptions = computed(() => {
     }))
   }
   if (currentPlatform.value === 'avito') {
-    // Для Avito используем загруженные специализации
-    return data.value.industry?.roles || avitoSpecializations.value.map(spec => ({
-      id: spec.id,
-      name: spec.name || spec.title
-    })) || []
+    return avitoProfessions.value.map((prof) => ({
+      id: prof.id,
+      name: prof.name || prof.title,
+    }))
   }
   // Для hh.ru используем существующую логику
   return data.value.industry?.roles || []
@@ -1758,16 +2318,54 @@ const workSchedulesOptions = computed(() => {
       name: schedule.name || schedule.title
     }))
   }
+  if (currentPlatform.value === 'avito' && Array.isArray(avitoCatalogs.value?.schedules) && avitoCatalogs.value.schedules.length > 0) {
+    return avitoCatalogs.value.schedules.map((schedule) => ({
+      id: schedule.id,
+      name: schedule.name || schedule.title,
+    }))
+  }
   return HH_WORK_SCHEDULE_BY_DAYS
 })
 
 // Опции опыта работы для Avito
 const AVITO_EXPERIENCE_OPTIONS = [
-  { id: 'noMatter', name: 'Неважно' },
-  { id: 'moreThan1', name: 'Более 1 года' },
-  { id: 'moreThan3', name: 'Более 3 лет' },
-  { id: 'moreThan5', name: 'Более 5 лет' },
-  { id: 'moreThan10', name: 'Более 10 лет' },
+  { id: 'noMatter', name: 'Без опыта' },
+  { id: 'moreThan1', name: 'От 1 года' },
+  { id: 'moreThan3', name: 'От 3 лет' },
+  { id: 'moreThan5', name: 'От 5 лет' },
+  { id: 'moreThan10', name: 'От 10 лет' },
+]
+
+// Avito: тип зарплаты (период, за который указывается сумма)
+const avitoSalaryModeOptions = [
+  { id: 'monthly', name: 'в месяц' },
+  { id: 'weekly', name: 'в неделю' },
+  { id: 'shift', name: 'за смену' },
+  { id: 'hourly', name: 'за час' },
+  { id: 'piecework', name: 'сдельная оплата' },
+]
+
+// Avito API payout_frequency.id
+const avitoPayoutFrequencyOptions = [
+  { id: 'hourlyPay', name: 'Раз в час' },
+  { id: 'dailyPay', name: 'Ежедневно' },
+  { id: 'weeklyPay', name: 'Раз в неделю' },
+  { id: 'biweeklyPay', name: 'Раз в две недели' },
+  { id: 'thriceMonthlyPay', name: 'Два раза в месяц' },
+  { id: 'monthlyPay', name: 'Раз в месяц' },
+]
+
+const avitoEmploymentOptions = [
+  { id: 'FULL', name: 'Постоянная' },
+  { id: 'PART', name: 'Частичная' },
+  { id: 'PROJECT', name: 'Разовая или временная' },
+]
+
+const avitoContractOptions = [
+  { id: 'labor', name: 'Трудовой', billingId: 'single' },
+  { id: 'gph_ip', name: 'ГПХ с ИП', billingId: 'package' },
+  { id: 'gph_self_employed', name: 'ГПХ с самозанятым', billingId: 'packageOrSingle' },
+  { id: 'gph_person', name: 'ГПХ с физлицом', billingId: 'single' },
 ]
 
 const experienceOptions = computed(() => {
@@ -1793,8 +2391,38 @@ const educationOptions = computed(() => {
   return HH_EDUCATION_LAVEL
 })
 
+function applyAvitoMappedProfessionFromJobly() {
+  if (currentPlatform.value !== 'avito') return
+  const currentId = data.value.professional_roles?.[0]?.id != null
+    ? String(data.value.professional_roles[0].id)
+    : ''
+  if (!currentId) return
+  const mappedId = avitoSpecializationMappings.value?.[currentId]
+  if (mappedId == null || mappedId === '') return
+  const hit = avitoProfessions.value.find((p) => String(p.id) === String(mappedId))
+  if (!hit) return
+  data.value.professional_roles = [{
+    id: hit.id,
+    name: hit.name || hit.title,
+  }]
+}
+
+function ensureAvitoSalaryDefaults() {
+  if (currentPlatform.value !== 'avito') return
+  if (!data.value.salary_range) data.value.salary_range = {}
+  const currentModeId = data.value.salary_range?.mode?.id != null ? String(data.value.salary_range.mode.id) : ''
+  const currentFreqId = data.value.salary_range?.frequency?.id != null ? String(data.value.salary_range.frequency.id) : ''
+  if (!avitoSalaryModeOptions.some((opt) => String(opt.id) === currentModeId)) {
+    data.value.salary_range.mode = { id: avitoSalaryModeOptions[0].id }
+  }
+  if (!avitoPayoutFrequencyOptions.some((opt) => String(opt.id) === currentFreqId)) {
+    data.value.salary_range.frequency = { id: 'monthlyPay' }
+  }
+}
+
 // Функция для загрузки справочников в зависимости от платформы
-const loadDictionaries = async (platform) => {
+// opts.skipAvitoAddressHints — не грузить getAreasHh для Avito (фаза B после form-ready).
+const loadDictionaries = async (platform, opts = {}) => {
   if (platform === 'rabota') {
     // Загружаем справочники rabota.ru
     const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult] = await Promise.all([
@@ -1838,19 +2466,44 @@ const loadDictionaries = async (platform) => {
       applyJoblyVacancyToRabotaForm(globCurrentVacancy.value)
     }
   } else if (platform === 'avito') {
-    // Загружаем профессии для Avito
-    const professionsResult = await getProfessionsAvito()
-    if (professionsResult?.data && !professionsResult.error) {
-      avitoProfessions.value = Array.isArray(professionsResult.data)
-        ? professionsResult.data
-        : (professionsResult.data.items || [])
-
-      // Преобразуем в формат для использования в выпадающем списке
-      currectRole.value = avitoProfessions.value.map(prof => ({
-        id: prof.id,
-        name: prof.name || prof.title,
-        roles: [] // Специализации будут загружены при выборе профессии
+    // Загружаем локально сохраненные каталоги Avito
+    const [catalogsResult, mappingsResult] = await Promise.all([
+      getAvitoCatalogs(),
+      getAvitoSpecializationMappings(),
+    ])
+    if (catalogsResult?.data && !catalogsResult.error && typeof catalogsResult.data === 'object') {
+      avitoCatalogs.value = catalogsResult.data
+      avitoProfessions.value = Array.isArray(catalogsResult.data.profession) ? catalogsResult.data.profession : []
+      avitoBusinessAreas.value = Array.isArray(catalogsResult.data.business_area) ? catalogsResult.data.business_area : []
+      currectRole.value = avitoBusinessAreas.value.map((area) => ({
+        id: area.id,
+        name: area.name || area.title,
+        roles: [],
       }))
+    }
+    if (mappingsResult?.data && !mappingsResult.error && typeof mappingsResult.data === 'object') {
+      avitoSpecializationMappings.value = mappingsResult.data
+    }
+    ensureAvitoSalaryDefaults()
+    try {
+      applyAvitoMappedProfessionFromJobly()
+      applyAvitoActivePublicationToForm()
+    } catch (e) {
+      console.warn('Avito: применение данных публикации/маппинга после каталогов:', e)
+    }
+    if (!opts.skipAvitoAddressHints) {
+      // «Место работы»: подсказки из справочника городов (как для HH). С карточки «Опубликовать» адреса работодателя HH не подгружаются — иначе список пустой и «Город не найден».
+      try {
+        const { data: areasData, error: areasError } = await getAreasHh()
+        if (!areasError && areasData) {
+          addresses.value = dedupeAreasByName(areasData)
+        } else {
+          addresses.value = []
+        }
+      } catch (e) {
+        console.warn('Avito: не удалось загрузить города для места работы:', e)
+        addresses.value = []
+      }
     }
   } else if (platform === 'superjob') {
     // Каталог SuperJob: отрасли (key, title) и позиции (positions[].key, title). В вакансию передаём только id категории (position.key).
@@ -1891,8 +2544,9 @@ const loadDictionaries = async (platform) => {
     }
   } else {
     // Загружаем справочники hh.ru (по умолчанию)
-    const { roles, errorRoles } = await getRolesHh()
-    if (!errorRoles) {
+    const rolesPayload = await getRolesHh()
+    if (rolesPayload && !rolesPayload.errorRoles && rolesPayload.roles) {
+      const { roles } = rolesPayload
       currectRole.value = roles.categories
     }
 
@@ -1909,11 +2563,199 @@ const loadDictionaries = async (platform) => {
   }
 }
 
-// Справочники hh.ru по умолчанию — при «Опубликовать» с карточки не дергаем HH до показа формы (см. onMounted).
-if (!isNewPublicationFromCard) {
-  const { roles, errorRoles } = await getRolesHh()
-  if (!errorRoles) {
-    currectRole.value = roles.categories
+const EDIT_PLATFORM_CATALOG_RACE_MS = 8000
+/** Редактирование: GET /vacancy-fields без таймаута мог вечно держать лоадер модалки (см. fillFormFromCurrentVacancy → drivers). */
+const VACANCY_FIELDS_FETCH_MS = 6000
+/** Live-запрос публикации с площадки при пустом снимке в БД — не держим модалку 20+ с при «висящем» прокси/API. */
+const PLATFORM_PUBLICATION_LIVE_FETCH_MS = 7000
+
+/** Фаза A (Avito): каталоги + применение снимка; таймаут — форма всё равно открывается с CRM. */
+const loadAvitoCatalogsMinimalWithApplyForEdit = async () => {
+  const runCore = async () => {
+    const [catalogsResult, mappingsResult] = await Promise.all([
+      getAvitoCatalogs(),
+      getAvitoSpecializationMappings(),
+    ])
+    if (catalogsResult?.data && !catalogsResult.error && typeof catalogsResult.data === 'object') {
+      avitoCatalogs.value = catalogsResult.data
+      avitoProfessions.value = Array.isArray(catalogsResult.data.profession) ? catalogsResult.data.profession : []
+      avitoBusinessAreas.value = Array.isArray(catalogsResult.data.business_area) ? catalogsResult.data.business_area : []
+      currectRole.value = avitoBusinessAreas.value.map((area) => ({
+        id: area.id,
+        name: area.name || area.title,
+        roles: [],
+      }))
+    }
+    if (mappingsResult?.data && !mappingsResult.error && typeof mappingsResult.data === 'object') {
+      avitoSpecializationMappings.value = mappingsResult.data
+    }
+    ensureAvitoSalaryDefaults()
+    applyAvitoMappedProfessionFromJobly()
+    applyAvitoActivePublicationToForm()
+  }
+  try {
+    await Promise.race([
+      runCore(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('avito_catalogs_timeout')), EDIT_PLATFORM_CATALOG_RACE_MS)
+      }),
+    ])
+  } catch (e) {
+    console.warn('AddPublication: каталоги Avito (редактирование):', e)
+    try {
+      ensureAvitoSalaryDefaults()
+      applyAvitoMappedProfessionFromJobly()
+      applyAvitoActivePublicationToForm()
+    } catch (e2) {
+      console.warn('AddPublication: префилл Avito после таймаута каталогов:', e2)
+    }
+  }
+}
+
+/** Фаза A (rabota): справочники + применение снимка с таймаутом. */
+const loadRabotaCatalogsMinimalWithApplyForEdit = async () => {
+  const runCore = async () => {
+    const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult] =
+      await Promise.all([
+        getProfessionsRabota(),
+        getRegionsRabota(),
+        getEmploymentTypesRabota(),
+        getWorkSchedulesRabota(),
+        getExperienceLevelsRabota(),
+        getEducationLevelsRabota(),
+      ])
+
+    if (professionsResult?.data) {
+      rabotaProfessions.value = Array.isArray(professionsResult.data)
+        ? professionsResult.data
+        : (professionsResult.data.items || [])
+    }
+    if (regionsResult?.data) {
+      rabotaRegions.value = Array.isArray(regionsResult.data) ? regionsResult.data : (regionsResult.data.items || [])
+      cities.value = rabotaRegions.value.map((region) => ({
+        id: region.id || region.region_id,
+        name: region.name || region.title,
+      }))
+    }
+    if (employmentResult?.data) {
+      rabotaEmploymentTypes.value = Array.isArray(employmentResult.data)
+        ? employmentResult.data
+        : (employmentResult.data.items || [])
+    }
+    if (schedulesResult?.data) {
+      rabotaWorkSchedules.value = Array.isArray(schedulesResult.data)
+        ? schedulesResult.data
+        : (schedulesResult.data.items || [])
+    }
+    if (experienceResult?.data) {
+      rabotaExperienceLevels.value = Array.isArray(experienceResult.data)
+        ? experienceResult.data
+        : (experienceResult.data.items || [])
+    }
+    if (educationResult?.data) {
+      rabotaEducationLevels.value = Array.isArray(educationResult.data)
+        ? educationResult.data
+        : (educationResult.data.items || [])
+    }
+    applyRabotaActivePublicationToForm()
+  }
+  try {
+    await Promise.race([
+      runCore(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('rabota_catalogs_timeout')), EDIT_PLATFORM_CATALOG_RACE_MS)
+      }),
+    ])
+  } catch (e) {
+    console.warn('AddPublication: справочники rabota.ru (редактирование):', e)
+    try {
+      applyRabotaActivePublicationToForm()
+    } catch (e2) {
+      console.warn('AddPublication: префилл rabota после таймаута:', e2)
+    }
+  }
+}
+
+/** Фаза B (Avito): подсказки городов для «Место работы» — не блокирует form-ready. */
+const loadAvitoAddressHintsOnly = async () => {
+  try {
+    const { data: areasData, error: areasError } = await getAreasHh()
+    if (!areasError && areasData) {
+      addresses.value = dedupeAreasByName(areasData)
+    } else {
+      addresses.value = []
+    }
+  } catch (e) {
+    console.warn('Avito: подсказки адресов (фаза B):', e)
+    addresses.value = []
+  }
+}
+
+function applyEditingVacancyPlatformShell() {
+  const plat = currentPlatform.value
+  if (!plat) return
+  const key = platforms.value.find(
+    (p) =>
+      p.platform === plat ||
+      (plat === 'superjob' && (p.platform === 'superjob' || p.platform === 'superjob.ru')),
+  )
+  if (!key) return
+  data.value.platform = key
+  data.value.vacancy_properties = {
+    properties: [
+      {
+        property_type: tariffsOptions.value[0],
+      },
+    ],
+  }
+}
+
+/** Профили площадок и тяжёлые догрузки после снятия прелоадера (редактирование, не HH). */
+async function ensurePlatformAuthForEditingModeDeferred() {
+  if (!isEditingMode.value || props.selectedPlatform) return
+  const target = currentPlatform.value
+  if (!target || target === 'hh') return
+
+  const key = platforms.value.find(
+    (p) =>
+      p.platform === target ||
+      (target === 'superjob' && (p.platform === 'superjob' || p.platform === 'superjob.ru')),
+  )
+  if (!key) return
+
+  if (!isPlatforms.value) {
+    if (key.platform == 'avito') {
+      const profile = await profileAvito()
+      if (profile && !profile.error) {
+        key.isAuthenticated = true
+        key.data = profile.data?.data ?? profile.data
+        isPlatforms.value = true
+      }
+    } else if (key.platform == 'rabota') {
+      const profile = await profileRabota()
+      if (!profile.error && profile.data) {
+        key.isAuthenticated = true
+        key.data = profile.data.data
+        isPlatforms.value = true
+      }
+    } else if (key.platform == 'superjob' || key.platform == 'superjob.ru') {
+      key.isAuthenticated = true
+      isPlatforms.value = true
+    }
+  }
+
+  if (key.platform === 'avito') {
+    await loadAvitoAddressHintsOnly()
+  }
+}
+
+// Справочники hh.ru по умолчанию — не грузим при редактировании публикации avito/rabota/superjob (как отдельные платформы; HH — отдельное окно).
+const skipDefaultHhReferenceLoads = isEditingMode.value && currentPlatform.value !== 'hh'
+
+if (!isNewPublicationFromCard && !skipDefaultHhReferenceLoads) {
+  const rolesPayload = await getRolesHh()
+  if (rolesPayload && !rolesPayload.errorRoles && rolesPayload.roles) {
+    currectRole.value = rolesPayload.roles.categories
     updateComputedValues()
     await applyComputedValues()
   }
@@ -1927,7 +2769,7 @@ if (!isNewPublicationFromCard) {
   }
 }
 
-if (!isNewPublicationFromCard) {
+if (!isNewPublicationFromCard && !skipDefaultHhReferenceLoads) {
   try {
     const result = await getAddressesHh()
     const addressesData = result?.data
@@ -2106,8 +2948,16 @@ async function fillFormFromCurrentVacancy() {
           })
       } else {
         try {
-          const fields = await getVacancyFields()
-          applyDriversMap(fields)
+          const timeoutFields = new Promise((resolve) => {
+            setTimeout(() => resolve({ __timeout: true }), VACANCY_FIELDS_FETCH_MS)
+          })
+          const fields = await Promise.race([getVacancyFields(), timeoutFields])
+          if (fields && typeof fields === 'object' && fields.__timeout) {
+            console.warn('Маппинг водительских прав: таймаут /vacancy-fields, подставляем drivers из вакансии')
+            data.value.driver_license_types = vacancy.drivers
+          } else {
+            applyDriversMap(fields)
+          }
         } catch (e) {
           console.warn('Маппинг водительских прав (drivers → категории):', e)
           data.value.driver_license_types = vacancy.drivers
@@ -2189,7 +3039,7 @@ async function fillFormFromCurrentVacancy() {
   const salFreq = vacancy.salary_frequency;
   if (typeof salFreq === 'string' && salFreq.trim() !== '') {
     const n = normSalaryLabel(salFreq);
-    const mode = HH_SALARY_TYPE.find(
+    const mode = (currentPlatform.value === 'avito' ? avitoSalaryModeOptions : HH_SALARY_TYPE).find(
       (t) => normSalaryLabel(t.name) === n || t.name === salFreq.trim()
     );
     if (mode) {
@@ -2199,7 +3049,7 @@ async function fillFormFromCurrentVacancy() {
   const payFreq = vacancy.salary_payment_frequency;
   if (typeof payFreq === 'string' && payFreq.trim() !== '') {
     const n = normSalaryLabel(payFreq);
-    const freq = HH_SALARY_FREQUENCY.find(
+    const freq = (currentPlatform.value === 'avito' ? avitoPayoutFrequencyOptions : HH_SALARY_FREQUENCY).find(
       (t) => normSalaryLabel(t.name) === n || t.name === payFreq.trim()
     );
     if (freq) {
@@ -2238,33 +3088,138 @@ async function loadInitialFormData() {
     vacancyId = String(props.editingVacancy.id);
     const platformData = props.editingVacancy.platforms_data?.[0];
     if (platformData) {
-      const platformName = platformIdToName[platformData.id];
+      const platformNumericId = platformData.id != null && String(platformData.id).trim() !== ''
+        ? Number(platformData.id)
+        : NaN
+      const platformNameFromId = Number.isFinite(platformNumericId) && platformIdToName[platformNumericId]
+        ? platformIdToName[platformNumericId]
+        : null
+      const platformName =
+        platformNameFromId ??
+        (platformData.name ? normalizePlatformName(platformData.name) : null)
       // Для SuperJob (id 4) ищем по 'superjob' или 'superjob.ru'
       const platformKey = platforms.value?.find(
-        (p) => p.platform === platformName || (platformData.id === 4 && (p.platform === 'superjob' || p.platform === 'superjob.ru'))
+        (p) =>
+          p.platform === platformName ||
+          (Number.isFinite(platformNumericId) &&
+            platformNumericId === 4 &&
+            (p.platform === 'superjob' || p.platform === 'superjob.ru'))
       ) ?? platforms.value?.[0];
       if (platformKey) {
         data.value.platform = platformKey;
-      }console.log('данные rabota.ru', platformData);
-      // Rabota.ru: при редактировании активной публикации подгружаем публикацию по platform_id и позже маппим в форму
+      }
+
+      const prefetchEditingVacancyRow = async () => {
+        if (isNewPublicationFromCard) return
+        const vId = vacancyId
+        if (vId == null || String(vId).trim() === '') return
+        const mustFetchVacancy =
+          !globCurrentVacancy.value ||
+          String(vId) !== globCurrentVacancy.value.id?.toString()
+        if (!mustFetchVacancy) return
+        try {
+          const vacancy = await getVacancyById(vId)
+          if (vacancy) {
+            globCurrentVacancy.value = vacancy
+            const pd = props.editingVacancy?.platforms_data?.[0]
+            if (pd?.id === 1 && pd?.platform_id != null && String(pd.platform_id).trim() !== '') {
+              const pubRes = await getHhPublicationById(String(pd.platform_id))
+              const pr = pubRes?.data?.professional_roles
+              if (!pubRes?.error && Array.isArray(pr) && pr.length > 0) {
+                globCurrentVacancy.value = {
+                  ...globCurrentVacancy.value,
+                  _hh_api_professional_roles: pr,
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('AddPublication: предзагрузка вакансии при редактировании:', e)
+        }
+      }
+
+      await Promise.all([
+        (async () => {
+      // Rabota.ru: сначала снимок из БД Jobly, иначе — API rabota с таймаутом.
       if (
-        platformData.id === 3 &&
+        Number.isFinite(platformNumericId) &&
+        platformNumericId === 3 &&
         platformData.platform_id != null &&
         String(platformData.platform_id).trim() !== ''
       ) {
         try {
-          const pubRes = await getRabotaPublication(String(platformData.platform_id)) 
-          if (!pubRes?.error && pubRes?.data) {    
-            rabotaActivePublication.value = pubRes.data
-            // Если справочники уже загружены (например, при повторном открытии модалки), можем применить сразу
-            applyRabotaActivePublicationToForm()
+          const joblyIdRabota = props.editingVacancy?.id
+          let filledRabota = false
+          if (joblyIdRabota != null) {
+            const snapR = await getRabotaPublicationOriginalLocalOnly(Number(joblyIdRabota))
+            const poR = snapR?.data?.payload_original
+            if (!snapR?.error && poR != null && typeof poR === 'object' && Object.keys(poR).length > 0) {
+              rabotaActivePublication.value = poR
+              filledRabota = true
+            }
+          }
+          if (!filledRabota) {
+            const timeoutR = new Promise((resolve) => {
+              setTimeout(
+                () => resolve({ error: 'timeout', data: null, __timeout: true }),
+                PLATFORM_PUBLICATION_LIVE_FETCH_MS,
+              )
+            })
+            const pubResR = await Promise.race([
+              getRabotaPublication(String(platformData.platform_id)),
+              timeoutR,
+            ])
+            if (pubResR?.__timeout) {
+              console.warn('Rabota: таймаут загрузки публикации с API')
+            } else if (!pubResR?.error && pubResR?.data) {
+              rabotaActivePublication.value = pubResR.data
+            }
           }
         } catch (e) {
           console.warn('Не удалось загрузить публикацию rabota.ru для префилла формы:', e)
         }
       }
+      // Avito.ru: сначала снимок из БД Jobly (мгновенно), иначе — API Avito с таймаутом (без таймаута модалка зависает на лоадере).
+      if (
+        Number.isFinite(platformNumericId) &&
+        platformNumericId === 2 &&
+        platformData.platform_id != null &&
+        String(platformData.platform_id).trim() !== ''
+      ) {
+        try {
+          const joblyId = props.editingVacancy?.id
+          let filled = false
+          if (joblyId != null) {
+            const snap = await getAvitoPublicationOriginalLocalOnly(Number(joblyId))
+            const po = snap?.data?.payload_original
+            if (!snap?.error && po != null && typeof po === 'object' && Object.keys(po).length > 0) {
+              avitoActivePublication.value = po
+              filled = true
+            }
+          }
+          if (!filled) {
+            const timeoutPromise = new Promise((resolve) => {
+              setTimeout(
+                () => resolve({ error: 'timeout', data: null, __timeout: true }),
+                PLATFORM_PUBLICATION_LIVE_FETCH_MS,
+              )
+            })
+            const pubRes = await Promise.race([
+              getAvitoPublication(String(platformData.platform_id)),
+              timeoutPromise,
+            ])
+            if (pubRes?.__timeout) {
+              console.warn('Avito: таймаут загрузки публикации с API (проверьте сеть или ID на Avito)')
+            } else if (!pubRes?.error && pubRes?.data) {
+              avitoActivePublication.value = pubRes.data
+            }
+          }
+        } catch (e) {
+          console.warn('Не удалось загрузить публикацию avito для префилла формы:', e)
+        }
+      }
       // Для SuperJob: загружаем каталог и подставляем профессиональную сферу из текущей вакансии на платформе
-      if (platformData.id === 4) {
+      if (Number.isFinite(platformNumericId) && platformNumericId === 4) {
         await loadDictionaries('superjob');
         const { data: sjVacancy } = await getSuperjobVacancy(platformData.platform_id);
         // SuperJob: catalogues[0] может быть: (a) отрасль с positions[] или (b) категория с parent
@@ -2324,6 +3279,9 @@ async function loadInitialFormData() {
           }
         }
       }
+        })(),
+        prefetchEditingVacancyRow(),
+      ])
     }
 }
 
@@ -2421,15 +3379,18 @@ const getPhrasesVacancy = async function () {
   return data
 }
 
-if (isNewPublicationFromCard) {
-  getPhrasesVacancy().then((d) => { phrases.value = d }).catch(() => {})
-} else {
-  phrases.value = await getPhrasesVacancy()
-}
+// Не блокируем async setup модалки редактирования запросом /phrases — иначе при зависании API лоадер в PublishTab не снимется (onMounted после всех top-level await).
+void getPhrasesVacancy()
+  .then((d) => {
+    phrases.value = d
+  })
+  .catch(() => {})
 
 // Дефолты для experience/employment_form, если вакансия не загружалась (форма «добавить»)
 vacancyIdFields.forEach((field) => {
-  if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
+  const rawPid = props.editingVacancy?.platforms_data?.[0]?.id
+  const pid = rawPid != null && String(rawPid).trim() !== '' ? Number(rawPid) : NaN
+  if (field === 'experience' && Number.isFinite(pid) && pid === 4) return
   const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
   const values = mappingFieldsHH[field].values
   const found = field === 'employment_form'
@@ -2469,7 +3430,7 @@ if (vacancyData.value) {
 //       return item.siteName == globCurrentVacancy.value?.employment
 // })[0] || HH_EMPLOYMENT_TYPES[0];
 
-if (!inject('isPlatforms') && !isNewPublicationFromCard) {
+if (!inject('isPlatforms') && !isNewPublicationFromCard && currentPlatform.value === 'hh' && !isEditingMode.value) {
   const profileResult = await profileHh()
   const profileData = profileResult?.data
   const profileError = profileResult?.error
@@ -2581,7 +3542,102 @@ if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
   }
 }
 
-for (let key of platforms.value) {
+/** Режим «Активные публикации» → редактирование: одна платформа строки, без перебора hh → avito (лишние запросы и задержка). */
+async function ensurePlatformAuthForEditingMode() {
+  if (!isEditingMode.value || props.selectedPlatform) return
+  const target = currentPlatform.value
+  if (!target) return
+  const key = platforms.value.find(
+    (p) =>
+      p.platform === target ||
+      (target === 'superjob' && (p.platform === 'superjob' || p.platform === 'superjob.ru'))
+  )
+  if (!key) return
+
+  if (!isPlatforms.value) {
+    if (key.platform == 'hh') {
+      const profile = await profileHh()
+      if (!profile.error && profile.data?.data?.employer?.id) {
+        await loadTariffsForHh(profile.data.data.employer.id)
+        key.isAuthenticated = true
+        key.data = profile.data.data
+        isPlatforms.value = true
+      }
+    } else if (key.platform == 'avito') {
+      const profile = await profileAvito()
+      if (profile && !profile.error) {
+        key.isAuthenticated = true
+        key.data = profile.data?.data ?? profile.data
+        isPlatforms.value = true
+      }
+    } else if (key.platform == 'rabota') {
+      const profile = await profileRabota()
+      if (!profile.error && profile.data) {
+        key.isAuthenticated = true
+        key.data = profile.data.data
+        isPlatforms.value = true
+      }
+    } else if (key.platform == 'superjob') {
+      key.isAuthenticated = true
+      isPlatforms.value = true
+    }
+  }
+
+  // Справочники и префилл с площадки — нужны даже при ошибке профиля / уже поднятом isPlatforms из provide.
+  try {
+    if (key.platform === 'avito') {
+      await loadDictionaries('avito')
+    } else if (key.platform === 'rabota') {
+      await loadDictionaries('rabota')
+    } else if (key.platform === 'superjob' || key.platform === 'superjob.ru') {
+      await loadDictionaries('superjob')
+    }
+  } catch (e) {
+    console.warn('AddPublication: loadDictionaries в режиме редактирования:', e)
+  }
+
+  data.value.platform = key
+  data.value.vacancy_properties = {
+    properties: [
+      {
+        property_type: tariffsOptions.value[0]
+      }
+    ]
+  }
+}
+
+if (isEditingMode.value && !props.selectedPlatform) {
+  try {
+    const plat = currentPlatform.value
+    applyEditingVacancyPlatformShell()
+
+    if (plat === 'hh') {
+      await ensurePlatformAuthForEditingMode()
+    } else if (plat === 'avito') {
+      await loadAvitoCatalogsMinimalWithApplyForEdit()
+    } else if (plat === 'rabota') {
+      await loadRabotaCatalogsMinimalWithApplyForEdit()
+    }
+
+    if (import.meta.client) {
+      void nextTick(() => emit('form-ready'))
+    }
+
+    void (async () => {
+      try {
+        await ensurePlatformAuthForEditingModeDeferred()
+      } catch (e) {
+        console.warn('AddPublication: ensurePlatformAuthForEditingModeDeferred:', e)
+      }
+    })()
+  } catch (e) {
+    console.warn('AddPublication: init редактирования публикации:', e)
+    if (import.meta.client) {
+      void nextTick(() => emit('form-ready'))
+    }
+  }
+} else {
+  for (let key of platforms.value) {
   if (!isPlatforms.value) {
     // Если передан selectedPlatform через props, используем его (новая публикация)
     if (props.selectedPlatform) {
@@ -2613,10 +3669,11 @@ for (let key of platforms.value) {
           }
         } else if (key.platform == 'avito') {
           const profile = await profileAvito()
-          if (!profile.error) {
+          if (profile && !profile.error) {
             key.isAuthenticated = true
-            key.data = profile.data.data
+            key.data = profile.data?.data ?? profile.data
             isPlatforms.value = true
+            await loadDictionaries('avito')
           }
         } else if (key.platform == 'rabota') {
           const profile = await profileRabota()
@@ -2651,9 +3708,9 @@ for (let key of platforms.value) {
         }
       } else if (key.platform == 'avito') {
         const profile = await profileAvito()
-        if (!profile.error) {
+        if (profile && !profile.error) {
           key.isAuthenticated = true
-          key.data = profile.data.data
+          key.data = profile.data?.data ?? profile.data
           isPlatforms.value = true
           // Загружаем справочники avito.ru
           await loadDictionaries('avito')
@@ -2678,6 +3735,7 @@ for (let key of platforms.value) {
       }
     }
   }
+  }
 }
 
 if (isNewHhPublicationFromCard) {
@@ -2693,10 +3751,19 @@ const experienceDaysOptions = HH_EXPERIENCE_DAYS.map(day => ({
 }))
 
 // Преобразование HH_WORK_FORMAT для MultiSelect (id -> value)
-const workFormatOptions = HH_WORK_FORMAT.map(format => ({
-  ...format,
-  value: format.id
-}))
+const workFormatOptions = computed(() => {
+  if (currentPlatform.value === 'avito' && Array.isArray(avitoCatalogs.value?.work_format) && avitoCatalogs.value.work_format.length > 0) {
+    return avitoCatalogs.value.work_format.map((format) => ({
+      id: format.id,
+      name: format.name || format.title,
+      value: format.id,
+    }))
+  }
+  return HH_WORK_FORMAT.map(format => ({
+    ...format,
+    value: format.id
+  }))
+})
 
 // Преобразование графика работы для MultiSelect (id -> value)
 const workScheduleOptions = computed(() => {
@@ -2708,10 +3775,19 @@ const workScheduleOptions = computed(() => {
 })
 
 // Преобразование HH_WORKING_HOURS для MultiSelect (id -> value)
-const workingHoursOptions = HH_WORKING_HOURS.map(hours => ({
-  ...hours,
-  value: hours.id
-}))
+const workingHoursOptions = computed(() => {
+  if (currentPlatform.value === 'avito' && Array.isArray(avitoCatalogs.value?.work_hours_per_day) && avitoCatalogs.value.work_hours_per_day.length > 0) {
+    return avitoCatalogs.value.work_hours_per_day.map((hours) => ({
+      id: hours.id,
+      name: hours.name || hours.title,
+      value: hours.id,
+    }))
+  }
+  return HH_WORKING_HOURS.map(hours => ({
+    ...hours,
+    value: hours.id
+  }))
+})
 
 // Преобразование HH_ADDITIONAL_CONDITIONS для MultiSelect (id -> value)
 const additionalConditionsOptions = HH_ADDITIONAL_CONDITIONS.map(condition => ({
@@ -2726,6 +3802,54 @@ function toggleSuperjobReadyConsider(id, checked) {
   if (checked && idx === -1) arr.push(id)
   else if (!checked && idx !== -1) arr.splice(idx, 1)
   data.value.superjob_ready_to_consider = arr
+}
+
+function isArrayItemSelected(arr, id) {
+  if (!Array.isArray(arr)) return false
+  return arr.some((item) => {
+    if (item && typeof item === 'object') {
+      return String(item.id ?? item.value ?? '') === String(id)
+    }
+    return String(item) === String(id)
+  })
+}
+
+function toggleArrayItem(field, id) {
+  const source = Array.isArray(data.value[field]) ? [...data.value[field]] : []
+  const idx = source.findIndex((item) => String(item?.id ?? item) === String(id))
+  if (idx >= 0) {
+    source.splice(idx, 1)
+  } else {
+    source.push({ id })
+  }
+  data.value[field] = source
+}
+
+function handleAvitoWorkPlaceUpdate(value) {
+  if (!value) {
+    data.value.address = { show_metro_only: data.value.address?.show_metro_only ?? false }
+    data.value.area = {}
+    updateValidField('address', false)
+    return
+  }
+  const city = addresses.value.find((item) => String(item.id) === String(value)) || null
+  const name = city?.name ?? city?.title ?? String(value)
+  data.value.address = { ...(data.value.address || {}), id: value, name }
+  data.value.area = { id: value, name }
+  updateValidField('address', true)
+  updateValidField('area', true)
+}
+
+function selectAvitoContract(option) {
+  data.value.avito_contract_key = option.id
+  data.value.billing_types = { id: option.billingId, name: option.name }
+}
+
+function isAvitoContractSelected(option) {
+  if (data.value.avito_contract_key) {
+    return data.value.avito_contract_key === option.id
+  }
+  return String(data.value.billing_types?.id ?? '') === String(option.billingId)
 }
 
 // Категории водительских прав для SuperJob (на платформе только A–E). Используется в выпадающем списке при редактировании вакансии SuperJob.
@@ -2782,6 +3906,16 @@ const updateDescriptionValidation = (value) => {
 const validateFields = () => {
   let isValid = true;
   for (const key in validFields.value) {
+    // У формы Avito нет полей графика/часов HH — не блокируем отправку
+    if (currentPlatform.value === 'avito' && (key === 'work_schedule_by_days' || key === 'working_hours')) {
+      validFields.value[key].status = true
+      continue
+    }
+    // Одно поле «Место работы» (address); «Город публикации» (area) в UI Avito нет — не валидируем отдельно
+    if (currentPlatform.value === 'avito' && key === 'area') {
+      validFields.value[key].status = true
+      continue
+    }
     // Для SuperJob не проверяем график и часы работы — раздел скрыт в форме
     if (isSuperjobPlatform.value && (key === 'work_schedule_by_days' || key === 'working_hours')) {
       validFields.value[key].status = true;
@@ -2926,8 +4060,13 @@ const savePublication = async () => {
           };
           platformResponse = await publishVacancyToHh(payload);
         } else if (platformId === 2) {
-          const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
-          platformResponse = await publishVacancyToAvito(payload);
+          const payload = {
+            ...data.value,
+            vacancy_platform_id: String(vacancyPlatformId),
+            publication_id: vacancyPlatformId,
+            jobly_vacancy_id: props.editingVacancy?.id,
+          };
+          platformResponse = await publishVacancyToAvito(payload, props.editingVacancy?.id);
         } else if (platformId === 3) {
           const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
           platformResponse = await publishVacancyToRabota(payload);
@@ -2992,10 +4131,11 @@ const savePublication = async () => {
     const { data: sjData, error: sjError } = await publishVacancyToSuperjob(payloadFormData);
     response = sjError ? { error: sjError } : { data: sjData };
   } else if (currentPlatform === 'avito') {
+    const joblyVacancyIdForAvito = props.editingVacancy?.id ?? globCurrentVacancy.value?.id;
     if (isDraft.value || isDraft.value === 'true') {
-      response = await addDraftAvito(data.value)
+      response = await addDraftAvito(data.value, joblyVacancyIdForAvito)
     } else {
-      response = await publishVacancyToAvito(data.value)
+      response = await publishVacancyToAvito(data.value, joblyVacancyIdForAvito)
     }
   }
   if (currentPlatform === 'hh') {
@@ -3025,6 +4165,7 @@ const savePublication = async () => {
     } else {
       status.value = 'Вакансия успешно опубликована'
     }
+    emit('saved', { isDraft: !!isDraft.value })
   }
 }
 
@@ -3068,7 +4209,11 @@ watch(() => data.value.employment_form, (newValue) => {
 // Автоматическая загрузка справочников при смене платформы
 watch(() => data.value.platform?.platform, async (newPlatform) => {
   if (newPlatform) {
-    await loadDictionaries(newPlatform)
+    try {
+      await loadDictionaries(newPlatform)
+    } catch (e) {
+      console.warn('AddPublication: loadDictionaries при смене платформы:', e)
+    }
   }
 })
 
@@ -3082,7 +4227,10 @@ watch(() => data.value.description, (newValue) => {
 
 onMounted(() => {
   if (!isNewHhPublicationFromCard) {
-    emit('form-ready')
+    // Режим редактирования: form-ready уже отправлен в конце async setup выше.
+    if (!isEditingMode.value) {
+      emit('form-ready')
+    }
     return
   }
   void (async () => {
@@ -3115,5 +4263,26 @@ onMounted(() => {
 <style scoped>
 .anchor {
   scroll-margin-top: 80px;
+}
+
+.avito-dropdown-unified :deep(.dropdown-selected-option) {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.avito-dropdown-unified :deep(.dropdown-selected-option .text-sm) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.avito-dropdown-unified :deep(.dropdown-selected-option .text-space) {
+  color: #2f353d;
+  font-weight: 400;
+}
+
+.avito-dropdown-unified :deep(.dropdown-selected-option .text-slate-custom) {
+  color: #9098b4;
+  font-weight: 400;
 }
 </style>

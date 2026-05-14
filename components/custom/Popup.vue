@@ -38,6 +38,8 @@
        * справа 0; от контента до края — внутренний pr на обёртке слота.
        */
       noScrollbarGutter?: boolean;
+      /** Дополнительные Tailwind-классы для белой панели (например отступ сверху) */
+      panelExtraClass?: string;
     }>(),
     {
       showCloseButton: false,
@@ -58,6 +60,7 @@
       noBackdrop: false,
       noOuterPadding: false,
       noScrollbarGutter: false,
+      panelExtraClass: '',
     }
   );
 
@@ -178,6 +181,7 @@
         props.allowDropdownOverflow || props.disableOverflowHidden
           ? 'overflow-visible'
           : 'overflow-hidden',
+        props.panelExtraClass,
       ]"
       :style="{
         maxWidth: width,
