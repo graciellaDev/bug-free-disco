@@ -1,12 +1,39 @@
 import { createAuthHeaders, getAuthTokens, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
 import { mapVacancyToAvitoFormat, ensureAvitoPayloadTypes } from "@/utils/mapVacancyToAvito";
+import { formatDescriptionForAvitoApi } from "@/utils/avitoDescriptionFormat";
+import { unwrapAvitoMappingsPayload } from "@/utils/avitoSpecializationMapping";
 
 /**
  * Добавление черновика вакансии на Avito
  * @param data - Данные вакансии в формате DraftDataHh или из формы AddPublication
  * @returns Результат создания черновика
  */
+function extractAvitoApiError(err: unknown): {
+  message: string
+  httpStatus?: number
+  apiResponse?: unknown
+} {
+  const e = err as { response?: { status?: number; _data?: unknown }; message?: string; data?: unknown }
+  const httpStatus = e?.response?.status
+  const apiResponse = e?.response?._data ?? e?.data ?? null
+  const dataObj = apiResponse && typeof apiResponse === 'object' ? apiResponse as Record<string, unknown> : null
+  const slug = dataObj?.slug
+  const message = typeof dataObj?.message === 'string' ? dataObj.message : ''
+  if (slug === 'server_error' || message.includes('contact support')) {
+    return {
+      httpStatus,
+      apiResponse,
+      message: 'Временная ошибка на стороне Avito. Повторите попытку позже или обратитесь в поддержку: supportautoload@avito.ru, 8 800 600-00-01.',
+    }
+  }
+  return {
+    httpStatus,
+    apiResponse,
+    message: message || (typeof e?.message === 'string' ? e.message : '') || 'Ошибка запроса к Avito',
+  }
+}
+
 export const addAvitoDraft = async (data: DraftDataHh | any, joblyVacancyId?: number | null) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
@@ -16,10 +43,8 @@ export const addAvitoDraft = async (data: DraftDataHh | any, joblyVacancyId?: nu
   const result = ref<ApiHhResult>({ data: null, error: null, errorDraft: null });
   
   // Преобразуем данные в формат Avito API; нормализуем типы (profession и др. — number, не string)
-  const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(data)) as Record<string, unknown>;
-  if (typeof joblyVacancyId === 'number' && joblyVacancyId >= 1) {
-    avitoData.jobly_vacancy_id = joblyVacancyId;
-  }
+  const avitoData = buildAvitoPublicationRequestBody(data, joblyVacancyId);
+  result.value.requestPayload = avitoData
 
   try {
     const response = await $fetch<PlatformHhResponse>('/avito/drafts', {
@@ -35,18 +60,18 @@ export const addAvitoDraft = async (data: DraftDataHh | any, joblyVacancyId?: nu
     });
 
     result.value.draft = response.data;
-  } catch (err: any) {
-    if (err.response?.status === 401) {
+    result.value.data = response.data;
+    result.value.apiResponse = response;
+    result.value.httpStatus = 200;
+  } catch (err: unknown) {
+    const e = err as { response?: { status?: number } }
+    if (e.response?.status === 401) {
       handle401Error();
     } else {
-      const data = err.response?._data;
-      const slug = data?.slug;
-      const message = data?.message;
-      if (slug === 'server_error' || (typeof message === 'string' && message.includes('contact support'))) {
-        result.value.errorDraft = 'Временная ошибка на стороне Avito. Повторите попытку позже или обратитесь в поддержку: supportautoload@avito.ru, 8 800 600-00-01.';
-      } else {
-        result.value.errorDraft = message || 'Ошибка при создании черновика на Avito';
-      }
+      const parsed = extractAvitoApiError(err)
+      result.value.httpStatus = parsed.httpStatus
+      result.value.apiResponse = parsed.apiResponse
+      result.value.errorDraft = parsed.message
     }
   } finally {
     return result.value;
@@ -175,6 +200,134 @@ function normalizeAvitoItem(item: any): any {
 /**
  * Получение одной публикации Avito по id
  */
+export type AvitoPublicationTableStats = {
+  status?: string | null
+  views?: number | null
+  applications_count?: number | null
+  /** Дата активации на Avito (start_time), ISO. */
+  published_at?: string | null
+  /** Дата окончания публикации (finish_time), ISO. */
+  expires_at?: string | null
+  /** Просмотры не удалось получить (ни client_credentials, ни user OAuth). */
+  views_scope_missing?: boolean
+  /** Подсказка с бекенда, если просмотры недоступны. */
+  views_hint?: string
+}
+
+/** Импорт откликов Avito в CRM (аналог цикла importHhNegotiationItemsIntoVacancy). */
+export const syncAvitoPublicationApplications = async (
+  avitoVacancyId: string | number,
+  vacancyId: number,
+): Promise<{ data: { imported?: number; updated?: number; skipped?: number } | null; error: string | null }> => {
+  const authTokens = getAuthTokens()
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' }
+  }
+  const { config, serverToken, userToken } = authTokens
+  try {
+    const response = await $fetch<{
+      message: string
+      data?: { imported?: number; updated?: number; skipped?: number }
+    }>(`/avito/publications/${encodeURIComponent(String(avitoVacancyId))}/sync-applications`, {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: { vacancy_id: vacancyId },
+    })
+    return { data: response?.data ?? null, error: null }
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error()
+    }
+    const msg =
+      err.response?._data?.message ??
+      err.data?.message ??
+      err.message ??
+      'Ошибка импорта откликов Avito'
+    return { data: null, error: String(msg) }
+  }
+}
+
+/** Синхронизация сообщений Avito Messenger в ленту событий кандидатов вакансии. */
+export const syncAvitoPublicationMessenger = async (
+  avitoVacancyId: string | number,
+  vacancyId: number,
+): Promise<{
+  data: { imported?: number; updated?: number; skipped?: number; candidates_processed?: number } | null
+  error: string | null
+}> => {
+  const authTokens = getAuthTokens()
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' }
+  }
+  const { config, serverToken, userToken } = authTokens
+  try {
+    const response = await $fetch<{
+      message: string
+      data?: { imported?: number; updated?: number; skipped?: number; candidates_processed?: number }
+    }>(`/avito/publications/${encodeURIComponent(String(avitoVacancyId))}/sync-messenger`, {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: { vacancy_id: vacancyId },
+    })
+    return { data: response?.data ?? null, error: null }
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error()
+    }
+    const msg =
+      err.response?._data?.message ??
+      err.data?.message ??
+      err.message ??
+      'Ошибка синхронизации сообщений Avito'
+    return { data: null, error: String(msg) }
+  }
+}
+
+/** Статистика публикации для таблицы «Активные публикации». */
+export const getAvitoPublicationTableStats = async (id: string | number) => {
+  const authTokens = getAuthTokens()
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' }
+  }
+  const { config, serverToken, userToken } = authTokens
+  const result = ref<ApiHhResult>({ data: null, error: null })
+
+  try {
+    const response = await $fetch<{ data?: AvitoPublicationTableStats }>(
+      `/avito/publications/${encodeURIComponent(String(id))}/table-stats`,
+      {
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+      },
+    )
+    result.value.data = response?.data ?? null
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error()
+    }
+    result.value.error =
+      err.response?._data?.message ?? 'Ошибка при загрузке статистики Avito'
+  } finally {
+    return result.value
+  }
+}
+
 export const getAvitoPublication = async (id: string | number) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
@@ -387,6 +540,36 @@ export const getAllAvitoPublications = async () => {
  * @param draftData - Данные вакансии в формате DraftDataHh
  * @returns Результат публикации
  */
+export function buildAvitoPublicationRequestBody(
+  draftData: DraftDataHh | Record<string, unknown>,
+  joblyVacancyId?: number | null,
+): Record<string, unknown> {
+  const raw = draftData as Record<string, unknown>;
+  const publicationId =
+    raw.publication_id != null && String(raw.publication_id).trim() !== ''
+      ? String(raw.publication_id).trim()
+      : raw.vacancy_platform_id != null && String(raw.vacancy_platform_id).trim() !== ''
+        ? String(raw.vacancy_platform_id).trim()
+        : '';
+
+  const avitoData = ensureAvitoPayloadTypes(
+    mapVacancyToAvitoFormat({
+      ...(draftData as object),
+      description: formatDescriptionForAvitoApi(raw.description),
+    } as Parameters<typeof mapVacancyToAvitoFormat>[0]),
+  ) as Record<string, unknown>;
+
+  if (typeof joblyVacancyId === 'number' && joblyVacancyId >= 1) {
+    avitoData.jobly_vacancy_id = joblyVacancyId;
+  }
+  if (publicationId) {
+    avitoData.publication_id = publicationId;
+    avitoData.vacancy_platform_id = publicationId;
+  }
+
+  return avitoData;
+}
+
 export const publishAvitoVacancy = async (draftData: DraftDataHh, joblyVacancyId?: number | null) => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
@@ -397,11 +580,8 @@ export const publishAvitoVacancy = async (draftData: DraftDataHh, joblyVacancyId
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    // Преобразуем данные в формат Avito API; нормализуем типы (profession и др. — number, не string)
-    const avitoData = ensureAvitoPayloadTypes(mapVacancyToAvitoFormat(draftData as any)) as Record<string, unknown>;
-    if (typeof joblyVacancyId === 'number' && joblyVacancyId >= 1) {
-      avitoData.jobly_vacancy_id = joblyVacancyId;
-    }
+    const avitoData = buildAvitoPublicationRequestBody(draftData, joblyVacancyId);
+    result.value.requestPayload = avitoData
 
     const response = await $fetch<PlatformHhResponse>('/avito/publications', {
       method: 'POST',
@@ -416,18 +596,17 @@ export const publishAvitoVacancy = async (draftData: DraftDataHh, joblyVacancyId
     });
 
     result.value.data = response.data;
-  } catch (err: any) {
-    if (err.response?.status === 401) {
+    result.value.apiResponse = response;
+    result.value.httpStatus = 200;
+  } catch (err: unknown) {
+    const e = err as { response?: { status?: number } }
+    if (e.response?.status === 401) {
       handle401Error();
     } else {
-      const data = err.response?._data;
-      const slug = data?.slug;
-      const message = data?.message;
-      if (slug === 'server_error' || (typeof message === 'string' && message.includes('contact support'))) {
-        result.value.error = 'Временная ошибка на стороне Avito. Повторите попытку позже или обратитесь в поддержку Avito: supportautoload@avito.ru, 8 800 600-00-01.';
-      } else {
-        result.value.error = message || 'Ошибка при публикации вакансии на Avito';
-      }
+      const parsed = extractAvitoApiError(err)
+      result.value.httpStatus = parsed.httpStatus
+      result.value.apiResponse = parsed.apiResponse
+      result.value.error = parsed.message
     }
   } finally {
     return result.value;
@@ -513,6 +692,39 @@ export const getAvitoBusinessAreas = async () => {
 }
 
 /**
+ * Сотрудники / телефоны аккаунта Avito для блока «Контакты» публикации.
+ */
+export const getAvitoContactEmployees = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/contact-employees', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: createAuthHeaders(serverToken, userToken),
+    });
+
+    result.value.data = response.data ?? response;
+  } catch (err: unknown) {
+    const e = err as { response?: { status?: number; _data?: { message?: string } } };
+    if (e.response?.status === 401) {
+      handle401Error(true);
+    } else {
+      result.value.error =
+        e.response?._data?.message || 'Не удалось загрузить контакты Avito';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Все локально сохраненные каталоги Avito.
  */
 export const getAvitoCatalogs = async () => {
@@ -595,6 +807,202 @@ export const getSpecializations = async (professionId: string | number, search?:
  * Получение таблицы сопоставлений специализаций (hh_id -> avito profession id),
  * сохраненной в админке.
  */
+/**
+ * Получение таблицы сопоставлений опыта (id Наймикс -> avito experience id),
+ * сохраненной в админке.
+ */
+export const getAvitoContractMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/contract-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений вида договора Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+export const getAvitoSalaryPeriodMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/salary-period-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений периода зарплаты Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+export const getAvitoPayoutFrequencyMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/payout-frequency-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений частоты выплат Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+export const getAvitoSalaryTaxMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/salary-tax-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений налогового статуса зарплаты Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+export const getAvitoEmploymentMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/employment-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений занятости Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
+export const getAvitoExperienceMappings = async () => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/avito/experience-mappings', {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message || 'Ошибка при получении сопоставлений опыта Avito';
+    }
+  } finally {
+    return result.value;
+  }
+}
+
 export const getAvitoSpecializationMappings = async () => {
   const authTokens = getAuthTokens();
   if (!authTokens) {
@@ -615,7 +1023,7 @@ export const getAvitoSpecializationMappings = async () => {
       },
     });
 
-    result.value.data = response.data?.items || response.data || {};
+    result.value.data = unwrapAvitoMappingsPayload(response.data?.items ?? response.data ?? {});
   } catch (err: any) {
     if (err.response?.status === 401) {
       handle401Error();

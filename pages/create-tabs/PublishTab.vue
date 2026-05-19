@@ -145,7 +145,7 @@
     </div>
         </div>
 
-        <!-- Попап «Опубликовать» на hh.ru: данные из вакансии Jobly по карте /admin/job-sites/vacancy-export -->
+        <!-- Попап «Опубликовать» на hh.ru: данные из вакансии Наймикс по карте /admin/job-sites/vacancy-export -->
         <Popup
             :isOpen="isPublishPopupOpen"
             @close="closePublishPopup"
@@ -201,6 +201,7 @@
                 </p>
             </div>
         </Popup>
+
 
         <!-- Попап импорта публикаций (отступы как у DeleteConfirmPopup: один слой p-25px снаружи) -->
         <Popup
@@ -346,6 +347,7 @@
                         :key="'edit-pub-' + editingVacancy.id"
                         :selectedPlatform="null"
                         :editingVacancy="editingVacancy"
+                        :edit-publication-light-shell="editPublicationLightShell"
                         fixed-modal-footer
                         class="min-h-0 flex-1"
                         @saved="handleVacancyUpdated"
@@ -415,7 +417,7 @@
                         <svg-icon name="close" width="20" height="20" />
                     </button>
                 </div>
-                <div class="flex min-h-[min(360px,50dvh)] min-h-0 flex-1 flex-col">
+                <div class="relative flex min-h-[min(360px,50dvh)] min-h-0 flex-1 flex-col">
                     <AddPublication
                         :key="'create-publication-' + createPublicationModalKey"
                         :selectedPlatform="selectedPlatformForPublish"
@@ -423,7 +425,18 @@
                         class="min-h-0 flex-1"
                         @saved="onCreatePublicationSaved"
                         @cancel="closeCreatePublicationPopup"
+                        @form-ready="onCreatePublicationFormReady"
                     />
+                    <div
+                        v-if="isCreatePublicationLoading"
+                        class="absolute inset-0 z-10 flex min-h-[min(420px,calc(90dvh-100px))] flex-1 flex-col items-center justify-center bg-white py-15px"
+                        role="status"
+                        aria-busy="true"
+                        aria-label="Загрузка формы публикации"
+                    >
+                        <UiDotsLoader class="w-full" />
+                        <span class="sr-only">Загрузка формы публикации</span>
+                    </div>
                 </div>
             </div>
         </Popup>
@@ -484,20 +497,37 @@
                             <MyCheckbox :id="item.id" :label="''" v-model="selected[item.id]" :emptyLabel="true" />
                         </div>
                         <div class="text-sm font-medium text-space px-2.5 min-w-0 truncate" :title="item.title">{{ item.title }}</div>
-                        <div class="text-sm font-medium text-space px-2.5">{{ item.city }}</div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ publicationRowCity(item) }}</div>
                         <div class="text-sm font-medium text-space px-2.5 tariff-col-cell">{{ item?.billing_type?.name ?? 'Стандарт' }}</div>
-                        <div class="text-sm font-medium text-space px-2.5">{{ publicationRowHhStatusLabel(item) }}</div>
-                        <div>
-                            <CardIcon 
+                        <div
+                            class="text-sm font-medium text-space px-2.5"
+                            :title="publicationStatsUpdatedTooltip(item)"
+                        >
+                            {{ publicationRowStatusLabel(item) }}
+                        </div>
+                        <div
+                            class="px-2.5"
+                            :title="publicationStatsUpdatedTooltip(item)"
+                        >
+                            <CardIcon
                                 v-bind="getPlatformIcon(item)"
                                 :width="21"
-                                :height="21" 
-                                class="px-2.5" 
+                                :height="21"
                             />
                         </div>
-                        <div class="text-sm font-medium text-space px-2.5">{{ item?.views }}</div>
-                        <div class="text-sm font-medium text-space px-2.5">{{ item?.responses }}</div>
-                        <div class="text-sm font-medium text-space px-2.5">{{ dateStringToDayMonth(item.created_at) }}</div>
+                        <div
+                            class="text-sm font-medium text-space px-2.5"
+                            :title="publicationStatsUpdatedTooltip(item)"
+                        >
+                            {{ item?.views ?? '—' }}
+                        </div>
+                        <div
+                            class="text-sm font-medium text-space px-2.5"
+                            :title="publicationStatsUpdatedTooltip(item)"
+                        >
+                            {{ item?.responses ?? '—' }}
+                        </div>
+                        <div class="text-sm font-medium text-space px-2.5">{{ publicationRowExpiresLabel(item) }}</div>
                         <div>
                             <DotsDropdown 
                                 :items="publicationRowDropdownItems(item)" 
@@ -604,10 +634,10 @@ import {
     getLanguages,
     getLanguageLevels,
 } from "~/utils/hhAccount";
-import { getAvitoProfile as getProfileAvito, authAvito, unlinkAvitoProfile as unlinkProfileAvito, getAvitoPublications as getPublicationsAvito, getAllAvitoPublications as getAllPublicationsAvito, archiveAvitoPublication as archivePublicationAvito } from "~/utils/avitoAccount";
+import { getAvitoProfile as getProfileAvito, authAvito, unlinkAvitoProfile as unlinkProfileAvito, getAvitoPublications as getPublicationsAvito, getAllAvitoPublications as getAllPublicationsAvito, archiveAvitoPublication as archivePublicationAvito, getAvitoPublicationTableStats, syncAvitoPublicationApplications, syncAvitoPublicationMessenger } from "~/utils/avitoAccount";
 import { getRabotaProfile as getProfileRabota, authRabota, unlinkRabotaProfile as unlinkProfileRabota, getRabotaPublications as getPublicationsRabota, getAllRabotaPublications as getAllPublicationsRabota, archiveRabotaPublication as archivePublicationRabota } from "~/utils/rabotaAccount";
 import { getSuperjobProfile as getProfileSuperjob, authSuperjob, unlinkSuperjobProfile as unlinkProfileSuperjob, getAllSuperjobPublications as getAllPublicationsSuperjob, archiveSuperjobPublication as archivePublicationSuperjob } from "~/utils/superjobAccount";
-import { dateStringToDayMonth } from "@/helpers/date";
+import { dateStringToDayMonth, formatDate } from "@/helpers/date";
 import { useCartStore } from '@/stores/cart'
 import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
@@ -623,7 +653,7 @@ import {
     extractSuperjobResumeExternalId,
 } from '@/utils/mapSuperjobReceivedResumeToCandidate'
 import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationToVacancy'
-import { getPublicationViewUrl } from '@/utils/publicationViewUrl'
+import { resolvePublicationViewUrl } from '@/utils/publicationViewUrl'
 import { validateVacancyData, normalizeVacancyData } from '@/utils/validateVacancyData'
 import { resolveOAuthApiPrefix } from '@/utils/resolveOAuthApiPrefix'
 import { HH_EMPLOYMENT_TYPES, HH_WORK_SCHEDULE_BY_DAYS, HH_EDUCATION_LAVEL } from '@/src/constants'
@@ -633,6 +663,11 @@ import {
     normalizeHhPublicationStatusFromApi,
     normalizeHhPublicationStatusFromCrmVacancy,
 } from '@/utils/hhPublicationStatus'
+import {
+    avitoPublicationStatusLabelFromApi,
+    normalizeAvitoPublicationStatusFromApi,
+    normalizeAvitoPublicationStatusFromCrmVacancy,
+} from '@/utils/avitoPublicationStatus'
 import experience from '~/src/data/experience.json'
 import schedule from '~/src/data/work-schedule.json'
 
@@ -779,7 +814,7 @@ const currentVacancyId = computed(() => {
     return null;
 });
 
-/** ID вакансии Jobly для PUT hh-publication-original (если открыта страница вакансии). */
+/** ID вакансии Наймикс для PUT hh-publication-original (если открыта страница вакансии). */
 const publishHhVacancyNumericId = computed(() => {
     const id = currentVacancyId.value;
     const n = Number(id);
@@ -873,6 +908,18 @@ const filteredImportedPublications = computed(() => {
     });
 });
 
+function extractCityOnly(rawCity) {
+    const s = String(rawCity ?? '').trim();
+    if (!s) return '';
+    const firstPart = s.split(',')[0]?.trim() || '';
+    return firstPart || s;
+}
+
+function publicationRowCity(item) {
+    const city = extractCityOnly(item?.city);
+    return city || '—';
+}
+
 // Функция для загрузки вакансий с платформ
 async function loadPublicationPlatforms() {
     if (!currentVacancyId.value) {
@@ -884,7 +931,17 @@ async function loadPublicationPlatforms() {
     try {
         const vacancies = await getVacancies(`filters[baseVacancyId]=${currentVacancyId.value}`);
         if (vacancies && vacancies.lastIndexOf) {
-            publicationPlatforms.value = vacancies;
+            publicationPlatforms.value = Array.isArray(vacancies)
+                ? vacancies.map((row) => {
+                    const pd = row?.platforms_data?.[0];
+                    const statsCachedAt = row?.stats_cached_at ?? pd?.stats_cached_at ?? null;
+                    return {
+                        ...row,
+                        city: extractCityOnly(row?.city),
+                        stats_cached_at: statsCachedAt,
+                    };
+                })
+                : vacancies;
         }
     } catch (error) {
         console.error('Ошибка при загрузке вакансий с платформ:', error);
@@ -895,6 +952,31 @@ async function loadPublicationPlatforms() {
             startPublicationStatsPolling();
         }
     }
+}
+
+/** Статус публикации в строке таблицы (HH / Avito). */
+/** Колонка «Истекает»: для Avito — finish_time с API, иначе дата из CRM. */
+function publicationRowExpiresLabel(item) {
+    if (Number(item?.platforms_data?.[0]?.id) === 2 && item.avitoExpiresAt) {
+        return dateStringToDayMonth(item.avitoExpiresAt);
+    }
+    return dateStringToDayMonth(item.created_at);
+}
+
+function publicationRowStatusLabel(item) {
+    const pd = item?.platforms_data?.[0];
+    if (Number(pd?.id) === 2) {
+        const apiSt = item.avitoPublicationStatus;
+        if (apiSt != null && apiSt !== '') {
+            return avitoPublicationStatusLabelFromApi(apiSt);
+        }
+        const crmSt = normalizeAvitoPublicationStatusFromCrmVacancy(item?.status);
+        if (crmSt != null) {
+            return avitoPublicationStatusLabelFromApi(crmSt);
+        }
+        return avitoPublicationStatusLabelFromApi(null);
+    }
+    return publicationRowHhStatusLabel(item);
 }
 
 /** Статус hh.ru в строке таблицы публикаций (как в попапе импорта). Для других площадок — «—». */
@@ -914,7 +996,7 @@ function publicationRowHhStatusLabel(item) {
 
 /** Пункт «Снять с публикации» — только для строк со статусом «Активна» (и для др. площадок: не архив в CRM). */
 function showUnpublishPublicationRow(item) {
-    const label = publicationRowHhStatusLabel(item);
+    const label = publicationRowStatusLabel(item);
     if (label === 'Активна') return true;
     if (label === 'Архивная' || label === 'Неизвестно') return false;
     const s = item?.status;
@@ -936,7 +1018,12 @@ const sortedData = computed(() => {
         const multiplier = sortOrder.value === "asc" ? 1 : -1;
         const key = sortKey.value;
         const sortVal = (row) => {
-            if (key === 'status') return row.hhPublicationStatus ?? '';
+            if (key === 'status') {
+                return row.hhPublicationStatus ?? row.avitoPublicationStatus ?? '';
+            }
+            if (key === 'expires') {
+                return row.avitoExpiresAt ?? row.expires_at ?? row.created_at ?? '';
+            }
             return row[key];
         };
         const av = sortVal(a);
@@ -1039,6 +1126,39 @@ async function importSuperjobNegotiationsIntoVacancy(vacancyId, extVacancyId) {
     }
 }
 
+function getPublicationStatsCachedAt(item) {
+    const fromRow = item?.stats_cached_at;
+    const fromPivot = item?.platforms_data?.[0]?.stats_cached_at;
+    const raw = fromRow ?? fromPivot;
+    if (raw == null || String(raw).trim() === '') return null;
+    return String(raw);
+}
+
+function touchPublicationStatsCachedAt(item) {
+    const iso = new Date().toISOString();
+    item.stats_cached_at = iso;
+    const pd = item?.platforms_data?.[0];
+    if (pd && typeof pd === 'object') {
+        pd.stats_cached_at = iso;
+    }
+}
+
+/** Подсказка для колонок «Сайт», «Просмотры», «Отклики». */
+function publicationStatsUpdatedTooltip(item) {
+    const raw = getPublicationStatsCachedAt(item);
+    const viewsPeriodHint =
+        Number(item?.platforms_data?.[0]?.id) === 2 && item.avitoPublishedAt
+            ? ` Просмотры: уникальные с ${formatDate(item.avitoPublishedAt).slice(0, 10)} (дата активации на Avito).`
+            : '';
+    const scopeHint = item?.avitoViewsScopeMissing
+        ? ` ${item?.avitoViewsHint || 'Просмотры Avito временно недоступны для этого аккаунта.'}`
+        : viewsPeriodHint;
+    if (!raw) return `Данные ещё не обновлялись${scopeHint}`;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return `Данные ещё не обновлялись${scopeHint}`;
+    return `Данные обновлены: ${formatDate(raw)}${scopeHint}`;
+}
+
 /** Просмотры/статус с HH + импорт новых откликов + число импортированных кандидатов в БД (раз в 5 мин). */
 async function refreshPublicationPlatformsStats() {
     const rows = publicationPlatforms.value;
@@ -1086,16 +1206,58 @@ async function refreshPublicationPlatformsStats() {
                     : null;
                 await importHhNegotiationItemsIntoVacancy(vacancyId, extVacancyId, negotiationItems);
                 item.responses = await getImportedCandidatesCountForVacancy(vacancyId, extVacancyId);
+                touchPublicationStatsCachedAt(item);
+                return;
+            }
+
+            if (Number(platformTypeId) === 2) {
+                const statsRes = await getAvitoPublicationTableStats(extVacancyId);
+                if (statsRes?.error) {
+                    const errMsg = String(statsRes.error);
+                    if (/авторизован|подключите avito|refresh|stats:read/i.test(errMsg)) {
+                        item.avitoViewsScopeMissing = true;
+                    }
+                }
+                if (statsRes && !statsRes.error && statsRes.data != null) {
+                    const st = statsRes.data;
+                    if (st.views !== undefined && st.views !== null) {
+                        const n = Number(st.views);
+                        item.views = Number.isFinite(n) ? n : st.views;
+                    }
+                    if (st.status != null && String(st.status).trim() !== '') {
+                        item.avitoPublicationStatus = normalizeAvitoPublicationStatusFromApi(st.status);
+                    }
+                    item.avitoViewsScopeMissing = st.views_scope_missing === true;
+                    item.avitoViewsHint = typeof st.views_hint === 'string' ? st.views_hint : null;
+                    if (st.expires_at) {
+                        item.avitoExpiresAt = st.expires_at;
+                    }
+                    if (st.published_at) {
+                        item.avitoPublishedAt = st.published_at;
+                    }
+                }
+                const syncRes = await syncAvitoPublicationApplications(extVacancyId, vacancyId);
+                if (syncRes?.error) {
+                    console.warn('Avito: импорт откликов:', syncRes.error);
+                }
+                const messengerRes = await syncAvitoPublicationMessenger(extVacancyId, vacancyId);
+                if (messengerRes?.error) {
+                    console.warn('Avito: синхронизация сообщений:', messengerRes.error);
+                }
+                item.responses = await getImportedCandidatesCountForVacancy(vacancyId, extVacancyId);
+                touchPublicationStatsCachedAt(item);
                 return;
             }
 
             if (platformTypeId === 4) {
                 await importSuperjobNegotiationsIntoVacancy(vacancyId, extVacancyId);
                 item.responses = await getImportedCandidatesCountForVacancy(vacancyId, extVacancyId);
+                touchPublicationStatsCachedAt(item);
                 return;
             }
 
             item.responses = await getImportedCandidatesCountForVacancy(vacancyId, extVacancyId);
+            touchPublicationStatsCachedAt(item);
         } catch (e) {
             console.warn('Обновление публикации в таблице:', e);
         }
@@ -2200,6 +2362,7 @@ async function importPublication(publication) {
         publication.vacancyId = createdVacancy.data.id;
         publication.importedAt = new Date().toISOString();
         publication.isImported = true; // Помечаем как импортированную
+        markVacancyIdAsImportedPublicationLightEdit(createdVacancy.data.id);
         
         // Обновляем список publicationPlatforms для проверки дубликатов
         if (currentVacancyId.value) {
@@ -2355,9 +2518,6 @@ async function refreshPlatformAuthStatus() {
     platformsAuth.value['avito.ru'] = !!(avitoProfile && !avitoProfile.error && avitoProfile.data);
     platformsAuth.value['rabota.ru'] = !!(rabotaProfile && !rabotaProfile.error && rabotaProfile.data);
     platformsAuth.value['superjob'] = !!(superjobProfile && !superjobProfile.error && superjobProfile.data);
-    if (isDevMockAvitoConnected.value) {
-        platformsAuth.value['avito.ru'] = true;
-    }
 }
 
 onMounted(async () => {
@@ -2403,26 +2563,36 @@ onMounted(async () => {
         }
     }
 
-    // Обработка редиректа после авторизации avito.ru
+    // Обработка редиректа после авторизации avito.ru (бекенд отдаёт status_auth, как у HH)
     if (query.popup_account === 'true' && query.platform === 'avito') {
         const processAuth = useCookie('process_auth');
         if (processAuth.value) {
-            // Обработка ошибки авторизации
             if (query.error) {
                 authError.value['avito.ru'] = query.error_description || query.error || 'Ошибка авторизации Avito';
-                setCookie('process_auth', '', -1); // Очищаем cookie
+                setCookie('process_auth', '', -1);
                 return;
             }
-            
-            // Обработка успешной авторизации
-            if (query.message === 'success' || query.code) {
-                const response = await authAvito();
-                if (response && response.data) {
-                    platformsAuth.value['avito.ru'] = true;
+            if (query.status_auth === 'false') {
+                authError.value['avito.ru'] = typeof query.message === 'string'
+                    ? decodeURIComponent(String(query.message).replace(/\+/g, ' '))
+                    : 'Ошибка авторизации Avito';
+                setCookie('process_auth', '', -1);
+            } else if (query.status_auth === 'true') {
+                await refreshPlatformAuthStatus();
+                if (platformsAuth.value['avito.ru']) {
                     shouldRedirect = true;
                 } else {
-                    authError.value['avito.ru'] = response?.error || 'Ошибка при получении токенов авторизации';
+                    authError.value['avito.ru'] = 'Avito: токен сохранён, но профиль не загрузился. Обновите страницу.';
                 }
+                setCookie('process_auth', '', -1);
+            } else if (query.message === 'success' || query.code) {
+                await refreshPlatformAuthStatus();
+                if (platformsAuth.value['avito.ru']) {
+                    shouldRedirect = true;
+                } else {
+                    authError.value['avito.ru'] = 'Avito: не удалось подтвердить подключение. Обновите страницу.';
+                }
+                setCookie('process_auth', '', -1);
             }
         }
     }
@@ -2469,6 +2639,10 @@ onMounted(async () => {
 
   onBeforeUnmount(() => {
     clearPublicationStatsPolling();
+    if (editPopupLoadingTimer) {
+      clearTimeout(editPopupLoadingTimer);
+      editPopupLoadingTimer = null;
+    }
     if (saveAndContinueHandler) {
       saveAndContinueHandler.value = null
     }
@@ -2572,9 +2746,16 @@ watch(allSelected, (newValue) => {
 // Состояние для редактирования вакансии
 const isEditPopupOpen = ref(false);
 const editingVacancy = ref(null);
+/** Режим «пустая форма + только название публикации» для импортированных строк (см. shouldEditImportedPublicationAsLightShell). */
+const editPublicationLightShell = ref(false);
 /** Прелоадер в модалке «Редактирование вакансии» до окончания async setup AddPublication */
 const isEditPublicationLoading = ref(false);
-/** Попап полей оригинала hh.ru (отдельное хранилище, не форма Jobly). */
+const EDIT_POPUP_LOADING_TIMEOUT_MS = 12000;
+let editPopupLoadingTimer = null;
+/** Прелоадер в модалке «Публикация вакансии» (карточка платформы) до form-ready AddPublication */
+const isCreatePublicationLoading = ref(false);
+let createPublicationLoadingTimer = null;
+/** Попап полей оригинала hh.ru (отдельное хранилище, не форма Наймикс). */
 const isHhOriginalPopupOpen = ref(false);
 const hhOriginalEditRow = ref(null);
 /** Открыто с карточки «Опубликовать»: без записи снимка в БД при GET, заголовок «Публикация…». */
@@ -2745,12 +2926,18 @@ const handleDropdownAction = (action, vacancyItem) => {
         }
         openEditPopup(vacancyItem);
     } else if (action === "Посмотреть публикацию") {
-        const url = getPublicationViewUrl(vacancyItem);
-        if (url) {
-            window.open(url, '_blank', 'noopener,noreferrer');
-        } else {
-            console.warn('Не удалось сформировать ссылку на публикацию', vacancyItem);
-        }
+        void (async () => {
+            const url = await resolvePublicationViewUrl(vacancyItem);
+            if (url) {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+                console.warn('Не удалось сформировать ссылку на публикацию', vacancyItem);
+                showPublicationToastMessage(
+                    'Не удалось открыть ссылку: нет данных публикации в системе или нет доступа к Avito. Обновите список и проверьте привязку к площадке.',
+                    'error',
+                );
+            }
+        })();
     } else if (action === "Снять с публикации") {
         openArchiveConfirm(vacancyItem);
     } else if (action === "Дублировать публикацию") {
@@ -2764,21 +2951,67 @@ const handleDropdownAction = (action, vacancyItem) => {
     }
 };
 
+/** ID вакансий, созданных импортом в этой сессии (для лёгкого редактирования без base_vacancy_id в pivot). */
+const importedPublicationLightEditIds = ref({});
+
+function markVacancyIdAsImportedPublicationLightEdit(vacancyId) {
+    const n = Number(vacancyId);
+    if (!Number.isFinite(n) || n <= 0) return;
+    importedPublicationLightEditIds.value = { ...importedPublicationLightEditIds.value, [String(n)]: true };
+}
+
+/** Импортированная активная публикация: pivot с базовой вакансией ≠ id строки, или вакансия создана импортом в этой вкладке. */
+function shouldEditImportedPublicationAsLightShell(row) {
+    const pd = row?.platforms_data?.[0];
+    if (!pd?.id || Number(pd.id) === 1) return false;
+    // Avito: возвращаем поведение «как раньше» — light shell (только заголовок + профессия).
+    if (Number(pd.id) === 2) return true;
+    const idStr = row?.id != null ? String(row.id) : '';
+    if (idStr && importedPublicationLightEditIds.value[idStr]) return true;
+    const base = pd.base_vacancy_id;
+    if (base != null && base !== '' && String(base) !== String(row?.id)) return true;
+    return false;
+}
+
 // Открытие попапа редактирования
 const openEditPopup = (vacancyItem) => {
+    if (editPopupLoadingTimer) {
+        clearTimeout(editPopupLoadingTimer);
+        editPopupLoadingTimer = null;
+    }
     isEditPublicationLoading.value = true;
+    editPublicationLightShell.value = shouldEditImportedPublicationAsLightShell(vacancyItem);
     editingVacancy.value = vacancyItem;
     isEditPopupOpen.value = true;
+    editPopupLoadingTimer = setTimeout(() => {
+        if (!isEditPopupOpen.value) return;
+        if (!isEditPublicationLoading.value) return;
+        console.warn('PublishTab: fallback-снятие прелоадера редактирования по таймауту', {
+            vacancyId: vacancyItem?.id ?? null,
+            timeoutMs: EDIT_POPUP_LOADING_TIMEOUT_MS,
+        });
+        isEditPublicationLoading.value = false;
+        editPopupLoadingTimer = null;
+    }, EDIT_POPUP_LOADING_TIMEOUT_MS);
 };
 
 // Закрытие попапа редактирования
 const closeEditPopup = () => {
+    if (editPopupLoadingTimer) {
+        clearTimeout(editPopupLoadingTimer);
+        editPopupLoadingTimer = null;
+    }
     isEditPopupOpen.value = false;
     isEditPublicationLoading.value = false;
     editingVacancy.value = null;
+    editPublicationLightShell.value = false;
 };
 
 function onEditPublicationFormReady() {
+    if (editPopupLoadingTimer) {
+        clearTimeout(editPopupLoadingTimer);
+        editPopupLoadingTimer = null;
+    }
     isEditPublicationLoading.value = false;
 }
 
@@ -2799,8 +3032,22 @@ function onCreatePublicationSaved(payload) {
     loadPublicationPlatforms();
 }
 
+function clearCreatePublicationLoadingTimer() {
+    if (createPublicationLoadingTimer) {
+        clearTimeout(createPublicationLoadingTimer);
+        createPublicationLoadingTimer = null;
+    }
+}
+
+function onCreatePublicationFormReady() {
+    clearCreatePublicationLoadingTimer();
+    isCreatePublicationLoading.value = false;
+}
+
 // Закрытие попапа создания публикации
 const closeCreatePublicationPopup = () => {
+    clearCreatePublicationLoadingTimer();
+    isCreatePublicationLoading.value = false;
     isOpenPopup.value = false;
     selectedPlatformForPublish.value = null;
 };
@@ -2870,8 +3117,20 @@ const openPopupNewPublication = async (platformName) => {
         })();
         return;
     }
+    clearCreatePublicationLoadingTimer();
+    isCreatePublicationLoading.value = true;
     createPublicationModalKey.value += 1;
     isOpenPopup.value = true;
+    createPublicationLoadingTimer = setTimeout(() => {
+        if (!isOpenPopup.value) return;
+        if (!isCreatePublicationLoading.value) return;
+        console.warn('PublishTab: fallback-снятие прелоадера публикации по таймауту', {
+            platform: platformName,
+            timeoutMs: EDIT_POPUP_LOADING_TIMEOUT_MS,
+        });
+        isCreatePublicationLoading.value = false;
+        createPublicationLoadingTimer = null;
+    }, EDIT_POPUP_LOADING_TIMEOUT_MS);
 };
 </script>
 

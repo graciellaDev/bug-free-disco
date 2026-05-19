@@ -1,4 +1,26 @@
 import type { DraftDataHh } from '@/types/platform';
+import {
+  collectAvitoContractKeysFromForm,
+  mapAvitoContractKeysToRegistrationApi,
+  normalizeAvitoContractKeyToApi,
+  resolveBillingTypeFromContractKeys,
+} from '@/utils/avitoContractMapping';
+import {
+  mapJoblySalaryGrossToAvitoTaxes,
+  resolveJoblySalaryGrossFromVacancy,
+  resolveJoblySalaryRangeFromVacancy,
+} from '@/utils/avitoSalaryFromJobly';
+import { normalizeAvitoPayoutFrequencyIdForPopup } from '@/utils/avitoPayoutFrequencyMapping';
+import { findAvitoSalaryModeOption } from '@/utils/avitoSalaryPeriodMapping';
+import {
+  resolveBusinessAreaIdForAvitoApi,
+  type AvitoBusinessAreaCatalogRow,
+} from '@/utils/avitoBusinessAreaMapping';
+import {
+  mapAvitoPhoneToApiPayload,
+  type AvitoContactEmployeeOption,
+} from '@/utils/avitoContactEmployees';
+import { formatDescriptionForAvitoApi } from '@/utils/avitoDescriptionFormat';
 
 /**
  * Интерфейс данных вакансии из AddPublication формы
@@ -27,27 +49,81 @@ export interface VacancyFormDataAvito {
   [key: string]: any;
 }
 
+const AVITO_APPLY_TYPES = new Set(['only_with_resume', 'with_assistant']);
+
+/** Отклики: API Avito не принимает apply_type optional. */
+export function resolveAvitoApplyProcessing(
+  vacancyData: Record<string, unknown>,
+): { apply_type: string } | null {
+  const ap = vacancyData.apply_processing as { apply_type?: unknown } | undefined;
+  const rawType = ap?.apply_type != null ? String(ap.apply_type).trim() : '';
+  if (AVITO_APPLY_TYPES.has(rawType)) {
+    return { apply_type: rawType };
+  }
+  const contactMethod = String(vacancyData.avito_contact_method ?? '').trim();
+  if (contactMethod === 'with_assistant') return { apply_type: 'with_assistant' };
+  if (contactMethod === 'only_with_resume') return { apply_type: 'only_with_resume' };
+  return null;
+}
+
 function normalizeAvitoPhone(
   phone: unknown
 ): { city?: string; country?: string; number?: string } | null {
   if (phone == null) return null;
   if (typeof phone === 'string') {
-    const v = phone.trim();
-    return v !== '' ? { number: v } : null;
+    return mapAvitoPhoneToApiPayload(phone);
   }
   if (typeof phone === 'object') {
     const p = phone as Record<string, unknown>;
-    const number = typeof p.number === 'string' ? p.number.trim() : '';
+    const fromNumber = mapAvitoPhoneToApiPayload(p.number);
+    if (fromNumber) return fromNumber;
     const city = typeof p.city === 'string' ? p.city.trim() : '';
     const country = typeof p.country === 'string' ? p.country.trim() : '';
-    if (!number && !city && !country) return null;
+    if (!city && !country) return null;
     return {
       ...(city ? { city } : {}),
       ...(country ? { country } : {}),
-      ...(number ? { number } : {}),
     };
   }
   return null;
+}
+
+function resolveAvitoContactFromForm(vacancyData: VacancyFormDataAvito): {
+  name: string
+  email: string | null
+  phone: { number: string } | null
+  employeeId: number | null
+} {
+  const selected = vacancyData.avito_contact_employee as AvitoContactEmployeeOption | null | undefined;
+  if (selected && typeof selected === 'object' && selected.phone) {
+    const employeeId =
+      selected.employee_id != null && Number.isFinite(Number(selected.employee_id))
+        ? Math.floor(Number(selected.employee_id))
+        : null;
+    return {
+      name: String(selected.name ?? vacancyData.executor_name ?? '').trim(),
+      email: String(selected.email ?? vacancyData.executor_email ?? '').trim() || null,
+      phone: mapAvitoPhoneToApiPayload(selected.phone),
+      employeeId: employeeId && employeeId > 0 ? employeeId : null,
+    };
+  }
+
+  const employeeIdRaw = vacancyData.avito_contact_employee_id ?? vacancyData.avito_employee_id;
+  const employeeId =
+    employeeIdRaw != null && Number.isFinite(Number(employeeIdRaw))
+      ? Math.floor(Number(employeeIdRaw))
+      : null;
+
+  const phone =
+    normalizeAvitoPhone(vacancyData.executor_phone) ??
+    (vacancyData.contacts ? normalizeAvitoPhone((vacancyData.contacts as { phone?: unknown }).phone) : null);
+
+  return {
+    name: String(vacancyData.executor_name ?? '').trim(),
+    email: String(vacancyData.executor_email ?? '').trim() || null,
+    phone,
+    employeeId: employeeId && employeeId > 0 ? employeeId : null,
+  };
 }
 
 /**
@@ -62,6 +138,8 @@ function mapEmploymentToAvito(employmentForm: { id?: string; name?: string } | n
     'FULL': 'full',           // Полная занятость
     'PART': 'partial',        // Частичная занятость
     'PROJECT': 'project',     // Проектная работа
+    'FLY_IN_FLY_OUT': 'full', // Вахта → полная + schedule flyInFlyOut
+    'SIDE_JOB': 'partial',
     'VOLUNTEER': 'volunteer', // Волонтерство
     'PROBATION': 'probation', // Стажировка
   };
@@ -182,6 +260,54 @@ function mapWorkSpaceToAvito(workSpace: string | undefined): boolean | null {
  * Маппинг валюты из формы в формат Avito API
  * Avito использует: RUR, USD, EUR
  */
+/** Формат зарплаты для POST /job/v1/vacancies: salary — int64, диапазон — salary_base_range. */
+function buildAvitoSalaryApiFields(input: {
+  from?: number | null
+  to?: number | null
+}): { salary?: number; salary_base_range?: { from?: number; to?: number } } {
+  const from =
+    input.from != null && Number.isFinite(Number(input.from)) ? Math.floor(Number(input.from)) : undefined
+  const to =
+    input.to != null && Number.isFinite(Number(input.to)) ? Math.floor(Number(input.to)) : undefined
+  const hasFrom = from != null && from > 0
+  const hasTo = to != null && to > 0
+
+  if (hasFrom && hasTo) {
+    return { salary_base_range: { from, to } }
+  }
+  if (hasFrom) {
+    return { salary: from }
+  }
+  if (hasTo) {
+    return { salary_base_range: { to } }
+  }
+  return {}
+}
+
+function resolveAvitoPaidPeriodLabel(
+  vacancyData: VacancyFormDataAvito,
+): string | null {
+  const modeRaw = vacancyData.salary_range?.mode
+  if (modeRaw != null) {
+    if (typeof modeRaw === 'object') {
+      const name = String((modeRaw as { name?: unknown }).name ?? '').trim()
+      if (name) return name
+      const id = String((modeRaw as { id?: unknown }).id ?? '').trim()
+      const hit = findAvitoSalaryModeOption(id)
+      if (hit?.name) return hit.name
+    } else {
+      const hit = findAvitoSalaryModeOption(String(modeRaw))
+      if (hit?.name) return hit.name
+    }
+  }
+  const freq = String(vacancyData.salary_frequency ?? '').trim()
+  if (freq) {
+    const hit = findAvitoSalaryModeOption(freq)
+    if (hit?.name) return hit.name
+  }
+  return null
+}
+
 function mapCurrencyToAvito(currency: { id?: string; name?: string } | string | undefined): string {
   if (!currency) return 'RUR';
   
@@ -227,52 +353,157 @@ function mapBillingTypeToAvito(billingType: string | { id?: string; name?: strin
   return null;
 }
 
+function mapRegistrationMethodFromForm(vacancyData: VacancyFormDataAvito): string[] {
+  const fromKeys = mapAvitoContractKeysToRegistrationApi(collectAvitoContractKeysFromForm(vacancyData));
+  if (fromKeys.length > 0) return fromKeys;
+
+  const title = vacancyData?.billing_types?.name != null ? String(vacancyData.billing_types.name).trim().toLowerCase() : '';
+  const fallback: string[] = [];
+  if (title.includes('трудовой')) fallback.push('contract');
+  if (title.includes('гпх') && title.includes('ип')) fallback.push('gph_ip');
+  if (title.includes('самозанят')) fallback.push('gph_self_employed');
+  if (title.includes('физ')) fallback.push('gph_individual');
+
+  return fallback;
+}
+
 /** Возвращает true, если значение — одно из допустимых для Avito billing_type */
 function isAvitoBillingType(v: unknown): v is AvitoBillingType {
   return typeof v === 'string' && AVITO_BILLING_TYPE_ENUM.includes(v as AvitoBillingType);
 }
 
-/** Допустимые значения payout_frequency.id в API Avito */
-const AVITO_PAYOUT_FREQUENCY_ENUM = ['hourlyPay', 'dailyPay', 'biweeklyPay', 'weeklyPay', 'thriceMonthlyPay', 'monthlyPay'] as const;
-type AvitoPayoutFrequency = typeof AVITO_PAYOUT_FREQUENCY_ENUM[number];
+/** payout_frequency.id в UI Avito (4 варианта). */
+const AVITO_PAYOUT_FREQUENCY_POPUP_IDS = ['weeklyPay', 'monthlyPay', 'biweeklyPay', 'thriceMonthlyPay'] as const;
+type AvitoPayoutFrequency = typeof AVITO_PAYOUT_FREQUENCY_POPUP_IDS[number];
 
-/**
- * Маппинг частоты выплаты в формат Avito API.
- * API Avito: enum [hourlyPay, dailyPay, biweeklyPay, weeklyPay, thriceMonthlyPay, monthlyPay]
- */
+const AVITO_BONUSES_ALLOWED = [
+  'Униформа',
+  'Проживание',
+  'Медицинская страховка',
+  'Питание',
+  'Оплата бензина',
+  'Парковка',
+  'Зоны отдыха',
+  'Транспорт до работы',
+  'Скидки в компании',
+  'Подарки детям на праздники',
+  'Оплата мобильной связи',
+  'Обучение',
+  'Компенсация проезда с работы',
+  'КАСКО',
+  'Смартфон',
+  'Услуги шиномонтажа',
+] as const;
+
+type AvitoBonusLabel = typeof AVITO_BONUSES_ALLOWED[number];
+
+const AVITO_BONUS_ID_TO_LABEL: Record<string, AvitoBonusLabel> = {
+  uniform: 'Униформа',
+  housing: 'Проживание',
+  medicalInsurance: 'Медицинская страховка',
+  meals: 'Питание',
+  fuelCompensation: 'Оплата бензина',
+  parking: 'Парковка',
+  restAreas: 'Зоны отдыха',
+  transportToWork: 'Транспорт до работы',
+  companyDiscounts: 'Скидки в компании',
+  holidayGiftsForChildren: 'Подарки детям на праздники',
+  mobileCompensation: 'Оплата мобильной связи',
+  education: 'Обучение',
+  travelFromWorkCompensation: 'Компенсация проезда с работы',
+  kasko: 'КАСКО',
+  smartphone: 'Смартфон',
+  tireService: 'Услуги шиномонтажа',
+};
+
+function mapBonusesToAvito(rawBonuses: unknown): AvitoBonusLabel[] {
+  if (rawBonuses == null) return [];
+
+  const values: string[] = [];
+  const pushValue = (v: unknown) => {
+    if (v == null) return;
+    if (Array.isArray(v)) {
+      v.forEach(pushValue);
+      return;
+    }
+    if (typeof v === 'object') {
+      const obj = v as Record<string, unknown>;
+      pushValue(obj.name);
+      pushValue(obj.title);
+      pushValue(obj.value);
+      pushValue(obj.id);
+      return;
+    }
+    const s = String(v).trim();
+    if (!s) return;
+    s.split(/[;|]+/).map((x) => x.trim()).filter(Boolean).forEach((x) => values.push(x));
+  };
+
+  pushValue(rawBonuses);
+
+  const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  const aliases: Record<string, AvitoBonusLabel> = {
+    'мед страховка': 'Медицинская страховка',
+    'дмс': 'Медицинская страховка',
+    'корпоративный транспорт': 'Транспорт до работы',
+    'транспорт': 'Транспорт до работы',
+  };
+
+  const result: AvitoBonusLabel[] = [];
+  values.forEach((item) => {
+    const n = normalize(item);
+    const fromId = AVITO_BONUS_ID_TO_LABEL[item.trim()];
+    const fromAlias = aliases[n];
+    const direct = AVITO_BONUSES_ALLOWED.find((label) => normalize(label) === n);
+    const hit = fromId ?? fromAlias ?? direct;
+    if (hit && !result.includes(hit)) result.push(hit);
+  });
+
+  return result;
+}
+
+/** Маппинг частоты выплаты в один из 4 id попапа Avito. */
 function mapPayoutFrequencyToAvito(frequency: string | { id?: string | number; name?: string } | null | undefined): AvitoPayoutFrequency | null {
   if (frequency == null) return null;
+  const direct = normalizeAvitoPayoutFrequencyIdForPopup(frequency)
+  if (direct) return direct
+
   const raw = typeof frequency === 'string' ? frequency : (frequency.id != null ? String(frequency.id) : frequency.name != null ? String(frequency.name) : '');
   const s = String(raw).trim();
   if (!s) return null;
   const lower = s.toLowerCase();
-  if (AVITO_PAYOUT_FREQUENCY_ENUM.includes(s as AvitoPayoutFrequency)) return s as AvitoPayoutFrequency;
-  // Маппинг по id/названию (HH: monthly, weekly и т.д.; русские названия)
-  if (lower === 'monthlypay' || lower === 'monthly' || lower === 'month' || lower === 'за месяц' || lower === 'раз в месяц') return 'monthlyPay';
-  if (lower === 'weeklypay' || lower === 'weekly' || lower === 'week' || lower === 'за неделю') return 'weeklyPay';
-  if (lower === 'dailypay' || lower === 'daily' || lower === 'day' || lower === 'за день') return 'dailyPay';
-  if (lower === 'hourlypay' || lower === 'hourly' || lower === 'hour' || lower === 'за час') return 'hourlyPay';
-  if (lower === 'biweeklypay' || lower === 'biweekly' || lower === 'раз в две недели') return 'biweeklyPay';
-  if (lower === 'thricemonthlypay' || lower === 'thricemonthly' || lower === 'два раза в месяц') return 'thriceMonthlyPay';
-  // Числовой id из формы (например HH_SALARY_FREQUENCY: 0–5)
+  let legacy: string | null = null;
+  if (lower === 'monthlypay' || lower === 'monthly' || lower === 'month' || lower === 'за месяц' || lower === 'раз в месяц' || lower === 'monthly') legacy = 'monthlyPay';
+  else if (lower === 'weeklypay' || lower === 'weekly' || lower === 'week' || lower === 'за неделю' || lower === 'раз в неделю') legacy = 'weeklyPay';
+  else if (lower === 'biweeklypay' || lower === 'biweekly' || lower === 'twice_per_month' || lower === 'раз в две недели' || lower === 'два раза в месяц' || lower === 'дважды в месяц') legacy = 'biweeklyPay';
+  else if (lower === 'thricemonthlypay' || lower === 'thricemonthly' || lower === 'thrice_per_month' || lower === 'три раза в месяц' || lower === 'трижды в месяц') legacy = 'thriceMonthlyPay';
+  else if (lower === 'dailypay' || lower === 'daily' || lower === 'ежедневно' || lower === 'hourlypay' || lower === 'hourly' || lower === 'projectpay' || lower === 'per_project' || lower === 'за проект') legacy = 'monthlyPay';
+
   const n = Number(raw);
-  if (!isNaN(n)) {
-    const byIndex: AvitoPayoutFrequency[] = ['hourlyPay', 'dailyPay', 'weeklyPay', 'biweeklyPay', 'thriceMonthlyPay', 'monthlyPay'];
-    return byIndex[n] ?? 'monthlyPay';
+  if (!legacy && !isNaN(n)) {
+    const byIndex = ['monthlyPay', 'weeklyPay', 'biweeklyPay', 'thriceMonthlyPay', 'monthlyPay', 'monthlyPay'];
+    legacy = byIndex[n] ?? 'monthlyPay';
   }
-  return null;
+
+  return normalizeAvitoPayoutFrequencyIdForPopup(legacy ?? s) || null;
 }
 
 /**
  * Преобразование адреса в формат Avito API
  * Avito использует строку с названием города/адреса
  */
-function mapAddressToAvito(area: { id?: string | number; name?: string } | null | undefined, address?: { id?: string | number; name?: string } | null | undefined): string | null {
-  // Приоритет у address, затем area
+function mapAddressToAvito(
+  area: { id?: string | number; name?: string } | null | undefined,
+  address?: { id?: string | number; name?: string; building?: string } | null | undefined,
+): string | null {
+  const building = address && typeof address === 'object' && address.building != null
+    ? String(address.building).trim()
+    : '';
+  if (building) return building;
+
   const location = address || area;
   if (!location) return null;
-  
-  // Возвращаем название города/адреса
+
   return location.name || String(location.id || '') || null;
 }
 
@@ -313,7 +544,7 @@ export function mapVacancyToAvitoFormat(
   const avitoData: any = {
     // Обязательные поля
     name: vacancyData.name || '',
-    description: vacancyData.description || '',
+    description: formatDescriptionForAvitoApi(vacancyData.description),
   };
   
   // Профессия (ID профессии из справочника Avito)
@@ -337,7 +568,10 @@ export function mapVacancyToAvitoFormat(
   }
   
   // График работы: только enum [flyInFlyOut, flexible, shift, fixed, partTime, fullDay, remote, fiveDay, sixDay]
-  const scheduleMapped = mapScheduleToAvito(vacancyData.work_schedule_by_days);
+  const employmentId = vacancyData.employment_form?.id != null ? String(vacancyData.employment_form.id) : '';
+  const scheduleMapped = employmentId === 'FLY_IN_FLY_OUT'
+    ? { id: 'flyInFlyOut' as AvitoScheduleId }
+    : mapScheduleToAvito(vacancyData.work_schedule_by_days);
   avitoData.schedule = { id: scheduleMapped?.id ?? DEFAULT_AVITO_SCHEDULE };
   
   // Опыт работы (объект с id)
@@ -356,39 +590,78 @@ export function mapVacancyToAvitoFormat(
     }
   }
   
-  // Зарплата: отправляем в поле salary (совместимо с текущей серверной валидацией).
-  if (vacancyData.salary_range && (vacancyData.salary_range.from != null || vacancyData.salary_range.to != null)) {
-    const from = vacancyData.salary_range.from != null ? Number(vacancyData.salary_range.from) : undefined;
-    const to = vacancyData.salary_range.to != null ? Number(vacancyData.salary_range.to) : undefined;
-    if (!isNaN(from as number) || !isNaN(to as number)) {
-      avitoData.salary = {
-        ...(from != null && !isNaN(from) ? { from: Math.floor(from) } : {}),
-        ...(to != null && !isNaN(to) ? { to: Math.floor(to) } : {}),
-        currency: mapCurrencyToAvito(vacancyData.salary_range.currency),
-      };
-    }
+  // Зарплата: API Avito — salary (int64) или salary_base_range { from, to }, не объект в salary.
+  const salaryRange =
+    vacancyData.salary_range && (vacancyData.salary_range.from != null || vacancyData.salary_range.to != null)
+      ? vacancyData.salary_range
+      : resolveJoblySalaryRangeFromVacancy(vacancyData as Record<string, unknown>)
+  if (salaryRange) {
+    const salaryFields = buildAvitoSalaryApiFields({
+      from: salaryRange.from,
+      to: salaryRange.to,
+    })
+    if (salaryFields.salary != null) avitoData.salary = salaryFields.salary
+    if (salaryFields.salary_base_range) avitoData.salary_base_range = salaryFields.salary_base_range
   }
+
+  const paidPeriod = resolveAvitoPaidPeriodLabel(vacancyData)
+  if (paidPeriod) avitoData.paid_period = paidPeriod
   
   // Частота выплаты: API Avito — enum [hourlyPay, dailyPay, biweeklyPay, weeklyPay, thriceMonthlyPay, monthlyPay]
-  const payoutFreq = mapPayoutFrequencyToAvito(vacancyData.salary_range?.frequency?.id ?? vacancyData.salary_range?.frequency);
+  const payoutFreq = mapPayoutFrequencyToAvito(
+    vacancyData.salary_range?.frequency?.id ?? vacancyData.salary_range?.frequency,
+  );
   avitoData.payout_frequency = { id: payoutFreq ?? 'monthlyPay' };
-  
-  // billing_type обязателен для Avito: enum [package, single, packageOrSingle], по умолчанию single
-  const billingType = mapBillingTypeToAvito(vacancyData.billing_type ?? vacancyData.billing_types);
-  avitoData.billing_type = billingType ?? 'single';
-  
-  // business_area (ID отрасли)
-  if (vacancyData.industry?.id) {
-    const businessArea = typeof vacancyData.industry.id === 'number' 
-      ? vacancyData.industry.id 
-      : Number(vacancyData.industry.id);
-    if (!isNaN(businessArea)) {
-      avitoData.business_area = businessArea;
-    }
+
+  const grossFromForm = vacancyData.salary_range?.gross
+  const grossResolved =
+    typeof grossFromForm === 'boolean'
+      ? grossFromForm
+      : resolveJoblySalaryGrossFromVacancy(vacancyData as Record<string, unknown>)
+  if (typeof grossResolved === 'boolean') {
+    avitoData.taxes = mapJoblySalaryGrossToAvitoTaxes(grossResolved)
+  }
+
+  // Бонусы для сотрудников (Что получают сотрудники)
+  const bonuses = mapBonusesToAvito(vacancyData.bonuses ?? vacancyData.avito_benefit);
+  if (bonuses.length > 0) {
+    avitoData.bonuses = bonuses;
   }
   
-  // Контакты
-  if (vacancyData.contacts) {
+  // billing_type обязателен для Avito: enum [package, single, packageOrSingle], по умолчанию single
+  const contractKeys = collectAvitoContractKeysFromForm(vacancyData);
+  const billingFromContracts = resolveBillingTypeFromContractKeys(contractKeys);
+  const billingType = billingFromContracts
+    || mapBillingTypeToAvito(vacancyData.billing_type ?? vacancyData.billing_types);
+  avitoData.billing_type = billingType ?? 'single';
+
+  // registration_method — enum API: contract | gph_ip | gph_self_employed | gph_individual
+  const registrationMethod = mapRegistrationMethodFromForm(vacancyData);
+  if (registrationMethod.length > 0) {
+    avitoData.registration_method = registrationMethod;
+  }
+  
+  // business_area — int id из словаря Avito (без deprecated)
+  const businessAreaCatalog = Array.isArray((vacancyData as { avito_business_area_catalog?: unknown }).avito_business_area_catalog)
+    ? ((vacancyData as { avito_business_area_catalog: AvitoBusinessAreaCatalogRow[] }).avito_business_area_catalog)
+    : undefined;
+  const businessArea = resolveBusinessAreaIdForAvitoApi(vacancyData.industry?.id, businessAreaCatalog);
+  if (businessArea != null) {
+    avitoData.business_area = businessArea;
+  }
+  
+  // Контакты — телефон должен быть из сотрудников/phones аккаунта Avito
+  const contact = resolveAvitoContactFromForm(vacancyData);
+  if (contact.employeeId) {
+    avitoData.hierarchy = { employee_id: contact.employeeId };
+  }
+  if (contact.name || contact.phone || contact.email) {
+    avitoData.contacts = {
+      ...(contact.name ? { name: contact.name } : {}),
+      ...(contact.email ? { email: contact.email } : {}),
+      ...(contact.phone ? { phone: contact.phone } : {}),
+    };
+  } else if (vacancyData.contacts) {
     const c = vacancyData.contacts as Record<string, unknown>;
     const normalizedPhone = normalizeAvitoPhone(c.phone);
     avitoData.contacts = {
@@ -396,23 +669,11 @@ export function mapVacancyToAvitoFormat(
       ...(typeof c.email === 'string' && c.email.trim() !== '' ? { email: c.email.trim() } : {}),
       ...(normalizedPhone ? { phone: normalizedPhone } : {}),
     };
-  } else if (vacancyData.executor_name || vacancyData.executor_phone || vacancyData.executor_email) {
-    const normalizedPhone = normalizeAvitoPhone(vacancyData.executor_phone);
-    avitoData.contacts = {
-      name: vacancyData.executor_name || '',
-      ...(normalizedPhone ? { phone: normalizedPhone } : {}),
-      email: vacancyData.executor_email || null,
-    };
   }
   
   // allow_messages
   if (vacancyData.allow_messages !== undefined) {
     avitoData.allow_messages = vacancyData.allow_messages;
-  }
-  
-  // is_side_job
-  if (vacancyData.is_side_job !== undefined) {
-    avitoData.is_side_job = vacancyData.is_side_job;
   }
   
   // age (возрастные ограничения)
@@ -430,9 +691,10 @@ export function mapVacancyToAvitoFormat(
     avitoData.citizenship = vacancyData.citizenship;
   }
   
-  // apply_processing
-  if (vacancyData.apply_processing) {
-    avitoData.apply_processing = vacancyData.apply_processing;
+  // apply_processing — только only_with_resume | with_assistant (optional недопустим)
+  const applyProcessing = resolveAvitoApplyProcessing(vacancyData);
+  if (applyProcessing) {
+    avitoData.apply_processing = applyProcessing;
   }
 
   if (avitoData.contacts && typeof avitoData.contacts === 'object' && Object.keys(avitoData.contacts).length === 0) {
@@ -460,23 +722,34 @@ export function ensureAvitoPayloadTypes(payload: any): any {
     if (isNaN(out.profession)) delete out.profession;
   }
   if (out.business_area !== undefined && out.business_area !== null) {
-    out.business_area = typeof out.business_area === 'number' ? out.business_area : Number(out.business_area);
-    if (isNaN(out.business_area)) delete out.business_area;
+    const normalizedBa = resolveBusinessAreaIdForAvitoApi(out.business_area);
+    if (normalizedBa != null) out.business_area = normalizedBa;
+    else delete out.business_area;
   }
-  // API Avito: salary_range — объект с from, to (integer)
-  if (out.salary_range && typeof out.salary_range === 'object') {
-    const sr = out.salary_range as { from?: number; to?: number };
-    const from = sr.from != null ? Math.floor(Number(sr.from)) : undefined;
-    const to = sr.to != null ? Math.floor(Number(sr.to)) : undefined;
-    if (from != null && !isNaN(from)) (out.salary_range as any).from = from;
-    if (to != null && !isNaN(to)) (out.salary_range as any).to = to;
+  // salary: только int64; legacy-объект { from, to } → salary_base_range
+  if (out.salary != null && typeof out.salary === 'object') {
+    const legacy = buildAvitoSalaryApiFields({
+      from: (out.salary as { from?: number }).from,
+      to: (out.salary as { to?: number }).to,
+    })
+    delete out.salary
+    if (legacy.salary != null) out.salary = legacy.salary
+    if (legacy.salary_base_range) {
+      out.salary_base_range = {
+        ...(out.salary_base_range && typeof out.salary_base_range === 'object' ? out.salary_base_range : {}),
+        ...legacy.salary_base_range,
+      }
+    }
+  } else if (out.salary != null && out.salary !== '') {
+    const n = Math.floor(Number(out.salary))
+    if (Number.isFinite(n) && n > 0) out.salary = n
+    else delete out.salary
   }
-  if (out.salary && typeof out.salary === 'object') {
-    const s = out.salary as { from?: number; to?: number };
-    const from = s.from != null ? Math.floor(Number(s.from)) : undefined;
-    const to = s.to != null ? Math.floor(Number(s.to)) : undefined;
-    if (from != null && !isNaN(from)) (out.salary as any).from = from;
-    if (to != null && !isNaN(to)) (out.salary as any).to = to;
+  if (out.salary_base_range && typeof out.salary_base_range === 'object') {
+    const sr = out.salary_base_range as { from?: number; to?: number; currency?: unknown }
+    const normalized = buildAvitoSalaryApiFields({ from: sr.from, to: sr.to })
+    if (normalized.salary_base_range) out.salary_base_range = normalized.salary_base_range
+    else delete out.salary_base_range
   }
   // payout_frequency.id — только enum; при невалидном значении подставляем monthlyPay
   if (out.payout_frequency != null && typeof out.payout_frequency === 'object') {
@@ -489,5 +762,21 @@ export function ensureAvitoPayloadTypes(payload: any): any {
   // schedule.id — только enum; при невалидном подставляем fullDay
   const scheduleId = normalizeScheduleId(out.schedule);
   out.schedule = { id: scheduleId };
+  const ap = out.apply_processing as { apply_type?: unknown } | undefined;
+  if (ap != null) {
+    const t = ap.apply_type != null ? String(ap.apply_type).trim() : '';
+    if (!AVITO_APPLY_TYPES.has(t)) {
+      delete out.apply_processing;
+    }
+  }
+  if (Array.isArray(out.registration_method)) {
+    const normalizedRm: string[] = [];
+    for (const item of out.registration_method) {
+      const api = normalizeAvitoContractKeyToApi(String(item ?? ''));
+      if (api && !normalizedRm.includes(api)) normalizedRm.push(api);
+    }
+    if (normalizedRm.length > 0) out.registration_method = normalizedRm;
+    else delete out.registration_method;
+  }
   return out;
 }
