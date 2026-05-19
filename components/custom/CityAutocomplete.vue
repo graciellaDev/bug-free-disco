@@ -234,6 +234,12 @@ watch(() => props.modelValue, (newValue, oldValue) => {
       if (search.value !== cityName) {
         search.value = cityName
       }
+    } else if (typeof newValue === 'string' && newValue.trim() !== '') {
+      // Для кейсов, когда modelValue приходит как строка адреса, а не id из options
+      // (например Avito "Место работы": "Москва, Пресненская набережная, 2").
+      if (search.value !== newValue) {
+        search.value = newValue
+      }
     } else if (!newValue) {
       // Очищаем только если значение было очищено извне и поле пустое
       if (!isFocused.value) {

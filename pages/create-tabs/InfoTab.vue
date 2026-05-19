@@ -36,13 +36,14 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount, nextTick, inject } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount, nextTick, inject, isRef } from 'vue'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
 import { fetchApplicationDetail } from '~/utils/applicationItem'
 import majors from '~/src/data/majors.json'
 import { convertDateFromApi } from '~/helpers/date'
+import { setVacancyCurrectLive } from '@/utils/useVacancyCurrect'
 
 const ArraySpecialization = specialization
 const ArrayOptions = MoreOptions
@@ -269,6 +270,7 @@ const languageDropdownOptions = computed(() => {
 const languageLevelDropdownOptions = computed(() => Array.isArray(languageLevelOptions.value) ? languageLevelOptions.value : [])
 
 const headerVacancyStatus = inject('headerVacancyStatus', null)
+const vacancyIdRef = inject('vacancyIdRef', null)
 
 const defaultDescriptionTemplate = `<p>Обязанности:</p>
 <ul><li></li><li></li></ul>
@@ -295,6 +297,9 @@ const newVacancy = ref({
   languages: [{ language: null, languageLevel: null }],
   description: defaultDescriptionTemplate,
 })
+watch(salaryType, (value) => {
+  newVacancy.value.salary_type = value === 'full-cash' ? 'До вычета налогов' : 'На руки'
+}, { immediate: true })
 const originalVacancyRaw = ref(null) // Исходные сырые данные с сервера
 const originalVacancyData = ref(null) // Отформатированные исходные данные для сравнения
 
@@ -376,6 +381,16 @@ if (props.id) {
     if (wh != null) {
       const arr = Array.isArray(wh) ? wh.map((v) => String(typeof v === 'object' ? (v?.value ?? v?.name) : v)) : [String(wh)]
       newVacancy.value.workHoursPerDay = arr.length ? arr : ['8']
+    }
+    const salaryTypeRaw = String(currectVacancy.salary_type ?? currectVacancy.salaryType ?? '').trim().toLowerCase()
+    if (salaryTypeRaw.includes('до вычета') || salaryTypeRaw === 'full-cash') {
+      salaryType.value = 'full-cash'
+    } else if (
+      salaryTypeRaw.includes('на руки')
+      || salaryTypeRaw.includes('после вычета')
+      || salaryTypeRaw === 'past-cash'
+    ) {
+      salaryType.value = 'past-cash'
     }
     // Сохраняем исходные сырые данные
     originalVacancyRaw.value = JSON.parse(JSON.stringify(currectVacancy))
@@ -1048,6 +1063,8 @@ const vacancyData = computed(() => {
     currency: newVacancy.value.currency || 'RUB (рубль)',
     salary_frequency: newVacancy.value.salary_frequency || 'За месяц',
     salary_payment_frequency: newVacancy.value.salary_payment_frequency || 'Раз в месяц',
+    salary_type: salaryType.value === 'full-cash' ? 'До вычета налогов' : 'На руки',
+    salary_tax_id: salaryType.value,
     place: Array.isArray(newVacancy.value.place) ? [...newVacancy.value.place] : (newVacancy.value.place ? [newVacancy.value.place] : ['1']),
     oformlenie: newVacancy.value.oformlenie || [],
     publication_city: newVacancy.value.location?.trim() || null,
@@ -1064,6 +1081,33 @@ const vacancyData = computed(() => {
     peoples: newVacancy.value.peoples || null,
   }
 });
+
+let lastVacancyLiveJson = ''
+
+function resolveVacancyIdForLive() {
+  const fromRef = vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef
+  return fromRef ?? props.id
+}
+
+function syncVacancyCurrectLiveState() {
+  const payload = vacancyData.value
+  if (!payload || typeof payload !== 'object') return
+  const id = resolveVacancyIdForLive()
+  const snapshot = {
+    ...payload,
+    ...(id != null && String(id).trim() !== '' ? { id: Number(id) || id } : {}),
+  }
+  const json = JSON.stringify(snapshot)
+  if (json === lastVacancyLiveJson) return
+  lastVacancyLiveJson = json
+  setVacancyCurrectLive(snapshot)
+}
+
+watch(salaryType, syncVacancyCurrectLiveState)
+watch(salary, syncVacancyCurrectLiveState, { deep: true })
+watch(newVacancy, syncVacancyCurrectLiveState, { deep: true })
+watch(() => resolveVacancyIdForLive(), syncVacancyCurrectLiveState)
+onMounted(syncVacancyCurrectLiveState)
 
 // Функция для форматирования исходных данных в формат vacancyData
 function formatOriginalData(original) {
@@ -1099,6 +1143,7 @@ function formatOriginalData(original) {
     currency: original.currency || 'RUB (рубль)',
     salary_frequency: original.salary_frequency || 'За месяц',
     salary_payment_frequency: original.salary_payment_frequency || 'Раз в месяц',
+    salary_type: original.salary_type || 'На руки',
     place: Array.isArray(original.place) ? original.place.map((p) => String(p)) : (original.place != null ? [String(original.place)] : ['1']),
     oformlenie: original.oformlenie || [],
     publication_city: original.publication_city ?? original.publicationCity ?? original.location ?? null,
@@ -1286,7 +1331,7 @@ function getChangedFields(currentData, originalData) {
     'name', 'code', 'description', 'industry', 'specializations',
     'employment', 'schedule', 'work_hours_per_day', 'has_evening_night_shifts', 'experience', 'education',
     'phrases', 'languages', 'conditions', 'drivers', 'additions',
-    'salary_from', 'salary_to', 'currency', 'salary_frequency', 'salary_payment_frequency', 'place', 'oformlenie', 'publication_city', 'work_address', 'location',
+    'salary_from', 'salary_to', 'currency', 'salary_frequency', 'salary_payment_frequency', 'salary_type', 'place', 'oformlenie', 'publication_city', 'work_address', 'location',
     'executor_name', 'executor_phone', 'executor_email', 'status', 'department', 'dateEnd', 'comment', 'peoples'
   ]
   
@@ -1382,7 +1427,6 @@ async function saveVacancy(opt) {
 
 const saveAndContinueHandler = inject('saveAndContinueHandler', null)
 const mainSaveHandler = inject('mainSaveHandler', null)
-const vacancyIdRef = inject('vacancyIdRef', null)
 onMounted(() => {
   if (saveAndContinueHandler) {
     saveAndContinueHandler.value = saveVacancy

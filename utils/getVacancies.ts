@@ -231,6 +231,52 @@ export async function getAvitoPublicationOriginalLocalOnly(
 }
 
 /**
+ * Снимок Avito как в админке: `GET /vacancies/{id}/avito-publication-original` **без** `local_only` —
+ * ответ из БД или автоматическая подтяжка с Job API при пустом снимке (см. `VacancyController::avitoPublicationOriginal`).
+ * `refresh=1` — принудительно перезапросить Avito (медленнее).
+ */
+export async function getAvitoPublicationOriginalSync(
+  vacancyId: number,
+  params?: { refresh?: boolean },
+): Promise<{
+  data?: { payload_original?: Record<string, unknown> | null; original?: Record<string, unknown>; avito_vacancy_id?: string };
+  error?: string;
+}> {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const serverToken = serverTokenCookie.value;
+  const userTokenCookie = useCookie('auth_user');
+  const userToken = userTokenCookie.value;
+  if (!serverToken || !userToken) {
+    return { error: 'no_auth' };
+  }
+  const query: Record<string, string> = {};
+  if (params?.refresh) {
+    query.refresh = '1';
+  }
+  try {
+    const response = await $fetch<{
+      message?: string;
+      data?: { payload_original?: Record<string, unknown> | null; original?: Record<string, unknown>; avito_vacancy_id?: string };
+    }>(`/vacancies/${vacancyId}/avito-publication-original`, {
+      method: 'GET',
+      baseURL: config.public.apiBase as string,
+      params: Object.keys(query).length ? query : undefined,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    return { data: response?.data };
+  } catch (err: unknown) {
+    const e = err as { data?: { message?: string }; message?: string };
+    const msg = e?.data?.message || e?.message || 'request_failed';
+    return { error: String(msg) };
+  }
+}
+
+/**
  * Снимок публикации rabota.ru из нашей БД без внешнего API (`local_only=1`).
  */
 export async function getRabotaPublicationOriginalLocalOnly(
