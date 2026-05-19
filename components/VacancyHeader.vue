@@ -4,10 +4,14 @@
     data-jobly-top-chrome
   >
     <div class="max-w-2xl px-50px py-[12.8px] mx-auto flex leading-normal items-center">
-      <NuxtLink to="/vacancies">
-        <h1 class="text-white text-25px font-bold uppercase px-3 py-0.5 mr-4">
-          jobly
-        </h1>
+      <NuxtLink to="/vacancies" class="relative shrink-0 -top-0.5 px-3 py-0.5 mr-4">
+        <img
+          src="/full-blue-white.svg"
+          alt="Наймикс"
+          class="block h-7 w-auto"
+          width="724"
+          height="133"
+        >
       </NuxtLink>
       <ul class="flex gap-x-5px items-center">
         <li>

@@ -25,7 +25,7 @@ export default defineNuxtRouteMiddleware(
 
     const tokenCookie = useCookie('auth_token');
 
-    if (to.path === '/auth' || to.path.startsWith('/public')) {
+    if (to.meta.auth === false || to.path === '/auth' || to.path.startsWith('/public')) {
       return;
     }
 

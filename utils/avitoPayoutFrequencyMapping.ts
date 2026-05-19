@@ -29,7 +29,7 @@ const LEGACY_AVITO_PAYOUT_TO_POPUP: Record<string, AvitoPayoutFrequencyId> = {
   projectPay: 'monthlyPay',
 }
 
-/** jobly id (5 значений формы) → payout_frequency.id Avito (4 варианта попапа). */
+/** id Наймикс (5 значений формы) → payout_frequency.id Avito (4 варианта попапа). */
 export const DEFAULT_JOBLY_TO_AVITO_PAYOUT_FREQUENCY: Record<JoblyPayoutFrequencyId, AvitoPayoutFrequencyId> = {
   DAILY: 'monthlyPay',
   WEEKLY: 'weeklyPay',
@@ -112,7 +112,7 @@ export function resolveJoblyPayoutFrequencyId(raw: unknown): string {
   return ''
 }
 
-/** Подставить частоту выплат Avito в salary_range из полей вакансии Jobly. */
+/** Подставить частоту выплат Avito в salary_range из полей вакансии Наймикс. */
 export function resolveAvitoPayoutFrequencyForJoblyVacancy(
   vacancy: Record<string, unknown> | null | undefined,
   mappingsRaw: unknown,

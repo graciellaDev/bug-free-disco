@@ -314,7 +314,7 @@ export function plainDescriptionToEditorHtml(plain: string): string {
   return parts.join('')
 }
 
-/** Единая точка: сырьё из Jobly → HTML для редактора. */
+/** Единая точка: сырьё из Наймикс → HTML для редактора. */
 export function formatDescriptionForAvitoEditor(raw: unknown): string {
   const source = String(raw ?? '').trim()
   if (!source) return ''

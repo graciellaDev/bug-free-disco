@@ -145,7 +145,7 @@
     </div>
         </div>
 
-        <!-- Попап «Опубликовать» на hh.ru: данные из вакансии Jobly по карте /admin/job-sites/vacancy-export -->
+        <!-- Попап «Опубликовать» на hh.ru: данные из вакансии Наймикс по карте /admin/job-sites/vacancy-export -->
         <Popup
             :isOpen="isPublishPopupOpen"
             @close="closePublishPopup"
@@ -634,7 +634,7 @@ import {
     getLanguages,
     getLanguageLevels,
 } from "~/utils/hhAccount";
-import { getAvitoProfile as getProfileAvito, authAvito, unlinkAvitoProfile as unlinkProfileAvito, getAvitoPublications as getPublicationsAvito, getAllAvitoPublications as getAllPublicationsAvito, archiveAvitoPublication as archivePublicationAvito, getAvitoPublicationTableStats, syncAvitoPublicationApplications } from "~/utils/avitoAccount";
+import { getAvitoProfile as getProfileAvito, authAvito, unlinkAvitoProfile as unlinkProfileAvito, getAvitoPublications as getPublicationsAvito, getAllAvitoPublications as getAllPublicationsAvito, archiveAvitoPublication as archivePublicationAvito, getAvitoPublicationTableStats, syncAvitoPublicationApplications, syncAvitoPublicationMessenger } from "~/utils/avitoAccount";
 import { getRabotaProfile as getProfileRabota, authRabota, unlinkRabotaProfile as unlinkProfileRabota, getRabotaPublications as getPublicationsRabota, getAllRabotaPublications as getAllPublicationsRabota, archiveRabotaPublication as archivePublicationRabota } from "~/utils/rabotaAccount";
 import { getSuperjobProfile as getProfileSuperjob, authSuperjob, unlinkSuperjobProfile as unlinkProfileSuperjob, getAllSuperjobPublications as getAllPublicationsSuperjob, archiveSuperjobPublication as archivePublicationSuperjob } from "~/utils/superjobAccount";
 import { dateStringToDayMonth, formatDate } from "@/helpers/date";
@@ -814,7 +814,7 @@ const currentVacancyId = computed(() => {
     return null;
 });
 
-/** ID вакансии Jobly для PUT hh-publication-original (если открыта страница вакансии). */
+/** ID вакансии Наймикс для PUT hh-publication-original (если открыта страница вакансии). */
 const publishHhVacancyNumericId = computed(() => {
     const id = currentVacancyId.value;
     const n = Number(id);
@@ -1239,6 +1239,10 @@ async function refreshPublicationPlatformsStats() {
                 const syncRes = await syncAvitoPublicationApplications(extVacancyId, vacancyId);
                 if (syncRes?.error) {
                     console.warn('Avito: импорт откликов:', syncRes.error);
+                }
+                const messengerRes = await syncAvitoPublicationMessenger(extVacancyId, vacancyId);
+                if (messengerRes?.error) {
+                    console.warn('Avito: синхронизация сообщений:', messengerRes.error);
                 }
                 item.responses = await getImportedCandidatesCountForVacancy(vacancyId, extVacancyId);
                 touchPublicationStatsCachedAt(item);
@@ -2751,7 +2755,7 @@ let editPopupLoadingTimer = null;
 /** Прелоадер в модалке «Публикация вакансии» (карточка платформы) до form-ready AddPublication */
 const isCreatePublicationLoading = ref(false);
 let createPublicationLoadingTimer = null;
-/** Попап полей оригинала hh.ru (отдельное хранилище, не форма Jobly). */
+/** Попап полей оригинала hh.ru (отдельное хранилище, не форма Наймикс). */
 const isHhOriginalPopupOpen = ref(false);
 const hhOriginalEditRow = ref(null);
 /** Открыто с карточки «Опубликовать»: без записи снимка в БД при GET, заголовок «Публикация…». */

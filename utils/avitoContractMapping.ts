@@ -61,7 +61,7 @@ const AVITO_BILLING_PRIORITY: Record<AvitoBillingTypeId, number> = {
   single: 1,
 }
 
-/** jobly id оформления → id кнопки в попапе Avito (enum API). */
+/** id Наймикс оформления → id кнопки в попапе Avito (enum API). */
 export const DEFAULT_JOBLY_TO_AVITO_CONTRACT: Record<string, string> = {
   labor: 'contract',
   internship: 'contract',

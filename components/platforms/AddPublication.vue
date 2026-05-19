@@ -1397,8 +1397,8 @@ async function openAvitoRequestPreview() {
     ).trim()
 
     avitoRequestPreviewMeta.value = publicationId
-      ? `Jobly → POST /api/avito/publications → Avito PUT /job/v2/vacancy/${publicationId}`
-      : 'Jobly → POST /api/avito/publications → Avito POST /job/v1/vacancies'
+      ? `Наймикс → POST /api/avito/publications → Avito PUT /job/v2/vacancy/${publicationId}`
+      : 'Наймикс → POST /api/avito/publications → Avito POST /job/v1/vacancies'
 
     avitoRequestPreviewPayload.value = {
       _meta: {
@@ -1974,7 +1974,7 @@ function shouldPreferJoblyVacancyTitleForAvito() {
   return isPublishCardAvito || Boolean(props.editPublicationLightShell)
 }
 
-/** Зарплату (налоги, период) берём из вакансии Jobly, а не из снимка Avito — кроме редактирования уже опубликованного объявления. */
+/** Зарплату (налоги, период) берём из вакансии Наймикс, а не из снимка Avito — кроме редактирования уже опубликованного объявления. */
 function shouldApplyJoblySalaryFieldsToAvito() {
   if (currentPlatform.value !== 'avito') return false
   if (shouldPreferJoblyVacancyTitleForAvito()) return true
@@ -2098,7 +2098,7 @@ function pickJoblyContactString(sources, key) {
   return ''
 }
 
-/** Контакты: только сотрудник/телефон из аккаунта Avito (не произвольный номер из Jobly). */
+/** Контакты: только сотрудник/телефон из аккаунта Avito (не произвольный номер из Наймикс). */
 function applyAvitoContactsFromJobly() {
   if (currentPlatform.value !== 'avito') return
   if (!shouldApplyJoblySalaryFieldsToAvito()) return
@@ -2583,7 +2583,7 @@ async function ensureAvitoContactEmployeesLoaded() {
   return avitoContactEmployeesLoadPromise
 }
 
-/** Сначала телефон из Jobly (если есть в Avito), иначе первый контакт в списке. */
+/** Сначала телефон из Наймикс (если есть в Avito), иначе первый контакт в списке. */
 function tryAutoSelectAvitoContactFromJobly() {
   if (data.value.avito_contact_employee?.phone) return
   const sources = collectJoblyContactSources()

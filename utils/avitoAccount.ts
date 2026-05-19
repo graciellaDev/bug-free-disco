@@ -253,6 +253,48 @@ export const syncAvitoPublicationApplications = async (
   }
 }
 
+/** Синхронизация сообщений Avito Messenger в ленту событий кандидатов вакансии. */
+export const syncAvitoPublicationMessenger = async (
+  avitoVacancyId: string | number,
+  vacancyId: number,
+): Promise<{
+  data: { imported?: number; updated?: number; skipped?: number; candidates_processed?: number } | null
+  error: string | null
+}> => {
+  const authTokens = getAuthTokens()
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' }
+  }
+  const { config, serverToken, userToken } = authTokens
+  try {
+    const response = await $fetch<{
+      message: string
+      data?: { imported?: number; updated?: number; skipped?: number; candidates_processed?: number }
+    }>(`/avito/publications/${encodeURIComponent(String(avitoVacancyId))}/sync-messenger`, {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: { vacancy_id: vacancyId },
+    })
+    return { data: response?.data ?? null, error: null }
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error()
+    }
+    const msg =
+      err.response?._data?.message ??
+      err.data?.message ??
+      err.message ??
+      'Ошибка синхронизации сообщений Avito'
+    return { data: null, error: String(msg) }
+  }
+}
+
 /** Статистика публикации для таблицы «Активные публикации». */
 export const getAvitoPublicationTableStats = async (id: string | number) => {
   const authTokens = getAuthTokens()
@@ -766,7 +808,7 @@ export const getSpecializations = async (professionId: string | number, search?:
  * сохраненной в админке.
  */
 /**
- * Получение таблицы сопоставлений опыта (jobly id -> avito experience id),
+ * Получение таблицы сопоставлений опыта (id Наймикс -> avito experience id),
  * сохраненной в админке.
  */
 export const getAvitoContractMappings = async () => {
