@@ -234,7 +234,7 @@
           <div class="mb-25px mt-25px border-t"></div>
           <p class="text-space text-xl font-semibold mb-8">Контакты для связи</p>
           <p class="text-xs text-bali mb-4 leading-normal">
-            Укажите сотрудника или телефон из аккаунта Avito — иначе публикация вернёт ошибку «Нет сотрудника с таким номером».
+            Укажите сотрудника или телефон из аккаунта Avito — иначе размещение вернёт ошибку «Нет сотрудника с таким номером».
           </p>
           <div class="w-full mb-6">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
@@ -267,16 +267,6 @@
           >
             <UiButton @click="savePublication" variant="action" size="semiaction" class="font-semibold">
               {{ isEditingMode ? 'Обновить' : 'Опубликовать' }}
-            </UiButton>
-            <UiButton
-              type="button"
-              variant="semiaction"
-              size="semiaction"
-              class="text-space"
-              :disabled="avitoRequestPreviewLoading"
-              @click="openAvitoRequestPreview"
-            >
-              {{ avitoRequestPreviewLoading ? 'Сборка…' : 'Посмотреть запрос' }}
             </UiButton>
             <div class="status" v-if="status">
               {{ status }}
@@ -589,13 +579,13 @@
           <div class="mb-25px mt-25px border-t"></div>
         </template>
         <p class="text-space text-xl font-semibold mb-8">
-          Город публикации и адрес работы
+          Город размещения и адрес работы
         </p>
         <template v-if="currentPlatform === 'hh'">
           <div class="w-full mb-6" data-error-field="area">
             <p class="text-sm font-medium text-space mb-3.5">
               <span class="text-red-custom">*</span>
-              Город публикации
+              Город размещения
             </p>
             <ClientOnly>
               <GeoInput
@@ -645,7 +635,7 @@
               <p class="text-sm font-medium mb-4 leading-normal"
                 :class="validFields.area.status === false ? 'text-red-custom' : 'text-space'">
                 <span class="text-red-custom">*</span>
-                Город публикации
+                Город размещения
               </p>
               <CityAutocomplete :options="citiesOptions" :model-value="data.area?.id || null"
                 @update:model-value="($event) => handleIdUpdate('area', $event)"
@@ -937,16 +927,6 @@
               <UiButton type="button" @click="savePublication" variant="action" size="semiaction" class="font-semibold">
                 {{ isEditingMode ? 'Обновить' : 'Опубликовать' }}
               </UiButton>
-              <UiButton
-                type="button"
-                variant="semiaction"
-                size="semiaction"
-                class="text-space"
-                :disabled="avitoRequestPreviewLoading"
-                @click="openAvitoRequestPreview"
-              >
-                {{ avitoRequestPreviewLoading ? 'Сборка…' : 'Посмотреть запрос' }}
-              </UiButton>
               <div v-if="status" class="status">{{ status }}</div>
               <UiButton type="button" variant="semiaction" size="semiaction" class="text-space" @click="emit('cancel')">
                 Отмена
@@ -996,7 +976,7 @@
     <div class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden rounded-fifteen bg-white">
       <div class="flex shrink-0 items-center justify-between border-b border-athens px-25px py-15px">
         <div>
-          <p class="text-lg font-semibold text-space">Запрос на публикацию в Avito</p>
+          <p class="text-lg font-semibold text-space">Запрос на размещение в Avito</p>
           <p v-if="avitoRequestPreviewMeta" class="text-xs text-slate-custom mt-1">
             {{ avitoRequestPreviewMeta }}
           </p>
@@ -1087,7 +1067,7 @@ const props = defineProps({
     default: null
   },
   /**
-   * Редактирование импортированной активной публикации (не hh): пустая форма как при «Опубликовать»,
+   * Редактирование импортированной активной размещения (не hh): пустая форма как при «Опубликовать»,
    * для Avito — заголовок и профессия из live-снимка при открытии (каталоги подгружаются в loadDictionaries).
    */
   editPublicationLightShell: {
@@ -1286,7 +1266,7 @@ const isNewHhPublicationFromCard =
 const isNewAvitoPublicationFromCard =
   isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'avito'
 
-/** По умолчанию публикация; черновик — только если пользователь отметил чекбокс (в формах, где он есть). */
+/** По умолчанию размещение; черновик — только если пользователь отметил чекбокс (в формах, где он есть). */
 const isDraft = ref(false)
 
 /** PublishTab не делает provide('platformsGlobal') — без дефолта setup падает на `for (… of platforms.value)`. */
@@ -1477,7 +1457,7 @@ function findByNameLoose(arr, value) {
 function applyJoblyVacancyToRabotaForm(vacancy) {
   if (!vacancy || currentPlatform.value !== 'rabota') return
 
-  // Город публикации/размещения: vacancy.location (строка) -> rabotaRegions
+  // Город размещения/размещения: vacancy.location (строка) -> rabotaRegions
   const loc = vacancy.location ?? vacancy.city ?? vacancy.area?.name
   if (typeof loc === 'string' && loc.trim()) {
     const match = findByNameLoose(rabotaRegions.value, loc)
@@ -1565,14 +1545,14 @@ function applyRabotaActivePublicationToForm() {
     }
   }
 
-  // Регион/город публикации + город размещения (если в публикации нет отдельного адреса — используем регион)
+  // Регион/город размещения + город размещения (если в размещения нет отдельного адреса — используем регион)
   const regionId = pub.region_id ?? pub.regionId ?? pub.region?.id ?? pub.area?.id ?? pub.address?.region_id
   const regionName = pub.region?.name ?? pub.region?.title ?? pub.area?.name
   if (regionId != null) {
     const match = findValueByIdOrName(rabotaRegions.value, regionId)
     const name = match?.name ?? match?.title ?? regionName
     data.value.area = { id: regionId, name }
-    // address в форме — это тоже CityAutocomplete; для rabota.ru часто совпадает с городом публикации
+    // address в форме — это тоже CityAutocomplete; для rabota.ru часто совпадает с городом размещения
     const showMetroOnly = data.value.address?.show_metro_only ?? false
     data.value.address = { id: regionId, name, show_metro_only: showMetroOnly }
   }
@@ -1874,7 +1854,7 @@ function normalizeAvitoProfessionScalar(raw) {
 }
 
 /**
- * ID профессии из сырого объекта публикации Avito (корень или params; Job API может отдавать profession как int или { key }).
+ * ID профессии из сырого объекта размещения Avito (корень или params; Job API может отдавать profession как int или { key }).
  */
 function resolveAvitoPublicationProfessionId(pub) {
   if (!pub || typeof pub !== 'object') return null
@@ -2610,7 +2590,7 @@ const avitoSalaryTaxMappings = ref({})
 const avitoPayoutFrequencyMappings = ref({})
 let avitoSalaryTaxApplyGeneration = 0
 const avitoCatalogs = ref({})
-/** Снимок объявления с Avito API при редактировании активной публикации (platform_id). */
+/** Снимок объявления с Avito API при редактировании активной размещения (platform_id). */
 const avitoActivePublication = ref(null)
 const avitoActivePublicationApplied = ref(false)
 /** Live-снимок при лёгком редактировании: каталоги подгружаются позже в loadDictionaries — профессию применяем там. */
@@ -2644,7 +2624,7 @@ const validFields = ref({
   },
   area: {
     status: true,
-    name: 'Город публикации',
+    name: 'Город размещения',
   },
   address: {
     status: true,
@@ -2974,7 +2954,7 @@ const citiesOptions = computed(() => {
 })
 
 // Computed свойства для выбора справочников в зависимости от платформы
-// При редактировании — из editingVacancy.platforms_data (id или name); при новой публикации — из selectedPlatform
+// При редактировании — из editingVacancy.platforms_data (id или name); при новой размещения — из selectedPlatform
 const platformIdToNameMap = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' }
 const currentPlatform = computed(() => {
   const platformData = props.editingVacancy?.platforms_data?.[0]
@@ -3256,7 +3236,7 @@ const applyComputedValues = async () => {
     }
   }
 
-  // Обработка города публикации из location
+  // Обработка города размещения из location
   // Устанавливаем город только если:
   // 1. Город найден в списке hh.ru
   // 2. Город еще не был установлен из вакансии (чтобы не блокировать работу выпадающего списка)
@@ -3266,7 +3246,7 @@ const applyComputedValues = async () => {
     const hasCity = data.value.area && data.value.area.id;
     if (!hasCity) {
 
-      // Устанавливаем город публикации и город размещения (из location вакансии — один и тот же город)
+      // Устанавливаем город размещения и город размещения (из location вакансии — один и тот же город)
       data.value.area = {
         id: city.id,
         name: city.name
@@ -4387,10 +4367,10 @@ const loadDictionaries = async (platform, opts = {}) => {
       rabotaEducationLevels.value = Array.isArray(educationResult.data) ? educationResult.data : (educationResult.data.items || [])
     }
 
-    // Если открыли модалку редактирования активной публикации rabota.ru — применяем данные публикации после загрузки справочников
+    // Если открыли модалку редактирования активной размещения rabota.ru — применяем данные размещения после загрузки справочников
     applyRabotaActivePublicationToForm()
 
-    // Если это модалка «Опубликовать» (новая публикация с карточки) — после загрузки справочников сматчим строковые поля вакансии в id справочников rabota.ru
+    // Если это модалка «Опубликовать» (новая размещение с карточки) — после загрузки справочников сматчим строковые поля вакансии в id справочников rabota.ru
     if (isNewPublicationFromCard && currentPlatform.value === 'rabota' && globCurrentVacancy.value) {
       applyJoblyVacancyToRabotaForm(globCurrentVacancy.value)
     }
@@ -4417,7 +4397,7 @@ const loadDictionaries = async (platform, opts = {}) => {
       await applyAvitoMappedPayoutFrequencyFromJobly()
       ensureAvitoSalaryDefaults()
     } catch (e) {
-      console.warn('Avito: применение данных публикации/маппинга после каталогов:', e)
+      console.warn('Avito: применение данных размещения/маппинга после каталогов:', e)
     }
     if (!opts.skipAvitoAddressHints) {
       // «Место работы»: подсказки из справочника городов (как для HH). С карточки «Опубликовать» адреса работодателя HH не подгружаются — иначе список пустой и «Город не найден».
@@ -4495,13 +4475,13 @@ const loadDictionaries = async (platform, opts = {}) => {
 const EDIT_PLATFORM_CATALOG_RACE_MS = 8000
 /** Редактирование: GET /vacancy-fields без таймаута мог вечно держать лоадер модалки (см. fillFormFromCurrentVacancy → drivers). */
 const VACANCY_FIELDS_FETCH_MS = 6000
-/** Live-запрос публикации с площадки при пустом снимке в БД — не держим модалку 20+ с при «висящем» прокси/API. */
+/** Live-запрос размещения с площадки при пустом снимке в БД — не держим модалку 20+ с при «висящем» прокси/API. */
 const PLATFORM_PUBLICATION_LIVE_FETCH_MS = 7000
 /** Инициализация формы: /vacancies/{id} не должен бесконечно держать прелоадер модалки. */
 const EDIT_VACANCY_FETCH_MS = 7000
 /** Local-only снимки площадок: не должны блокировать async setup модалки. */
 const PLATFORM_PUBLICATION_LOCAL_FETCH_MS = 5000
-/** Публикация Avito иногда долго обрабатывается на стороне площадки; не блокируем UI бесконечно. */
+/** Размещение Avito иногда долго обрабатывается на стороне площадки; не блокируем UI бесконечно. */
 const AVITO_PUBLISH_SOFT_TIMEOUT_MS = 12000
 
 async function getVacancyByIdWithTimeout(vacancyId) {
@@ -4775,7 +4755,7 @@ async function ensurePlatformAuthForEditingModeDeferred() {
   }
 }
 
-// Справочники hh.ru по умолчанию — не грузим при редактировании публикации avito/rabota/superjob (как отдельные платформы; HH — отдельное окно).
+// Справочники hh.ru по умолчанию — не грузим при редактировании размещения avito/rabota/superjob (как отдельные платформы; HH — отдельное окно).
 const skipDefaultHhReferenceLoads = isEditingMode.value && currentPlatform.value !== 'hh'
 
 if (!isNewPublicationFromCard && !skipDefaultHhReferenceLoads) {
@@ -5121,7 +5101,7 @@ async function fillFormFromCurrentVacancy() {
 
 const vacancyIdFields = ['experience', 'employment_form']
 
-// Заполнение формы: при редактировании из «Активные публикации» — вакансия по id строки (GET /api/vacancies/{id}), иначе — по id из URL
+// Заполнение формы: при редактировании из «Активные размещения» — вакансия по id строки (GET /api/vacancies/{id}), иначе — по id из URL
 async function loadInitialFormData() {
   const platformIdToName = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' };
 
@@ -5137,7 +5117,7 @@ async function loadInitialFormData() {
           ? String(vid).trim()
           : null;
 
-  // Импортированная публикация (лёгкий режим): пустая форма как при публикации; для Avito — название и профессия из live-снимка.
+  // Импортированная размещение (лёгкий режим): пустая форма как при размещения; для Avito — название и профессия из live-снимка.
   if (props.editPublicationLightShell && props.editingVacancy?.id) {
     vacancyId = String(props.editingVacancy.id);
     const platformData = props.editingVacancy.platforms_data?.[0];
@@ -5383,13 +5363,13 @@ async function loadInitialFormData() {
               timeoutR,
             ])
             if (pubResR?.__timeout) {
-              console.warn('Rabota: таймаут загрузки публикации с API')
+              console.warn('Rabota: таймаут загрузки размещения с API')
             } else if (!pubResR?.error && pubResR?.data) {
               rabotaActivePublication.value = pubResR.data
             }
           }
         } catch (e) {
-          console.warn('Не удалось загрузить публикацию rabota.ru для префилла формы:', e)
+          console.warn('Не удалось загрузить размещение rabota.ru для префилла формы:', e)
         }
       }
       // Avito.ru: сначала снимок из БД Jobly (мгновенно), иначе — API Avito с таймаутом (без таймаута модалка зависает на лоадере).
@@ -5427,7 +5407,7 @@ async function loadInitialFormData() {
               timeoutPromise,
             ])
             if (syncRes?.__timeout) {
-              console.warn('Avito: таймаут снимка публикации (GET …/vacancies/{id}/avito-publication-original)')
+              console.warn('Avito: таймаут снимка размещения (GET …/vacancies/{id}/avito-publication-original)')
             } else if (
               !syncRes?.error &&
               syncRes?.data?.payload_original != null &&
@@ -5438,7 +5418,7 @@ async function loadInitialFormData() {
             }
           }
         } catch (e) {
-          console.warn('Не удалось загрузить публикацию avito для префилла формы:', e)
+          console.warn('Не удалось загрузить размещение avito для префилла формы:', e)
         }
       }
       // Для SuperJob: загружаем каталог и подставляем профессиональную сферу из текущей вакансии на платформе
@@ -5740,7 +5720,7 @@ if (!inject('isPlatforms') && !isNewPublicationFromCard && currentPlatform.value
   }
 }
 
-// При новой публикации (selectedPlatform) — всегда устанавливаем платформу и загружаем справочники
+// При новой размещения (selectedPlatform) — всегда устанавливаем платформу и загружаем справочники
 const targetPlatformFromProps = props.selectedPlatform ? normalizePlatformName(props.selectedPlatform) : null
 const skipAvitoBootstrappingForPublishCard = isNewAvitoPublicationFromCard
 const avitoPublishCardNameHydratedFromRoute = ref(false)
@@ -5781,7 +5761,7 @@ async function bootstrapAvitoPublishCardForm() {
       void loadAvitoDictionariesSecondaryMappings()
         .then(() => (v ? applyAvitoPublishCardMappingsFromJobly() : undefined))
         .catch((e) => {
-          console.warn('Avito: вторичные маппинги карточки публикации:', e)
+          console.warn('Avito: вторичные маппинги карточки размещения:', e)
         })
       if (!avitoPublishCardNameHydratedFromRoute.value) {
         await ensureAvitoPublishCardNameFromRouteVacancy()
@@ -5790,7 +5770,7 @@ async function bootstrapAvitoPublishCardForm() {
         applyAvitoWorkPlaceFromJobly()
       })
     } catch (e) {
-      console.warn('Avito: отложенная загрузка формы публикации:', e)
+      console.warn('Avito: отложенная загрузка формы размещения:', e)
     }
   })()
 
@@ -6090,7 +6070,7 @@ if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
   }
 }
 
-/** Режим «Активные публикации» → редактирование: одна платформа строки, без перебора hh → avito (лишние запросы и задержка). */
+/** Режим «Активные размещения» → редактирование: одна платформа строки, без перебора hh → avito (лишние запросы и задержка). */
 async function ensurePlatformAuthForEditingMode() {
   if (!isEditingMode.value || props.selectedPlatform) return
   const target = currentPlatform.value
@@ -6201,7 +6181,7 @@ if (isEditingMode.value && !props.selectedPlatform) {
       })()
     }
   } catch (e) {
-    console.warn('AddPublication: init редактирования публикации:', e)
+    console.warn('AddPublication: init редактирования размещения:', e)
     if (import.meta.client) {
       void nextTick(() => emit('form-ready'))
     }
@@ -6209,7 +6189,7 @@ if (isEditingMode.value && !props.selectedPlatform) {
 } else {
   for (let key of platforms.value) {
   if (!isPlatforms.value) {
-    // Если передан selectedPlatform через props, используем его (новая публикация)
+    // Если передан selectedPlatform через props, используем его (новая размещение)
     if (props.selectedPlatform) {
       const targetPlatform = normalizePlatformName(props.selectedPlatform)
       if (key.platform === targetPlatform) {
@@ -6517,7 +6497,7 @@ const validateFields = () => {
       validFields.value[key].status = true
       continue
     }
-    // Одно поле «Место работы» (address); «Город публикации» (area) в UI Avito нет — не валидируем отдельно
+    // Одно поле «Место работы» (address); «Город размещения» (area) в UI Avito нет — не валидируем отдельно
     if (currentPlatform.value === 'avito' && key === 'area') {
       validFields.value[key].status = true
       continue
@@ -6740,9 +6720,9 @@ const savePublication = async () => {
         if (platformResponse?.error || platformResponse?.errorDraft) {
           status.value = 'Вакансия обновлена. Ошибка обновления на платформе: ' + (platformResponse?.error || platformResponse?.errorDraft || 'неизвестная ошибка');
         } else if (platformId === 2 && avitoRequestTimedOut) {
-          status.value = 'Вакансия обновлена. Публикация на Avito выполняется дольше обычного и продолжается в фоне.';
+          status.value = 'Вакансия обновлена. Размещение на Avito выполняется дольше обычного и продолжается в фоне.';
         } else {
-          status.value = 'Вакансия и публикация на платформе успешно обновлены';
+          status.value = 'Вакансия и размещение на платформе успешно обновлены';
         }
       } else {
         status.value = 'Вакансия успешно обновлена';
@@ -6823,7 +6803,7 @@ const savePublication = async () => {
     status.value = response.error || response.errorDraft || 'Ошибка при сохранении вакансии'
   } else {
     if (currentPlatform === 'avito' && avitoRequestTimedOut) {
-      status.value = 'Запрос на публикацию отправлен, Avito отвечает дольше обычного. Обновление может появиться в списке с задержкой.'
+      status.value = 'Запрос на размещение отправлен, Avito отвечает дольше обычного. Обновление может появиться в списке с задержкой.'
     } else if (isDraft.value) {
       status.value = 'Вакансия успешно сохранена в черновике'
     } else {
@@ -6949,7 +6929,7 @@ onMounted(() => {
       updateComputedValues()
       await applyComputedValues()
     } catch (e) {
-      console.warn('Отложенная загрузка HH после показа формы публикации:', e)
+      console.warn('Отложенная загрузка HH после показа формы размещения:', e)
     }
   })()
 })

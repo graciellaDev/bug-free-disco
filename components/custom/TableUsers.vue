@@ -25,8 +25,9 @@
                         <div class="cell-inner">
                             <span class="text-sm font-medium text-space">{{ item.email || '—' }}</span>
                         </div>
-                        <div class="cell-inner">
+                        <div class="cell-inner flex flex-col gap-0.5">
                             <span class="text-sm font-medium text-space">{{ item.role || '—' }}</span>
+                            <span v-if="item.invitationPending" class="text-xs text-bali">Ожидает принятия приглашения</span>
                         </div>
                         <div>
                             <DotsDropdonw :items="dropdownOptions" @select-item="(selectedItem) => handleDropdownSelect(selectedItem, item)" />

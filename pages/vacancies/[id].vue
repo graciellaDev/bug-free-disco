@@ -325,6 +325,9 @@
     );
   });
 
+  const fetchCandidateById = (candidateId: number) =>
+    getCandidateById(candidateId, getVacancyId());
+
   const getVacancyId = (): string => {
     const vacancyId = Array.isArray(route.params.id)
       ? route.params.id[0]
@@ -381,7 +384,7 @@
     loadingCandidateId.value = id;
     isLoadingCandidate.value = true;
     try {
-      const result = await getCandidateById(id);
+      const result = await fetchCandidateById(id);
       const data = result.candidateData;
       selectedCandidate.value = data;
       syncCandidateToUrl(data.id);
@@ -561,7 +564,7 @@
     const fromList = candidatesList.value?.find(x => x.id === id);
     if (fromList) return fromList;
     try {
-      const r = await getCandidateById(id);
+      const r = await fetchCandidateById(id);
       return r.candidateData;
     } catch {
       return null;
@@ -598,7 +601,7 @@
     const list = filteredCandidatesList.value || [];
     if (selId != null && list.some(c => c.id === selId)) {
       try {
-        const r = await getCandidateById(selId);
+        const r = await fetchCandidateById(selId);
         selectedCandidate.value = r.candidateData;
       } catch {
         if (list.length > 0) {
@@ -1050,7 +1053,7 @@
 
       if (idOk(persistedSelectedId)) {
         try {
-          const result = await getCandidateById(Number(persistedSelectedId));
+          const result = await fetchCandidateById(Number(persistedSelectedId));
           selectedCandidate.value = result.candidateData;
           syncCandidateToUrl(result.candidateData.id);
         } catch (error) {
@@ -1065,7 +1068,7 @@
 
     if (idOk(persistedSelectedId) && Number(persistedSelectedId) === updatedId) {
       try {
-        const result = await getCandidateById(updatedId);
+        const result = await fetchCandidateById(updatedId);
         selectedCandidate.value = result.candidateData;
         syncCandidateToUrl(result.candidateData.id);
         logRefreshKey.value++;
@@ -1094,7 +1097,7 @@
         Number(persistedIdAfterBadMove) > 0
       ) {
         try {
-          const result = await getCandidateById(Number(persistedIdAfterBadMove));
+          const result = await fetchCandidateById(Number(persistedIdAfterBadMove));
           selectedCandidate.value = result.candidateData;
           syncCandidateToUrl(result.candidateData.id);
         } catch (error) {
@@ -1152,7 +1155,7 @@
     // Перенос внутри текущей вакансии: обновляем данные текущего кандидата
     if (selectedCandidate.value?.id === movedCandidateId) {
       try {
-        const result = await getCandidateById(movedCandidateId);
+        const result = await fetchCandidateById(movedCandidateId);
         selectedCandidate.value = result.candidateData;
         logRefreshKey.value++;
       } catch (error) {
@@ -1309,7 +1312,7 @@
           await waitForCandidatesLoaded();
           const list = filteredCandidatesList.value || [];
           if (list.length > 0) {
-            const result = await getCandidateById(list[0].id);
+            const result = await fetchCandidateById(list[0].id);
             selectedCandidate.value = result.candidateData;
             // Обновляем URL на ?candidate=ID; stage убираем
             syncCandidateToUrl(result.candidateData.id);

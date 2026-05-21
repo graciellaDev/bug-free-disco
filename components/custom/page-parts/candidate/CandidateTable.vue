@@ -5,7 +5,7 @@
   import UiAvatarImage from '@/components/ui/avatar/AvatarImage.vue';
   import UiAvatarFallback from '@/components/ui/avatar/AvatarFallback.vue';
   import CardIcon from '@/components/custom/CardIcon.vue';
-  import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
+  import ListSectionPlaceholder from '@/components/custom/ListSectionPlaceholder.vue';
   import { getVacancyName } from '@/src/api/vacancies';
   import { getCandidateSourceLogoPath } from '@/utils/candidateSourceLogo';
 
@@ -122,11 +122,22 @@
 </script>
 
 <template>
-  <div>
-    <div v-if="loading" class="absolute left-1/2 top-1/2">
-      <UiDotsLoader />
-    </div>
-    <div v-else class="table-container" :class="containerClass">
+  <div class="relative rounded-fifteen bg-white" :class="containerClass">
+    <ListSectionPlaceholder
+      v-if="loading"
+      variant="candidates"
+      loading
+    />
+
+    <ListSectionPlaceholder
+      v-else-if="!candidates || candidates.length === 0"
+      variant="candidates"
+    >
+      <slot name="empty-action" />
+    </ListSectionPlaceholder>
+
+    <template v-else>
+    <div class="table-container">
       <div class="table-header">
         <div v-if="showCheckboxes">
           <MyCheckbox
@@ -143,7 +154,6 @@
         <div class="px-2.5">Вакансия</div>
         <div class="px-2.5">Этап</div>
       </div>
-    </div>
 
     <div class="table-body">
       <div
@@ -234,15 +244,8 @@
         </div>
       </div>
     </div>
-
-    <div
-      v-if="!loading && (!candidates || candidates.length === 0)"
-      class="empty-state"
-    >
-      <slot name="empty">
-        <p class="text-state-custom text-center">Кандидаты не найдены</p>
-      </slot>
     </div>
+    </template>
   </div>
 </template>
 <style scoped>

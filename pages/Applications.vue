@@ -1,6 +1,7 @@
 <template>
   <div class="container pb-72 pt-[34px]">
     <div
+      v-if="showListPageHeader"
       class="mb-3.5 flex items-center justify-between rounded-fifteen bg-white p-25px"
     >
       <div>
@@ -40,6 +41,7 @@
     </div>
 
     <div
+      v-if="!error && !loading && data.length > 0"
       class="mb-px w-full rounded-t-fifteen bg-catskill pl-15px pr-25px leading-normal"
     >
       <div
@@ -74,13 +76,46 @@
         <div></div>
       </div>
     </div>
-    <div class="rounded-b-fifteen bg-white p-25px" v-if="loading">
-      <UiDotsLoader />
+    <div v-if="error" class="rounded-b-fifteen bg-white p-25px text-sm text-red-500">
+      {{ error }}
     </div>
-    <div v-else-if="error">{{ error }}</div>
-    <div v-else>
-      <div v-if="data.length === 0">Заявки не найдены.</div>
-      <div v-else>
+    <ListSectionPlaceholder
+      v-else-if="loading"
+      variant="applications"
+      loading
+      class="rounded-fifteen"
+    />
+    <ListSectionPlaceholder
+      v-else-if="data.length === 0"
+      variant="applications"
+      class="rounded-fifteen"
+    >
+      <UiButton
+        v-if="userRole === 'admin'"
+        size="semiaction"
+        variant="action"
+        @click="isNewAppPopupAdmin = true"
+      >
+        Новая заявка
+      </UiButton>
+      <UiButton
+        v-else-if="userRole === 'responsible'"
+        size="semiaction"
+        variant="action"
+        @click="isNewAppPopupResponsible = true"
+      >
+        Новая заявка
+      </UiButton>
+      <UiButton
+        v-else-if="userRole === 'customer'"
+        size="semiaction"
+        variant="action"
+        @click="isNewAppPopupCustomer = true"
+      >
+        Новая заявка
+      </UiButton>
+    </ListSectionPlaceholder>
+    <div v-else class="rounded-b-fifteen bg-white">
         <div
           v-for="(vacancy, index) in data"
           :key="index"
@@ -198,7 +233,6 @@
             />
           </div>
         </div>
-      </div>
     </div>
     <div v-if="userRole === 'admin' && isNewAppPopupAdmin">
       <transition
@@ -1220,7 +1254,7 @@
   import MyDropdown from '~/components/custom/MyDropdown.vue';
   import MyTextarea from '~/components/custom/MyTextarea.vue';
   import ChatMin from '~/components/custom/chat-min';
-  import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
+  import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
   import UiCircleLoader from '~/components/custom/UiCircleLoader.vue';
   import Pagination from '~/components/custom/Pagination.vue';
   import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue';
@@ -1258,6 +1292,10 @@
   const error = ref(null);
   const loading = ref(true);
   const loadingItem = ref(false);
+
+  const showListPageHeader = computed(
+    () => !error.value && !loading.value && data.value.length > 0
+  );
   const errorItem = ref(null);
   const isOpenDateFrom = ref(false);
   const isOpenDateTo = ref(false);

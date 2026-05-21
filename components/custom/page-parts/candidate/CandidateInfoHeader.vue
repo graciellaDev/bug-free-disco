@@ -16,10 +16,13 @@
       showRefuseButton?: boolean;
       /** E-mail для проверки перед письмом */
       candidateEmail?: string | null;
+      /** Просрочен лимит «время на этапе» */
+      stageOverdue?: boolean;
     }>(),
     {
       showRefuseButton: true,
       candidateEmail: null,
+      stageOverdue: false,
     }
   );
 
@@ -98,13 +101,18 @@
       'justify-end': !isFunnel && !$slots.left,
     }"
   >
-    <ButtonSelector
+    <div
       v-if="isFunnel"
-      :options="options"
-      :modelValue="selectedLabel"
-      @update:modelValue="emit('update:selectedLabel', $event)"
-      @confirm-transfer="emit('confirm-transfer', $event)"
-    />
+      class="inline-flex flex-col gap-1.5"
+      :class="{ 'stage-transfer--overdue': stageOverdue }"
+    >
+      <ButtonSelector
+        :options="options"
+        :modelValue="selectedLabel"
+        @update:modelValue="emit('update:selectedLabel', $event)"
+        @confirm-transfer="emit('confirm-transfer', $event)"
+      />
+    </div>
     <slot v-else-if="$slots.left" name="left" />
     <div class="flex gap-x-2.5">
       <BtnIcon
@@ -160,6 +168,15 @@
     </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+  .stage-transfer--overdue {
+    border-radius: 10px;
+    padding: 2px;
+    background-color: #fff8f9;
+    box-shadow: 0 0 0 1px #f5c6cb;
+  }
+</style>
 
 <style>
   .fields-tab-error-toast {

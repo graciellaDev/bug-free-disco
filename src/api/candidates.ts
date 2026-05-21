@@ -84,10 +84,18 @@ export async function getCandidatesAllPages(
     return all;
 }
 
-export async function getCandidateById(id: number): Promise<ApiResponseById> {
+export async function getCandidateById(
+    id: number,
+    vacancyId?: number | string | null
+): Promise<ApiResponseById> {
     try {
+        const query =
+            vacancyId != null && String(vacancyId) !== ''
+                ? { vacancy_id: String(vacancyId) }
+                : undefined;
         const response = await apiGet<ApiCandidateByIdResponse['data']>(
-            `/candidates/${id}`
+            `/candidates/${id}`,
+            query
         );
         return {
             candidateData: response.data as Candidate,

@@ -2,7 +2,7 @@
   import VacancyCard from '~/components/custom/page-parts/VacancyCard.vue';
   import Pagination from '@/components/custom/Pagination.vue';
   import MultiSelect from '~/components/custom/MultiSelect.vue';
-  import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
+  import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
   import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
 
   import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -71,6 +71,16 @@
   );
 
   /** Есть ли активные фильтры (для подсветки иконки фильтра) */
+  const activeEmptyTitle = computed(() =>
+    hasActiveFilters.value ? 'Ничего не найдено' : 'Пока нет открытых вакансий'
+  );
+
+  const activeEmptyDescription = computed(() =>
+    hasActiveFilters.value
+      ? 'Попробуйте изменить фильтры или сбросить их, чтобы увидеть другие вакансии.'
+      : 'Создайте первую вакансию — затем ведите кандидатов и размещайте объявления на работных сайтах.'
+  );
+
   const hasActiveFilters = computed(() => {
     const f = filters.value;
     return (
@@ -164,6 +174,7 @@
 
   function funnelToggleActive() {
     isActiveFunnel.value = !isActiveFunnel.value;
+    if (!cardsBlock.value) return;
     cardsBlock.value.style.borderBottomLeftRadius = isActiveFunnel.value
       ? '0px'
       : '15px';
@@ -415,27 +426,33 @@
   onBeforeUnmount(() => {
     document.removeEventListener('click', handleFiltersClickOutside);
   });
+
+  const totalVacancyCount = computed(
+    () =>
+      vacancies.value.length +
+      vacanciesDraft.value.length +
+      vacanciesClosed.value.length +
+      vacanciesArchive.value.length
+  );
+
+  const showListPageHeader = computed(
+    () => !loading.value && totalVacancyCount.value > 0
+  );
 </script>
 
 <template>
   <div class="pb-28px container pt-35px relative">
-    <!-- Прелоадер по центру экрана при загрузке вакансий -->
-    <div
-      v-if="loading"
-      class="fixed inset-0 z-[100] flex items-center justify-center"
-    >
-      <UiDotsLoader />
-    </div>
     <!-- header block -->
     <div
+      v-if="showListPageHeader"
       class="flex w-full items-center justify-between rounded-t-fifteen bg-white p-25px"
     >
       <div>
         <p class="mb-2.5 text-xl font-semibold leading-normal text-space">
           Вакансии
         </p>
-        <p class="text-sm font-normal text-slate-custom">
-          Управляйте вакансиями с этого раздела
+        <p class="text-sm font-normal leading-relaxed text-slate-custom">
+          Открывайте позиции, ведите воронку кандидатов и размещайте на работных сайтах
         </p>
       </div>
       <NuxtLink to="/vacancies/newvacancy">
@@ -446,8 +463,9 @@
         </span>
       </NuxtLink>
     </div>
-    <!-- cards block -->
+    <!-- cards block: табы и фильтры — только если есть хотя бы одна вакансия -->
     <div
+      v-if="showListPageHeader"
       class="filters-wrapper relative mb-15px rounded-b-[10px] bg-catskill px-25px pt-[16px] pb-[16px] transition-all"
       ref="cardsBlock"
     >
@@ -550,7 +568,7 @@
             <transition name="fade">
               <div
                 v-if="isActiveSort"
-                class="sort-dropdown absolute left-0 left-[unset] right-0 top-[50px] z-10 min-w-[280px] rounded-b-ten rounded-t-ten bg-white py-15px shadow-xl"
+                class="sort-dropdown absolute left-0 left-[unset] right-0 top-[50px] z-10 w-max max-w-[calc(100vw-32px)] rounded-b-ten rounded-t-ten bg-white py-15px shadow-xl"
               >
                 <p class="sort-dropdown__title px-25px pb-15px text-base font-semibold leading-normal text-space">
                   Сортировка
@@ -558,20 +576,20 @@
                 <div class="sort-dropdown__group">
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'new' }"
                     @click="applySort('new')"
                   >
-                    <span>Сначала недавно созданные</span>
+                    <span class="whitespace-nowrap">Сначала недавно созданные</span>
                     <svg-icon v-if="sortMode === 'new'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'old' }"
                     @click="applySort('old')"
                   >
-                    <span>Сначала давно созданные</span>
+                    <span class="whitespace-nowrap">Сначала давно созданные</span>
                     <svg-icon v-if="sortMode === 'old'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
@@ -579,20 +597,20 @@
                 <div class="sort-dropdown__group">
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'urgent' }"
                     @click="applySort('urgent')"
                   >
-                    <span>По дате закрытия. Сначала срочные</span>
+                    <span class="whitespace-nowrap">По дате закрытия. Сначала срочные</span>
                     <svg-icon v-if="sortMode === 'urgent'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'non-urgent' }"
                     @click="applySort('non-urgent')"
                   >
-                    <span>По дате закрытия. Сначала несрочные</span>
+                    <span class="whitespace-nowrap">По дате закрытия. Сначала несрочные</span>
                     <svg-icon v-if="sortMode === 'non-urgent'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
@@ -600,20 +618,20 @@
                 <div class="sort-dropdown__group">
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'asc' }"
                     @click="applySort('asc')"
                   >
-                    <span>По названию от А до Я</span>
+                    <span class="whitespace-nowrap">По названию от А до Я</span>
                     <svg-icon v-if="sortMode === 'asc'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'desc' }"
                     @click="applySort('desc')"
                   >
-                    <span>По названию от Я до А</span>
+                    <span class="whitespace-nowrap">По названию от Я до А</span>
                     <svg-icon v-if="sortMode === 'desc'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
@@ -819,24 +837,40 @@
               @page-changed="handlePageChange"
             />
           </div>
-          <div
-            v-if="vacancies.length === 0 && loading === false"
-            class="relative mb-35px bg-catskill p-20 px-25px text-center transition-all"
+          <ListSectionPlaceholder
+            v-if="loading && activeVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacancies.length === 0"
+            variant="vacancy"
+            :title="activeEmptyTitle"
+            :description="activeEmptyDescription"
           >
-            Вакансий не найдено
-          </div>
+            <NuxtLink
+              v-if="!hasActiveFilters"
+              to="/vacancies/newvacancy"
+              class="inline-flex items-center justify-center rounded-ten bg-dodger px-[19px] py-11.5px text-sm font-semibold text-white transition-colors hover:bg-[#4680e6]"
+            >
+              Добавить вакансию
+            </NuxtLink>
+          </ListSectionPlaceholder>
         </div>
       </transition>
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="draftVacancies" class="active-view absolute w-full">
-          <div
-            v-if="vacanciesDraft.length === 0"
-            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
-          >
-            <p class="text-15px font-medium text-slate-custom">
-              Вы ещё не добавили вакансии которые можно редактировать
-            </p>
-          </div>
+          <ListSectionPlaceholder
+            v-if="loading && draftVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacanciesDraft.length === 0"
+            variant="vacancy"
+            title="Черновиков пока нет"
+            description="Здесь появятся вакансии, которые вы сохранили как черновик и ещё не опубликовали."
+          />
           <div v-if="vacanciesDraft.length > 0" class="flex flex-col gap-15px">
             <VacancyCard
               v-for="(vacancy, index) in paginatedDraftVacancies"
@@ -859,14 +893,17 @@
       </transition>
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="closedVacancies" class="active-view absolute w-full">
-          <div
-            v-if="vacanciesClosed.length === 0"
-            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
-          >
-            <p class="text-15px font-medium text-slate-custom">
-              Закрытых вакансий пока нет
-            </p>
-          </div>
+          <ListSectionPlaceholder
+            v-if="loading && closedVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacanciesClosed.length === 0"
+            variant="vacancy"
+            title="Закрытых вакансий пока нет"
+            description="После закрытия позиции она появится в этом списке."
+          />
           <div v-if="vacanciesClosed.length > 0" class="flex flex-col gap-15px">
             <VacancyCard
               v-for="(vacancy, index) in paginatedClosedVacancies"
@@ -889,14 +926,17 @@
       </transition>
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="archiveVacancies" class="active-view absolute w-full">
-          <div
-            v-if="vacanciesArchive.length === 0"
-            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
-          >
-            <p class="text-15px font-medium text-slate-custom">
-              Вы еще не добавляли вакансии в архив
-            </p>
-          </div>
+          <ListSectionPlaceholder
+            v-if="loading && archiveVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacanciesArchive.length === 0"
+            variant="vacancy"
+            title="Архив пуст"
+            description="Сюда попадают вакансии, которые вы перенесли в архив."
+          />
           <div
             v-if="vacanciesArchive.length > 0"
             class="flex flex-col gap-15px"

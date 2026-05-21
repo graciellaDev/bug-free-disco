@@ -25,8 +25,21 @@ export default defineNuxtRouteMiddleware(
 
     const tokenCookie = useCookie('auth_token');
 
-    if (to.meta.auth === false || to.path === '/auth' || to.path.startsWith('/public')) {
+    if (
+      to.meta.auth === false ||
+      to.path === '/auth' ||
+      to.path.startsWith('/auth/') ||
+      to.path.startsWith('/public')
+    ) {
+      if (to.path === '/auth' && tokenCookie?.value && import.meta.client) {
+        return navigateTo('/vacancies', { replace: true });
+      }
       return;
+    }
+
+    // Главная (дашборд) временно скрыта — стартовая страница после входа: вакансии
+    if (to.path === '/' && tokenCookie?.value) {
+      return navigateTo('/vacancies', { replace: true });
     }
 
     // Проверка: токен отсутствует, пустой или null

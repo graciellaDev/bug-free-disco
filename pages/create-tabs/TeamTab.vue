@@ -4,7 +4,7 @@
             <div>
                 <p class="text-xl font-semibold text-space mb-2.5">Ваша команда</p>
                 <p class="text-sm font-normal text-slate-custom">
-                    Назначьте рекрутеров или заказчиков, которые будут взаимодействовать с&nbsp;этой вакансией
+                    Вы можете пригласить как пользователя, уже зарегистрированного в системе, так и нового пользователя (по E-mail)
                 </p>
             </div>
             <UiButton variant="black" size="black" class="font-bold" @click="openPopup">Добавить участников</UiButton>
@@ -19,40 +19,110 @@
           width="490px"
           :height="'fit-content'"
           :disableOverflowHidden="true"
+          :parentRounded="true"
+          :contentRounded="false"
           :contentPadding="false"
         >
             <!-- Первое окно: Новый участник -->
-            <div>
-                <p class="text-xl font-semibold text-space mb-2.5">Новый участник</p>
-                <p class="text-sm font-normal text-slate-custom mb-25px">
-                    Приглашенному участнику придет письмо с&nbsp;доступом, которое нужно подтвердить.
+            <div class="team-invite-popup__content flex flex-col gap-y-5">
+                <p class="text-xl font-semibold text-space">Новый участник</p>
+                <p class="text-sm font-normal leading-relaxed text-slate-custom">
+                    Выберите роль в вакансии и укажите человека — из вашей команды в Наймикс или пригласите по email нового участника.
+                    На почту уйдёт письмо с доступом.
                 </p>
-                <div class="flex gap-x-1 mb-15px items-center">
+
+                <div>
+                <div class="flex gap-x-1 mb-3 items-center">
                     <span class="text-red">*</span>
-                    <p class="text-sm font-medium text-space leading-normal">Доступ</p>
+                    <p class="text-sm font-medium text-space leading-normal">Роль в вакансии</p>
                 </div>
-                <MultiDropdown v-model="selectedRole" :options="optionsData" class="mb-25px" />
-                <div class="flex gap-x-1 mb-15px items-center">
-                    <span class="text-red">*</span>
-                    <p class="text-sm font-medium text-space leading-normal">Пользователь</p>
+                <MultiDropdown
+                  v-model="selectedRole"
+                  :options="optionsData"
+                  placeholder="Выберите роль"
+                  class="w-full"
+                />
                 </div>
-                <response-input
-                  class="mb-15px"
-                  placeholder="Выберите рекрутера"
-                  :modelValue="selectedEmployee?.name ?? ''"
-                  :responses="employeesNotInTeam"
-                  :showRoles="true"
-                  @update:modelValue="(name, id, email) => {
-                    emailInvoice = email ?? '';
-                    selectedEmployee = id != null ? (employeesNotInTeam.find(emp => emp.id === id) || null) : null;
-                  }"
-                 />
-                <!-- <EmailInput v-model="emailInvoice" class="mb-15px" /> -->
-                <div class="flex gap-x-15px">
-                    <UiButton variant="action" size="action" @click="switchToConfirmation">Пригласить</UiButton>
-                    <UiButton variant="back" size="back" @click="closePopup">Отмена</UiButton>
+
+                <div>
+                    <p class="text-sm font-medium text-space mb-3">Кого добавить</p>
+                    <BtnTab
+                      v-model="inviteMode"
+                      :tabs="inviteModeTabs"
+                    />
                 </div>
-                <p class="text-red-500 text-xs mt-1" v-if="errorMessage">
+
+                <template v-if="inviteMode === 'existing'">
+                    <p class="text-sm text-slate-custom">
+                        Найдите сотрудника, который уже есть в вашей организации.
+                    </p>
+                    <div>
+                        <div class="flex gap-x-1 mb-3 items-center">
+                            <span class="text-red">*</span>
+                            <p class="text-sm font-medium text-space leading-normal">Сотрудник</p>
+                        </div>
+                        <response-input
+                          placeholder="Имя или email"
+                          :modelValue="selectedEmployee?.name ?? ''"
+                          :responses="employeesNotInTeam"
+                          :showRoles="true"
+                          notFound="Никого не найдено — пригласите по email"
+                          @update:modelValue="onSelectExistingEmployee"
+                        />
+                    </div>
+                </template>
+
+                <template v-else>
+                    <div>
+                        <p class="text-sm text-slate-custom mb-3">
+                            Отправим приглашение на почту. После регистрации человек появится в команде вакансии.
+                        </p>
+                        <div>
+                            <div class="flex gap-x-1 mb-3 items-center">
+                                <span class="text-red">*</span>
+                                <p class="text-sm font-medium text-space leading-normal">Email</p>
+                            </div>
+                            <MyInput
+                              v-model="emailInvoice"
+                              type="email"
+                              placeholder="name@company.ru"
+                              class="w-full"
+                              @input="errorMessage = null"
+                            />
+                        </div>
+                        <div class="mt-4">
+                            <p class="text-sm font-medium text-space mb-3">Телефон</p>
+                            <PhoneInput
+                              v-model="externalInvitePhone"
+                              class="w-full"
+                              @input="errorMessage = null"
+                            />
+                        </div>
+                        <div class="mt-4">
+                            <p class="text-sm font-medium text-space mb-3">Фамилия и имя пользователя</p>
+                            <MyInput
+                              v-model="externalInviteName"
+                              placeholder="Иванов Иван"
+                              class="w-full"
+                            />
+                        </div>
+                    </div>
+                </template>
+
+                <div class="flex gap-x-3">
+                    <UiButton
+                      variant="action"
+                      size="action"
+                      :disabled="isInviting"
+                      @click="submitInvite"
+                    >
+                      {{ isInviting ? 'Отправка…' : 'Пригласить' }}
+                    </UiButton>
+                    <UiButton variant="back" size="back" :disabled="isInviting" @click="closePopup">
+                      Отмена
+                    </UiButton>
+                </div>
+                <p v-if="errorMessage" class="text-red-500 text-xs">
                     {{ errorMessage }}
                 </p>
             </div>
@@ -66,18 +136,24 @@
           width="490px"
           :height="'fit-content'"
           :disableOverflowHidden="true"
+          :parentRounded="true"
+          :contentRounded="false"
           :contentPadding="false"
         >
             <!-- Второе окно: Приглашение отправлено -->
-            <div v-if="activePopup === 'confirmation'">
-                <p class="text-xl font-semibold text-space mb-2.5">Приглашение отправлено</p>
-                <p class="text-sm font-normal text-slate-custom mb-25px">
-                    Пользователю {{ emailInvoice }} направлено письмо с регистрацией в системе.
-                    Вы получите уведомление, как только он примет ваше приглашение.
+            <div v-if="activePopup === 'confirmation'" class="team-invite-popup__content flex flex-col gap-y-6">
+                <p class="text-xl font-semibold text-space">Готово</p>
+                <p class="text-sm font-normal leading-relaxed text-slate-custom">
+                    <template v-if="confirmationWasExternal">
+                        На адрес <span class="font-medium text-space">{{ confirmationEmail }}</span> отправлено письмо
+                        с регистрацией. После входа участник появится в команде вакансии.
+                    </template>
+                    <template v-else>
+                        <span class="font-medium text-space">{{ confirmationName }}</span> добавлен в команду вакансии.
+                    </template>
                 </p>
-                <div class="flex gap-x-15px">
+                <div class="flex gap-x-3">
                     <UiButton variant="action" size="semiaction" @click="closePopup">Хорошо</UiButton>
-                    <UiButton variant="delete" size="delete" @click="cancelInvitation">Отменить приглашение</UiButton>
                 </div>
             </div>
         </Popup>
@@ -131,16 +207,17 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, watch, onMounted, onActivated, inject } from "vue";
 
-import MyCheckbox from "~/components/custom/MyCheckbox.vue";
-import DotsDropdonw from '~/components/custom/DotsDropdown.vue';
-import CardIcon from '~/components/custom/CardIcon.vue';
 import Popup from '~/components/custom/Popup.vue';
 import MultiDropdown from '~/components/custom/MultiDropdown.vue';
-import { teamList, employeesList, removeFromTeam } from "@/utils/executorsList";
-import ResponseInput from "~/components/custom/ResponseInput.vue";
-import TableUsers from "@/components/custom/TableUsers.vue";
-import { useRoute } from 'vue-router'
+import BtnTab from '~/components/custom/BtnTab.vue';
+import MyInput from '~/components/custom/MyInput.vue';
+import PhoneInput from '~/components/custom/PhoneInput.vue';
+import { teamList, employeesList, removeFromTeam } from '@/utils/executorsList';
+import ResponseInput from '~/components/custom/ResponseInput.vue';
+import TableUsers from '@/components/custom/TableUsers.vue';
+import { useRoute } from 'vue-router';
 import { updateVacancyApi as updateVacancy } from '@/utils/getVacancies';
+import { registerClient } from '@/utils/registerUser';
 
 const props = defineProps({
     id: { type: [String, Number], default: null },
@@ -151,6 +228,17 @@ const allSelected = ref(false);
 const hoveredIndex = ref(null);
 const isPopupOpen = ref(false); // control visibility popup
 const emailInvoice = ref('');
+const externalInviteName = ref('');
+const externalInvitePhone = ref('');
+const inviteMode = ref('existing');
+const inviteModeTabs = [
+    { label: 'Уже в системе', value: 'existing' },
+    { label: 'Нового по email', value: 'email' },
+];
+const isInviting = ref(false);
+const confirmationEmail = ref('');
+const confirmationName = ref('');
+const confirmationWasExternal = ref(false);
 const activePopup = ref('invite'); // Текущее активное окно ('invite' or 'confirmation')
 const employees = ref([]);
 const users = ref([]);
@@ -211,6 +299,14 @@ const employeesNotInTeam = computed(() => {
     return employees.value.filter((emp) => !teamIds.has(emp.id));
 });
 
+watch(inviteMode, () => {
+    selectedEmployee.value = null;
+    emailInvoice.value = '';
+    externalInviteName.value = '';
+    externalInvitePhone.value = '';
+    errorMessage.value = null;
+});
+
 // Функции для управления прокруткой
 function disableBodyScroll() {
     document.body.style.overflow = 'hidden'; // Отключаем прокрутку
@@ -230,6 +326,9 @@ function resetForm() {
     errorMessage.value = null;
     selectedRole.value = null;
     selectedEmployee.value = null;
+    inviteMode.value = 'existing';
+    externalInviteName.value = '';
+    externalInvitePhone.value = '';
 }
 
 function closePopup() {
@@ -237,73 +336,191 @@ function closePopup() {
     activePopup.value = 'invite';
     resetForm();
     emailInvoice.value = '';
+    confirmationEmail.value = '';
+    confirmationName.value = '';
+    confirmationWasExternal.value = false;
+    isInviting.value = false;
     userToDelete.value = null;
     deleteErrorMessage.value = null;
     enableBodyScroll();
 }
 
-async function switchToConfirmation() {
-    if (selectedRole.value === null || selectedEmployee.value === null) {
-        errorMessage.value = 'Пожалуйста, выберите роль и пользователя';
-        return;
+function onSelectExistingEmployee(name, id, email) {
+    emailInvoice.value = email ?? '';
+    selectedEmployee.value =
+        id != null
+            ? employeesNotInTeam.value.find((emp) => emp.id === id) || null
+            : null;
+    errorMessage.value = null;
+}
+
+function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function formatPhoneForApi(phone) {
+    let digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('8')) {
+        digits = '7' + digits.slice(1);
+    }
+    if (digits.length === 10) {
+        digits = '7' + digits;
+    }
+    if (digits.length === 11 && digits.startsWith('7')) {
+        return `+${digits}`;
+    }
+    return String(phone || '').trim() || undefined;
+}
+
+/** CRM role_id для регистрации нового пользователя по типу доступа в вакансии */
+function crmRoleIdForVacancyAccess(vacancyRoleId) {
+    if (vacancyRoleId === 5) return 5;
+    return 3;
+}
+
+function registerPathForVacancyAccess(vacancyRoleId) {
+    return vacancyRoleId === 5 ? 'register-client' : 'register-recruiter';
+}
+
+async function resolveCustomerIdByEmail(email) {
+    const normalized = email.trim().toLowerCase();
+    let list = employees.value;
+    let found = list.find((e) => (e.email || '').toLowerCase() === normalized);
+    if (found?.id) return found.id;
+
+    const refreshed = await employeesList();
+    employees.value = Array.isArray(refreshed) ? refreshed : [];
+    found = employees.value.find((e) => (e.email || '').toLowerCase() === normalized);
+    return found?.id ?? null;
+}
+
+async function inviteByEmail() {
+    const email = emailInvoice.value.trim();
+    if (!isValidEmail(email)) {
+        errorMessage.value = 'Укажите корректный email';
+        return null;
     }
 
-    // Проверяем наличие ID вакансии
-    if (!currectVacancyId.value) {
-        errorMessage.value = 'ID вакансии не найден';
-        return;
-    }
+    const name =
+        externalInviteName.value.trim() ||
+        email.split('@')[0]?.replace(/[._-]/g, ' ') ||
+        email;
 
-    console.log('selectedEmployee', selectedEmployee);
-    // Подготавливаем данные для обновления вакансии
-    const updateData = {
-        // executor_id: selectedEmployee.value.id || null,
-        // executor_name: selectedEmployee.value.name || null,
-        // executor_email: emailInvoice.value || selectedEmployee.value.email || null,
-        // executor_phone: selectedEmployee.value.phone || null,
-        role_id: selectedRole.value.id ? Number(selectedRole.value.id) : null,
-        customer_role: selectedEmployee.value.id ? Number(selectedEmployee.value.id) : null,
+    const vacancyRoleId = Number(selectedRole.value?.id);
+    const path = registerPathForVacancyAccess(vacancyRoleId);
+    const phoneValue = formatPhoneForApi(externalInvitePhone.value);
+    const payload = {
+        name,
+        email,
+        login: email,
+        role_id: crmRoleIdForVacancyAccess(vacancyRoleId),
+        ...(phoneValue ? { phone: phoneValue } : {}),
     };
 
-    try {
-        // Отправляем запрос на обновление вакансии
-        const result = await updateVacancy(currectVacancyId.value, updateData);
+    const { error, message } = await registerClient(path, payload);
+    if (error) {
+        const existingId = await resolveCustomerIdByEmail(email);
+        if (existingId) return existingId;
+        errorMessage.value =
+            message || 'Не удалось отправить приглашение. Проверьте email или выберите «Уже в системе».';
+        return null;
+    }
 
-        if (result.error) {
-            errorMessage.value = typeof result.error === 'string'
-                ? result.error
-                : 'Ошибка при обновлении вакансии';
+    const customerId = await resolveCustomerIdByEmail(email);
+    if (!customerId) {
+        errorMessage.value =
+            'Приглашение отправлено, но не удалось добавить в вакансию. Обновите страницу и попробуйте снова.';
+        return null;
+    }
+    return customerId;
+}
+
+async function addMemberToVacancyTeam(customerId, displayEmail, displayName, wasExternal) {
+    const updateData = {
+        role_id: selectedRole.value?.id ? Number(selectedRole.value.id) : null,
+        customer_role: Number(customerId),
+    };
+
+    const result = await updateVacancy(currectVacancyId.value, updateData);
+    if (result.error) {
+        errorMessage.value =
+            typeof result.error === 'string' ? result.error : 'Не удалось добавить в команду вакансии';
+        return false;
+    }
+
+    const addedRoleName = selectedRole.value?.title ?? selectedRole.value?.name ?? '';
+    let newList = await teamList(String(currectVacancyId.value));
+    if (customerId && !newList.some((u) => u.id === customerId)) {
+        newList = [
+            ...newList,
+            {
+                id: customerId,
+                name: displayName,
+                email: displayEmail,
+                role: addedRoleName,
+                invitationPending: wasExternal,
+            },
+        ];
+    }
+    users.value = newList;
+
+    confirmationEmail.value = displayEmail;
+    confirmationName.value = displayName;
+    confirmationWasExternal.value = wasExternal;
+    resetForm();
+    activePopup.value = 'confirmation';
+    return true;
+}
+
+async function submitInvite() {
+    errorMessage.value = null;
+
+    if (!selectedRole.value) {
+        errorMessage.value = 'Выберите роль в вакансии';
+        return;
+    }
+    if (!currectVacancyId.value) {
+        errorMessage.value = 'Сначала сохраните вакансию';
+        return;
+    }
+
+    isInviting.value = true;
+    try {
+        if (inviteMode.value === 'existing') {
+            if (!selectedEmployee.value?.id) {
+                errorMessage.value = 'Выберите сотрудника из списка';
+                return;
+            }
+            await addMemberToVacancyTeam(
+                selectedEmployee.value.id,
+                selectedEmployee.value.email ?? '',
+                selectedEmployee.value.name ?? '',
+                false
+            );
             return;
         }
 
-        const addedId = selectedEmployee.value?.id;
-        const addedName = selectedEmployee.value?.name;
-        const addedEmail = selectedEmployee.value?.email ?? emailInvoice.value;
-        const addedRoleName = selectedRole.value?.title ?? selectedRole.value?.name ?? '';
+        const customerId = await inviteByEmail();
+        if (!customerId) return;
 
-        let newList = await teamList(currectVacancyId.value);
-        if (addedId && !newList.some((u) => u.id === addedId)) {
-            newList = [...newList, { id: addedId, name: addedName, email: addedEmail, role: addedRoleName }];
-        }
-        users.value = newList;
-
-        // Очищаем форму только после успешного обновления
-        resetForm();
-
-        // Переключаемся на окно confirmation
-        activePopup.value = 'confirmation';
+        const email = emailInvoice.value.trim();
+        const name =
+            externalInviteName.value.trim() ||
+            email.split('@')[0]?.replace(/[._-]/g, ' ') ||
+            email;
+        await addMemberToVacancyTeam(customerId, email, name, true);
     } catch (err) {
-        console.error('Ошибка при обновлении вакансии:', err);
+        console.error('Ошибка при приглашении:', err);
         const body = err?.data ?? err?.response?.data ?? err?.response?._data;
         const serverMsg = body?.message ?? body?.error;
         errorMessage.value = serverMsg
-            ? (typeof serverMsg === 'string' ? serverMsg : JSON.stringify(serverMsg))
-            : 'Произошла ошибка при обновлении вакансии';
+            ? typeof serverMsg === 'string'
+                ? serverMsg
+                : JSON.stringify(serverMsg)
+            : 'Произошла ошибка при приглашении';
+    } finally {
+        isInviting.value = false;
     }
-}
-
-function cancelInvitation() {
-    alert('Приглашение отменено');
 }
 
 function openDeletePopup(user) {
@@ -412,5 +629,9 @@ watch(selected, (newSelected) => {
 .fade-leave-from {
     opacity: 1;
     /* transform: scale(1); */
+}
+
+.team-invite-popup__content {
+    padding: 0;
 }
 </style>

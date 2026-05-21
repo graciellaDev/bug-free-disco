@@ -13,6 +13,7 @@
   import CardIcon from '@/components/custom/CardIcon.vue';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
   import { getCandidateSourceLogoPath } from '@/utils/candidateSourceLogo';
+  import { getCandidateStageOverdueInfo } from '@/utils/candidateStageOverdue';
 
   import type { Candidate } from '@/types/candidates';
 
@@ -103,6 +104,12 @@
 
   const getSourceLogo = (candidate: Candidate): string | null =>
     getCandidateSourceLogoPath(candidate);
+
+  const isStageOverdue = (candidate: Candidate) =>
+    getCandidateStageOverdueInfo(candidate).overdue;
+
+  const stageOverdueHint = (candidate: Candidate) =>
+    getCandidateStageOverdueInfo(candidate).hint;
 </script>
 
 <template>
@@ -123,7 +130,11 @@
         v-for="(candidate, index) in candidates"
         :key="candidate.id"
         class="candidate-item"
-        :class="{ 'candidate-item--active': props.activeCandidateId != null && candidate.id === props.activeCandidateId }"
+        :class="{
+          'candidate-item--active': props.activeCandidateId != null && candidate.id === props.activeCandidateId,
+          'candidate-item--overdue': isStageOverdue(candidate),
+        }"
+        :title="isStageOverdue(candidate) ? (stageOverdueHint(candidate) ?? undefined) : undefined"
       >
         <!-- Чекбокс -->
         <div v-if="showCheckboxes" class="checkbox-cell">
@@ -157,6 +168,12 @@
               :title="getPositionTitle(candidate) || undefined"
             >
               {{ getPositionTitle(candidate) }}
+            </p>
+            <p
+              v-if="isStageOverdue(candidate)"
+              class="candidate-overdue-badge"
+            >
+              Просрочка на этапе
             </p>
           </div>
         </div>
@@ -228,6 +245,23 @@
 
   .candidate-item:hover {
     background-color: #f9fafb;
+  }
+
+  .candidate-item--overdue {
+    border-left: 3px solid #e85d6f;
+    padding-left: 13px;
+  }
+
+  .candidate-item--overdue:not(.candidate-item--active) {
+    background-color: #fff8f9;
+  }
+
+  .candidate-overdue-badge {
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: #e85d6f;
   }
 
   .candidate-item--active {

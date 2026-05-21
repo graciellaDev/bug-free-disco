@@ -34,6 +34,7 @@
   import { getCandidateProfileExternalUrl, getCandidateResumePdfUrl, getCandidateViewOnSourceMenuLabel } from '@/utils/candidateSourceLinks';
   import { displayCandidateEmailOrEmpty } from '@/utils/candidateDisplayEmail';
   import { buildCandidateCopyPayload } from '@/utils/buildCandidateCopyPayload';
+  import { getCandidateStageOverdueInfo } from '@/utils/candidateStageOverdue';
 
   import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
   import type { Stage } from '@/types/funnels';
@@ -59,6 +60,13 @@
     /** Перезагрузить ленту событий (комментарий, смена этапа и т.д.) */
     'candidate-activity-refresh': [];
   }>();
+
+  const stageOverdueInfo = computed(() =>
+    getCandidateStageOverdueInfo(
+      props.candidate,
+      props.vacancy?.stages ?? (props.stages as Array<{ id: number; max_days?: number | null }>)
+    )
+  );
 
   const isRejectedStage = computed(() => {
     const sid = props.candidate?.stage;
@@ -615,6 +623,17 @@
 </script>
 <template>
   <div class="relative mb-15px rounded-fifteen bg-white p-25px pt-15px">
+    <div
+      v-if="isFunnel && stageOverdueInfo.overdue"
+      class="mb-3 flex items-start gap-2 rounded-ten border border-pink bg-pink/40 px-3 py-2.5"
+      role="status"
+    >
+      <svg-icon name="stop20" width="18" height="18" class="shrink-0 text-red-custom mt-0.5" />
+      <p class="text-sm text-space leading-normal">
+        <span class="font-medium text-red-custom">Просрочка на этапе.</span>
+        {{ stageOverdueInfo.hint ?? 'Превышен лимит времени на этапе.' }}
+      </p>
+    </div>
     <CandidateInfoHeader
       :isFunnel="isFunnel"
       :options="options"
@@ -622,6 +641,7 @@
       :dropdownOptions="dropdownOptions"
       :show-refuse-button="!isRejectedStage"
       :candidate-email="candidateHeaderClipboardEmail"
+      :stage-overdue="stageOverdueInfo.overdue"
       @select-item="candidateActionsUI.handleSelectItem"
       @add-comment="handleAddCommentClick"
       @new-task="handleNewTaskClick"

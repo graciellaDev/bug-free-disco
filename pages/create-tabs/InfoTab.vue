@@ -15,13 +15,13 @@ import CheckboxGroup from '~/components/custom/CheckboxGroup.vue'
 import PhoneInput from '~/components/custom/PhoneInput.vue'
 import EmailInput from '~/components/custom/EmailInput.vue'
 import CustomDropdown from '~/components/custom/CustomDropdown.vue'
-import GenerateButton from '~/components/custom/GenerateButton.vue'
+// import GenerateButton from '~/components/custom/GenerateButton.vue' // временно скрыто в блоке «Описание»
 import MyTextarea from '~/components/custom/MyTextarea.vue'
 import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue'
 import SpecializationSelector from '~/components/custom/SpecializationSelector.vue'
 import MultiSelect from '~/components/custom/MultiSelect.vue'
 import SkillsDropdown from '~/components/custom/SkillsDropdown.vue'
-import { getDepartments, executorsList } from '~/utils/executorsList'
+import { getDepartments, employeesList } from '~/utils/executorsList'
 import { useRoute } from 'vue-router'
 import { createError } from '#app'
 import { getHhRoles as getRolesHh, getLanguages, getLanguageLevels } from '@/utils/hhAccount'
@@ -134,10 +134,10 @@ const handleCheck = id => {
 
 onBeforeMount(async () => {
   try {
-    const result = await executorsList();
-    executors.value = result?.executors || []
+    const list = await employeesList();
+    executors.value = Array.isArray(list) ? list : []
   } catch (e) {
-    console.warn('executorsList:', e?.message || e)
+    console.warn('employeesList:', e?.message || e)
     executors.value = []
   }
   // Специализации из локальной БД (бэкенд GET /api/specializations)
@@ -2012,13 +2012,13 @@ const updateExecutor = (value, id) => {
           Описание вакансии
         </p>
         <div class="w-full mb-3.5" data-error-field="description">
-          <div class="w-full flex justify-between">
-            <p class="text-sm font-medium text-space">
-              <span class="text-red-custom">*</span>
-              Описание вакансии
-            </p>
-            <generate-button />
-          </div>
+          <p class="text-sm font-medium text-space">
+            <span class="text-red-custom">*</span>
+            Описание вакансии
+          </p>
+          <!-- GenerateButton (ИИ: тон, перегенерация) — временно скрыто
+          <GenerateButton />
+          -->
         </div>
         <div
           class="mt-15px mb-11px rounded-fifteen border transition-colors"

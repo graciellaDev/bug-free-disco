@@ -9,6 +9,7 @@ interface Team {
     'name': string;
     'email': string;
     'role': string;
+    invitationPending?: boolean;
 }
 
 interface Division {
@@ -35,6 +36,7 @@ interface ApiTeam {
         'id': number,
         'name': string
     };
+    invitation_pending?: boolean;
 }
 
 interface ApiDepartment {
@@ -291,7 +293,8 @@ export async function  teamList(id: string) {
             id: executor.id,
             name: executor.name,
             email: executor.email,
-            role: executor?.role?.name ?? ''
+            role: executor?.role?.name ?? '',
+            invitationPending: Boolean(executor.invitation_pending),
         }));
 
         return employees;

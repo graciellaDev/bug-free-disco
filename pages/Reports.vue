@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue';
+import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
 import MyDropdown from '~/components/custom/MyDropdown.vue';
 import MultiSelect from '~/components/custom/MultiSelect.vue';
 import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
@@ -1692,10 +1693,18 @@ function exportReportsCsv() {
       <!-- Отчёт «Воронка статусов по вакансии»: этапы и полосы по выбранной вакансии -->
       <div class="rounded-fifteen bg-white p-25px shadow-sm sm:px-[50px]">
         <template v-if="!selectedVacancy">
-          <p class="py-8 text-center text-slate-custom">Выберите вакансию, чтобы отобразить этапы и воронку кандидатов.</p>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Выберите вакансию"
+            description="Выберите вакансию в фильтрах выше, чтобы отобразить этапы и воронку кандидатов."
+          />
         </template>
         <template v-else-if="vacancyStages.length === 0">
-          <p class="py-8 text-center text-slate-custom">Загрузка этапов вакансии…</p>
+          <ListSectionPlaceholder
+            variant="reports"
+            loading
+            loading-title="Загрузка этапов вакансии…"
+          />
         </template>
         <div v-else class="flex gap-8">
           <!-- Воронка кандидатов: название этапа напротив полосы, в скобках — накопительное количество (прошло через этап) -->
@@ -1766,16 +1775,24 @@ function exportReportsCsv() {
           Отчет по отказам
         </p>
         <template v-if="!selectedVacancy">
-          <p class="py-8 text-center text-slate-custom">Выберите вакансию, чтобы открыть отчёт.</p>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Выберите вакансию"
+            description="Выберите вакансию в фильтрах выше, чтобы открыть отчёт."
+          />
         </template>
         <template v-else-if="rejectionReportLoading">
-          <p class="py-8 text-center text-slate-custom">Загрузка данных…</p>
+          <ListSectionPlaceholder variant="reports" loading loading-title="Загрузка данных…" />
         </template>
         <template v-else-if="rejectionReportError">
           <p class="py-8 text-center text-red-custom">{{ rejectionReportError }}</p>
         </template>
         <template v-else-if="!rejectionReportDisplayRows.length">
-          <p class="py-8 text-center text-slate-custom">Нет строк в ответе сервера за выбранный период.</p>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Нет данных за период"
+            description="За выбранный период нет отказов по этапам. Измените фильтры и нажмите «Применить»."
+          />
         </template>
         <template v-else>
           <div class="overflow-x-auto">
@@ -1857,10 +1874,14 @@ function exportReportsCsv() {
     <template v-else-if="metric === 'Поток кандидатов'">
       <div class="flex flex-col gap-[25px] rounded-fifteen bg-white p-25px shadow-sm">
         <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
-          <p class="py-8 text-center text-slate-custom">Выберите вакансию и период в фильтрах выше.</p>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Выберите вакансию и период"
+            description="Укажите вакансию и период в фильтрах выше, затем нажмите «Применить»."
+          />
         </template>
         <template v-else-if="funnelLoading">
-          <p class="py-8 text-center text-slate-custom">Загрузка…</p>
+          <ListSectionPlaceholder variant="reports" loading />
         </template>
         <template v-else-if="funnelError">
           <p class="py-8 text-center text-red-custom">{{ funnelError }}</p>
@@ -2023,14 +2044,15 @@ function exportReportsCsv() {
     <template v-else-if="metric === 'Среднее время на этапе'">
       <div class="flex flex-col gap-[15px]">
         <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
-          <div class="rounded-fifteen bg-white p-25px shadow-sm">
-            <p class="py-8 text-center text-slate-custom">Выберите вакансию и период в фильтрах выше.</p>
-          </div>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Выберите вакансию и период"
+            description="Укажите вакансию и период в фильтрах выше, затем нажмите «Применить»."
+            class="shadow-sm"
+          />
         </template>
         <template v-else-if="stageAvgLoading">
-          <div class="rounded-fifteen bg-white p-25px shadow-sm">
-            <p class="py-8 text-center text-slate-custom">Загрузка…</p>
-          </div>
+          <ListSectionPlaceholder variant="reports" loading class="shadow-sm" />
         </template>
         <template v-else-if="stageAvgEffective">
           <!-- Верхняя карточка: сводка + баннер (Figma Variant3) -->
@@ -2106,9 +2128,12 @@ function exportReportsCsv() {
           </div>
         </template>
         <template v-else>
-          <div class="rounded-fifteen bg-white p-25px shadow-sm">
-            <p class="py-8 text-center text-slate-custom">Нет данных для отображения.</p>
-          </div>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Нет данных для отображения"
+            description="За выбранные фильтры нет показателей. Измените период или вакансию и нажмите «Применить»."
+            class="shadow-sm"
+          />
         </template>
       </div>
     </template>
@@ -2119,13 +2144,17 @@ function exportReportsCsv() {
           Отчет по рекрутерам
         </p>
         <template v-if="recruitersReportLoading">
-          <p class="py-8 text-center text-slate-custom">Загрузка данных…</p>
+          <ListSectionPlaceholder variant="reports" loading loading-title="Загрузка данных…" />
         </template>
         <template v-else-if="recruitersReportError">
           <p class="py-8 text-center text-red-custom">{{ recruitersReportError }}</p>
         </template>
         <template v-else-if="!(recruitersReportData?.recruiters?.length)">
-          <p class="py-8 text-center text-slate-custom">Нет данных за выбранные фильтры.</p>
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Нет данных"
+            description="За выбранные фильтры нет строк отчёта. Измените период или фильтры и нажмите «Применить»."
+          />
         </template>
         <template v-else>
           <div class="overflow-x-auto">
@@ -2225,14 +2254,20 @@ function exportReportsCsv() {
 
     <template v-else-if="metric === 'Возможные источники'">
       <template v-if="!selectedVacancy">
-        <div class="rounded-fifteen bg-white p-25px shadow-sm">
-          <p class="py-8 text-center text-slate-custom">Выберите вакансию — данные подтягиваются из списка кандидатов по выбранной вакансии и периоду.</p>
-        </div>
+        <ListSectionPlaceholder
+          variant="reports"
+          title="Выберите вакансию"
+          description="Данные подтягиваются из списка кандидатов по выбранной вакансии и периоду."
+          class="shadow-sm"
+        />
       </template>
       <template v-else-if="candidatesLoading">
-        <div class="rounded-fifteen bg-white p-25px shadow-sm">
-          <p class="py-8 text-center text-slate-custom">Загрузка кандидатов…</p>
-        </div>
+        <ListSectionPlaceholder
+          variant="reports"
+          loading
+          loading-title="Загрузка кандидатов…"
+          class="shadow-sm"
+        />
       </template>
       <template v-else>
         <div

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, watch } from 'vue';
+  import { ref, watch, computed } from 'vue';
   import { useRouter } from 'vue-router';
   // import { disableBodyScroll, enableBodyScroll } from '@/utils/bodyScoll';
   import MyInput from '~/components/custom/MyInput.vue';
@@ -62,6 +62,11 @@
     loadPage: handlePageChange,
     refresh: refreshCandidates,
   } = useCandidateList();
+
+  const showCandidatesPageChrome = computed(
+    () =>
+      !loadingCandidates.value && (candidatesList.value?.length ?? 0) > 0
+  );
 
   const funnelToggleActive = () => {
     isActiveFunnel.value = !isActiveFunnel.value;
@@ -193,8 +198,11 @@
 </script>
 
 <template>
-  <div class="container pb-28 pt-6">
-    <div class="relative mb-15px rounded-fifteen bg-white p-25px">
+  <div class="container pb-28 pt-35px">
+    <div
+      v-if="showCandidatesPageChrome"
+      class="relative mb-15px rounded-fifteen bg-white p-25px"
+    >
       <div class="mb-50px flex items-center justify-between">
         <div class="flex flex-col gap-2.5">
           <h2 class="mb-2.5 text-xl font-semibold leading-normal text-space">
@@ -245,7 +253,17 @@
         @item-click="handleCandidateClick"
         @selection-change="handleSelectionChange"
         @select-all="handleSelectAll"
-      />
+      >
+        <template v-if="userRole === 'admin'" #empty-action>
+          <UiButton
+            size="semiaction"
+            variant="action"
+            @click="addCandidatePopup.open()"
+          >
+            Добавить кандидата
+          </UiButton>
+        </template>
+      </CandidateTable>
 
       <Pagination
         v-if="pagination && pagination.last_page > 1"
