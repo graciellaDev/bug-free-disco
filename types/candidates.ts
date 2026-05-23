@@ -195,6 +195,12 @@ export interface Candidate {
     customer?: number | null;
     vacancy_id?: number | null;
     stage?: number | null;
+    /** Дней на текущем этапе воронки (API) */
+    stage_days_on?: number | null;
+    /** Лимит дней на этапе для вакансии (API) */
+    stage_max_days?: number | null;
+    /** Превышен лимит «время на этапе» (API) */
+    stage_overdue?: boolean;
     /** Выбранная причина отказа (id из справочника аккаунта) */
     rejection_reason_id?: number | null;
     /** Вложенный объект из API после загрузки связи */

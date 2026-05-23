@@ -7,6 +7,7 @@ import {
   type NotificationCandidate,
   type NotificationsMeta,
 } from '~/src/api/notifications'
+import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue'
 
 definePageMeta({
   layout: 'default',
@@ -42,6 +43,7 @@ const errorText = ref<string | null>(null)
 const activeFilter = ref<FilterKey>('all')
 const rawItems = ref<NotificationApiItem[]>([])
 const meta = ref<NotificationsMeta | null>(null)
+const FORCE_NOTIFICATIONS_PLACEHOLDER = true
 
 const abortController = new AbortController()
 
@@ -156,6 +158,16 @@ const items = computed<UiNotification[]>(() =>
   filteredRaw.value.map((n, idx) => normalizeApiItem(n, idx))
 )
 
+const emptyStateTitle = computed(() =>
+  rawItems.value.length ? 'Нет уведомлений для выбранного фильтра' : 'Нет новых уведомлений'
+)
+
+const emptyStateDescription = computed(() =>
+  rawItems.value.length
+    ? 'Попробуйте переключить тип уведомлений, чтобы посмотреть другие события.'
+    : 'Когда появятся новые события, уведомления будут отображаться в этом разделе.'
+)
+
 function pad2(n: number) {
   return n < 10 ? `0${n}` : String(n)
 }
@@ -225,7 +237,10 @@ const lastPage = computed(() => meta.value?.last_page ?? 1)
 const canPrev = computed(() => currentPage.value > 1)
 const canNext = computed(() => currentPage.value < lastPage.value)
 
-onMounted(() => load(1))
+onMounted(() => {
+  if (FORCE_NOTIFICATIONS_PLACEHOLDER) return
+  void load(1)
+})
 onBeforeUnmount(() => abortController.abort())
 </script>
 
@@ -237,38 +252,54 @@ onBeforeUnmount(() => abortController.abort())
           Фильтры
         </p>
         <div>
-          <p class="mb-10px text-sm font-medium text-bali">
+          <p class="mb-15px text-sm font-medium text-bali">
             Тип уведомления
           </p>
-          <div class="flex flex-wrap gap-10px">
+          <div class="flex flex-wrap gap-x-[14px] gap-y-[14px]">
             <button
               type="button"
-              class="rounded-ten px-15px py-9px text-sm font-medium transition"
-              :class="activeFilter === 'all' ? 'bg-athens-gray text-space' : 'bg-[#F7F8FB] text-bali hover:text-space'"
+              class="flex h-[36px] items-center rounded-[10px] px-[16px] text-[13px] font-medium leading-[1.3] transition-colors"
+              :class="
+                activeFilter === 'all'
+                  ? 'bg-space text-white'
+                  : 'bg-athens-gray text-space hover:bg-athens'
+              "
               @click="activeFilter = 'all'"
             >
               Все
             </button>
             <button
               type="button"
-              class="rounded-ten px-15px py-9px text-sm font-medium transition"
-              :class="activeFilter === 'important' ? 'bg-athens-gray text-space' : 'bg-[#F7F8FB] text-bali hover:text-space'"
+              class="flex h-[36px] items-center rounded-[10px] px-[16px] text-[13px] font-medium leading-[1.3] transition-colors"
+              :class="
+                activeFilter === 'important'
+                  ? 'bg-space text-white'
+                  : 'bg-athens-gray text-space hover:bg-athens'
+              "
               @click="activeFilter = 'important'"
             >
               Важные
             </button>
             <button
               type="button"
-              class="rounded-ten px-15px py-9px text-sm font-medium transition"
-              :class="activeFilter === 'events' ? 'bg-athens-gray text-space' : 'bg-[#F7F8FB] text-bali hover:text-space'"
+              class="flex h-[36px] items-center rounded-[10px] px-[16px] text-[13px] font-medium leading-[1.3] transition-colors"
+              :class="
+                activeFilter === 'events'
+                  ? 'bg-space text-white'
+                  : 'bg-athens-gray text-space hover:bg-athens'
+              "
               @click="activeFilter = 'events'"
             >
               События
             </button>
             <button
               type="button"
-              class="rounded-ten px-15px py-9px text-sm font-medium transition"
-              :class="activeFilter === 'mail' ? 'bg-athens-gray text-space' : 'bg-[#F7F8FB] text-bali hover:text-space'"
+              class="flex h-[36px] items-center rounded-[10px] px-[16px] text-[13px] font-medium leading-[1.3] transition-colors"
+              :class="
+                activeFilter === 'mail'
+                  ? 'bg-space text-white'
+                  : 'bg-athens-gray text-space hover:bg-athens'
+              "
               @click="activeFilter = 'mail'"
             >
               Почтовые
@@ -287,26 +318,20 @@ onBeforeUnmount(() => abortController.abort())
           </UiButton>
         </div>
 
-        <div v-else-if="loading" class="p-25px">
+        <div v-else-if="loading && !FORCE_NOTIFICATIONS_PLACEHOLDER" class="p-25px">
           <p class="text-sm text-bali">
             Загрузка...
           </p>
         </div>
 
-        <div v-else-if="items.length === 0" class="p-25px">
-          <div class="flex min-h-[220px] items-center justify-center rounded-ten bg-[#F4F6F8] px-25px">
-            <p class="mb-0 text-center text-sm font-medium text-bali">
-              <template v-if="rawItems.length">
-                Нет уведомлений для выбранного фильтра
-              </template>
-              <template v-else>
-                Пока нет уведомлений
-              </template>
-            </p>
-          </div>
-        </div>
+        <ListSectionPlaceholder
+          v-else-if="FORCE_NOTIFICATIONS_PLACEHOLDER || items.length === 0"
+          variant="reports"
+          title="Нет новых уведомлений"
+          description="Когда появятся новые события, уведомления будут отображаться в этом разделе."
+        />
 
-        <template v-else>
+        <template v-else-if="!FORCE_NOTIFICATIONS_PLACEHOLDER">
           <div
             v-for="n in items"
             :key="n.id"

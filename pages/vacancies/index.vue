@@ -2,7 +2,7 @@
   import VacancyCard from '~/components/custom/page-parts/VacancyCard.vue';
   import Pagination from '@/components/custom/Pagination.vue';
   import MultiSelect from '~/components/custom/MultiSelect.vue';
-  import UiDotsLoader from '~/components/custom/UiDotsLoader.vue';
+  import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
   import DropdownPeriodPicker from '@/components/custom/DropdownPeriodPicker.vue';
 
   import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -42,6 +42,9 @@
   const containerHeight = ref(0); // отслеживаю высоту контейнера
   const containerRef = ref(null); // ссылка на контейнер
   const loading = ref(true);
+  const tabLoading = ref(false);
+  const loadedStatuses = ref(new Set());
+  const filterDictionariesLoaded = ref(false);
   const clients = ref([]);
   const recruiters = ref([]);
   const departments = ref([]);
@@ -71,6 +74,16 @@
   );
 
   /** Есть ли активные фильтры (для подсветки иконки фильтра) */
+  const activeEmptyTitle = computed(() =>
+    hasActiveFilters.value ? 'Ничего не найдено' : 'Пока нет открытых вакансий'
+  );
+
+  const activeEmptyDescription = computed(() =>
+    hasActiveFilters.value
+      ? 'Попробуйте изменить фильтры или сбросить их, чтобы увидеть другие вакансии.'
+      : 'Создайте первую вакансию — затем ведите кандидатов и размещайте объявления на работных сайтах.'
+  );
+
   const hasActiveFilters = computed(() => {
     const f = filters.value;
     return (
@@ -164,6 +177,7 @@
 
   function funnelToggleActive() {
     isActiveFunnel.value = !isActiveFunnel.value;
+    if (!cardsBlock.value) return;
     cardsBlock.value.style.borderBottomLeftRadius = isActiveFunnel.value
       ? '0px'
       : '15px';
@@ -215,11 +229,37 @@
     }
   }
 
+  async function loadVacanciesForStatus(status) {
+    const params = buildFilterParams(status);
+    const result = await getVacancies(params);
+    const list = Array.isArray(result) ? result : [];
+    if (status === 'active') vacancies.value = list;
+    else if (status === 'draft') vacanciesDraft.value = list;
+    else if (status === 'closed') vacanciesClosed.value = list;
+    else vacanciesArchive.value = list;
+    loadedStatuses.value = new Set([...loadedStatuses.value, status]);
+    return list;
+  }
+
+  async function ensureTabVacancies(status) {
+    if (loadedStatuses.value.has(status)) return;
+    tabLoading.value = true;
+    try {
+      await loadVacanciesForStatus(status);
+    } catch (e) {
+      console.warn(`Ошибка загрузки вакансий (${status}):`, e);
+    } finally {
+      tabLoading.value = false;
+      await updateContainerHeight();
+    }
+  }
+
   function showActiveVacancies() {
     activeVacancies.value = true;
     draftVacancies.value = false;
     closedVacancies.value = false;
     archiveVacancies.value = false;
+    void ensureTabVacancies('active');
   }
 
   function showDraftVacancies() {
@@ -227,6 +267,7 @@
     draftVacancies.value = true;
     closedVacancies.value = false;
     archiveVacancies.value = false;
+    void ensureTabVacancies('draft');
   }
 
   function showClosedVacancies() {
@@ -234,6 +275,7 @@
     draftVacancies.value = false;
     closedVacancies.value = true;
     archiveVacancies.value = false;
+    void ensureTabVacancies('closed');
   }
 
   function showArchiveVacancies() {
@@ -241,6 +283,7 @@
     draftVacancies.value = false;
     closedVacancies.value = false;
     archiveVacancies.value = true;
+    void ensureTabVacancies('archive');
   }
 
   // Функция для обновления высоты контейнера
@@ -254,7 +297,7 @@
 
 
   // Обработчик удаления вакансии
-  const handleVacancyDeleted = vacancyId => {
+  const handleVacancyDeleted = async vacancyId => {
     if (activeVacancies.value) {
       vacancies.value = vacancies.value.filter((v) => v.id !== vacancyId);
     } else if (draftVacancies.value) {
@@ -264,6 +307,7 @@
     } else if (archiveVacancies.value) {
       vacanciesArchive.value = vacanciesArchive.value.filter((v) => v.id !== vacancyId);
     }
+    await updateContainerHeight();
   };
 
   const handleVacancyStatusChanged = async (vacancyId, newStatus) => {
@@ -289,24 +333,29 @@
     }
   };
 
-  const { clients: responseClients, error: clientsError } =
-    await clientsList('clients');
-  if (!clientsError) {
-    clients.value = responseClients;
-  }
-
-  const { clients: responseRecruiters, error: recruitersError } =
-    await clientsList('recruiters');
-  if (!recruitersError) {
-    recruiters.value = responseRecruiters;
-  }
-
-  // Инициализация высоты при монтировании
-  // onMounted(updateContainerHeight, fetchVacancies);
-  onMounted(async () => {
+  async function loadFilterDictionaries() {
+    if (filterDictionariesLoaded.value) return;
+    filterDictionariesLoaded.value = true;
     try {
-      const [depts, respList, citiesList] = await Promise.all([
+      const [{ clients: responseClients, errors: clientsErr }, { clients: responseRecruiters, errors: recruitersErr }] =
+        await Promise.all([clientsList('clients'), clientsList('recruiters')]);
+      if (!clientsErr) {
+        clients.value = responseClients;
+      }
+      if (!recruitersErr) {
+        recruiters.value = responseRecruiters;
+      }
+    } catch (e) {
+      filterDictionariesLoaded.value = false;
+      console.warn('Ошибка загрузки справочников фильтров:', e);
+    }
+  }
+
+  async function loadFilterFormDictionaries() {
+    try {
+      const [depts, deptsRaw, respList, citiesList] = await Promise.all([
         getDepartments(),
+        getDepartments(true).catch(() => null),
         responsiblesList(),
         getVacancyCities(),
       ]);
@@ -315,19 +364,49 @@
       if (Array.isArray(citiesList) && citiesList.length) {
         citiesFilterOptions.value = citiesList.map((name) => ({ value: name, name }));
       }
-      const deptsRaw = await getDepartments(true).catch(() => null);
       if (deptsRaw && Array.isArray(deptsRaw)) {
-        departmentsFilterOptions.value = deptsRaw.map((d) => ({ value: d.id, name: d.name || '' }));
+        departmentsFilterOptions.value = deptsRaw.map((d) => ({
+          value: d.id,
+          name: d.name || '',
+        }));
       }
     } catch (e) {
       console.warn('Ошибка загрузки справочников:', e);
     }
-    updateContainerHeight();
-    await loadAllVacancyLists();
+  }
+
+  function loadOtherTabsInBackground() {
+    const others = ['draft', 'closed', 'archive'].filter(
+      (s) => !loadedStatuses.value.has(s)
+    );
+    if (!others.length) return;
+    void Promise.all(others.map((s) => loadVacanciesForStatus(s)))
+      .then(() => updateContainerHeight())
+      .catch((e) => console.warn('Ошибка фоновой загрузки табов:', e));
+  }
+
+  onMounted(() => {
     document.addEventListener('click', handleFiltersClickOutside);
+    void (async () => {
+      loading.value = true;
+      try {
+        await loadVacanciesForStatus('active');
+      } catch (e) {
+        console.warn('Ошибка загрузки открытых вакансий:', e);
+      } finally {
+        loading.value = false;
+        await updateContainerHeight();
+      }
+      loadOtherTabsInBackground();
+      void loadFilterFormDictionaries();
+    })();
   });
 
-  async function buildFilterParams(forceStatus) {
+  watch(isActiveFunnel, (open) => {
+    if (open) void loadFilterDictionaries();
+  });
+
+  function buildFilterParams(forceStatus) {
     const status = forceStatus ?? (activeVacancies.value ? 'active' : draftVacancies.value ? 'draft' : closedVacancies.value ? 'closed' : 'archive');
     const parts = [`filters[status]=${status}`, `sort=${sortMode.value}`];
     const f = filters.value;
@@ -360,30 +439,22 @@
     return parts.join('&');
   }
 
-  /** Загружает списки вакансий по всем четырём статусам с текущими фильтрами (при применении — с фильтрами, при сбросе — без). */
+  /** Перезагрузка всех табов (после применения или сброса фильтров). */
   async function loadAllVacancyLists() {
     loading.value = true;
+    loadedStatuses.value = new Set();
     try {
-      const [paramsActive, paramsDraft, paramsClosed, paramsArchive] = await Promise.all([
-        buildFilterParams('active'),
-        buildFilterParams('draft'),
-        buildFilterParams('closed'),
-        buildFilterParams('archive'),
+      await Promise.all([
+        loadVacanciesForStatus('active'),
+        loadVacanciesForStatus('draft'),
+        loadVacanciesForStatus('closed'),
+        loadVacanciesForStatus('archive'),
       ]);
-      const [activeRes, draftRes, closedRes, archiveRes] = await Promise.all([
-        getVacancies(paramsActive),
-        getVacancies(paramsDraft),
-        getVacancies(paramsClosed),
-        getVacancies(paramsArchive),
-      ]);
-      vacancies.value = Array.isArray(activeRes) ? activeRes : [];
-      vacanciesDraft.value = Array.isArray(draftRes) ? draftRes : [];
-      vacanciesClosed.value = Array.isArray(closedRes) ? closedRes : [];
-      vacanciesArchive.value = Array.isArray(archiveRes) ? archiveRes : [];
     } catch (e) {
       console.warn('Ошибка загрузки списков вакансий:', e);
     } finally {
       loading.value = false;
+      await updateContainerHeight();
     }
   }
 
@@ -415,27 +486,33 @@
   onBeforeUnmount(() => {
     document.removeEventListener('click', handleFiltersClickOutside);
   });
+
+  const totalVacancyCount = computed(
+    () =>
+      vacancies.value.length +
+      vacanciesDraft.value.length +
+      vacanciesClosed.value.length +
+      vacanciesArchive.value.length
+  );
+
+  const showListPageHeader = computed(
+    () => loading.value || totalVacancyCount.value > 0
+  );
 </script>
 
 <template>
   <div class="pb-28px container pt-35px relative">
-    <!-- Прелоадер по центру экрана при загрузке вакансий -->
-    <div
-      v-if="loading"
-      class="fixed inset-0 z-[100] flex items-center justify-center"
-    >
-      <UiDotsLoader />
-    </div>
     <!-- header block -->
     <div
+      v-if="showListPageHeader"
       class="flex w-full items-center justify-between rounded-t-fifteen bg-white p-25px"
     >
       <div>
         <p class="mb-2.5 text-xl font-semibold leading-normal text-space">
           Вакансии
         </p>
-        <p class="text-sm font-normal text-slate-custom">
-          Управляйте вакансиями с этого раздела
+        <p class="text-sm font-normal leading-relaxed text-slate-custom">
+          Открывайте позиции, ведите воронку кандидатов и размещайте на работных сайтах
         </p>
       </div>
       <NuxtLink to="/vacancies/newvacancy">
@@ -446,8 +523,9 @@
         </span>
       </NuxtLink>
     </div>
-    <!-- cards block -->
+    <!-- cards block: табы и фильтры — только если есть хотя бы одна вакансия -->
     <div
+      v-if="showListPageHeader"
       class="filters-wrapper relative mb-15px rounded-b-[10px] bg-catskill px-25px pt-[16px] pb-[16px] transition-all"
       ref="cardsBlock"
     >
@@ -550,7 +628,7 @@
             <transition name="fade">
               <div
                 v-if="isActiveSort"
-                class="sort-dropdown absolute left-0 left-[unset] right-0 top-[50px] z-10 min-w-[280px] rounded-b-ten rounded-t-ten bg-white py-15px shadow-xl"
+                class="sort-dropdown absolute left-0 left-[unset] right-0 top-[50px] z-10 w-max max-w-[calc(100vw-32px)] rounded-b-ten rounded-t-ten bg-white py-15px shadow-xl"
               >
                 <p class="sort-dropdown__title px-25px pb-15px text-base font-semibold leading-normal text-space">
                   Сортировка
@@ -558,20 +636,20 @@
                 <div class="sort-dropdown__group">
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'new' }"
                     @click="applySort('new')"
                   >
-                    <span>Сначала недавно созданные</span>
+                    <span class="whitespace-nowrap">Сначала недавно созданные</span>
                     <svg-icon v-if="sortMode === 'new'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'old' }"
                     @click="applySort('old')"
                   >
-                    <span>Сначала давно созданные</span>
+                    <span class="whitespace-nowrap">Сначала давно созданные</span>
                     <svg-icon v-if="sortMode === 'old'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
@@ -579,20 +657,20 @@
                 <div class="sort-dropdown__group">
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'urgent' }"
                     @click="applySort('urgent')"
                   >
-                    <span>По дате закрытия. Сначала срочные</span>
+                    <span class="whitespace-nowrap">По дате закрытия. Сначала срочные</span>
                     <svg-icon v-if="sortMode === 'urgent'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'non-urgent' }"
                     @click="applySort('non-urgent')"
                   >
-                    <span>По дате закрытия. Сначала несрочные</span>
+                    <span class="whitespace-nowrap">По дате закрытия. Сначала несрочные</span>
                     <svg-icon v-if="sortMode === 'non-urgent'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
@@ -600,20 +678,20 @@
                 <div class="sort-dropdown__group">
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'asc' }"
                     @click="applySort('asc')"
                   >
-                    <span>По названию от А до Я</span>
+                    <span class="whitespace-nowrap">По названию от А до Я</span>
                     <svg-icon v-if="sortMode === 'asc'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                   <button
                     type="button"
-                    class="sort-dropdown__item flex w-full items-center justify-between px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                    class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
                     :class="{ 'bg-athens-gray/60': sortMode === 'desc' }"
                     @click="applySort('desc')"
                   >
-                    <span>По названию от Я до А</span>
+                    <span class="whitespace-nowrap">По названию от Я до А</span>
                     <svg-icon v-if="sortMode === 'desc'" name="arrow-min-dropdown" width="16" height="16" class="shrink-0 text-dodger" />
                   </button>
                 </div>
@@ -792,8 +870,8 @@
     </div>
     <div
       ref="containerRef"
-      :style="{ height: `${containerHeight}px` }"
-      class="relative"
+      :style="containerHeight > 0 ? { height: `${containerHeight}px` } : undefined"
+      class="relative overflow-visible"
     >
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="activeVacancies" class="active-view absolute w-full">
@@ -819,24 +897,40 @@
               @page-changed="handlePageChange"
             />
           </div>
-          <div
-            v-if="vacancies.length === 0 && loading === false"
-            class="relative mb-35px bg-catskill p-20 px-25px text-center transition-all"
+          <ListSectionPlaceholder
+            v-if="(loading || tabLoading) && activeVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacancies.length === 0"
+            variant="vacancy"
+            :title="activeEmptyTitle"
+            :description="activeEmptyDescription"
           >
-            Вакансий не найдено
-          </div>
+            <NuxtLink
+              v-if="!hasActiveFilters"
+              to="/vacancies/newvacancy"
+              class="inline-flex items-center justify-center rounded-ten bg-dodger px-[19px] py-11.5px text-sm font-semibold text-white transition-colors hover:bg-[#4680e6]"
+            >
+              Добавить вакансию
+            </NuxtLink>
+          </ListSectionPlaceholder>
         </div>
       </transition>
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="draftVacancies" class="active-view absolute w-full">
-          <div
-            v-if="vacanciesDraft.length === 0"
-            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
-          >
-            <p class="text-15px font-medium text-slate-custom">
-              Вы ещё не добавили вакансии которые можно редактировать
-            </p>
-          </div>
+          <ListSectionPlaceholder
+            v-if="(loading || tabLoading) && draftVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacanciesDraft.length === 0"
+            variant="vacancy"
+            title="Черновиков пока нет"
+            description="Здесь появятся вакансии, которые вы сохранили как черновик и ещё не опубликовали."
+          />
           <div v-if="vacanciesDraft.length > 0" class="flex flex-col gap-15px">
             <VacancyCard
               v-for="(vacancy, index) in paginatedDraftVacancies"
@@ -859,14 +953,17 @@
       </transition>
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="closedVacancies" class="active-view absolute w-full">
-          <div
-            v-if="vacanciesClosed.length === 0"
-            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
-          >
-            <p class="text-15px font-medium text-slate-custom">
-              Закрытых вакансий пока нет
-            </p>
-          </div>
+          <ListSectionPlaceholder
+            v-if="(loading || tabLoading) && closedVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacanciesClosed.length === 0"
+            variant="vacancy"
+            title="Закрытых вакансий пока нет"
+            description="После закрытия позиции она появится в этом списке."
+          />
           <div v-if="vacanciesClosed.length > 0" class="flex flex-col gap-15px">
             <VacancyCard
               v-for="(vacancy, index) in paginatedClosedVacancies"
@@ -889,14 +986,17 @@
       </transition>
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="archiveVacancies" class="active-view absolute w-full">
-          <div
-            v-if="vacanciesArchive.length === 0"
-            class="flex min-h-56 w-full items-center justify-center rounded-fifteen bg-catskill"
-          >
-            <p class="text-15px font-medium text-slate-custom">
-              Вы еще не добавляли вакансии в архив
-            </p>
-          </div>
+          <ListSectionPlaceholder
+            v-if="(loading || tabLoading) && archiveVacancies"
+            variant="vacancy"
+            loading
+          />
+          <ListSectionPlaceholder
+            v-else-if="vacanciesArchive.length === 0"
+            variant="vacancy"
+            title="Архив пуст"
+            description="Сюда попадают вакансии, которые вы перенесли в архив."
+          />
           <div
             v-if="vacanciesArchive.length > 0"
             class="flex flex-col gap-15px"

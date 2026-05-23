@@ -7,7 +7,7 @@
         <div :class="{
           'text-bali': !selectedOptions.length,
           'text-space': selectedOptions.length
-        }" class="text-sm">
+        }" class="max-w-full truncate whitespace-nowrap pr-6 text-sm" :title="selectedOptions.length ? displayValue : ''">
           {{ displayValue }}
         </div>
         <!-- Стрелка -->
@@ -83,7 +83,15 @@
                     clip-rule="evenodd" />
                 </svg>
               </div>
-              <span class="min-w-0 flex-1">{{ getOptionLabel(option) }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-space">{{ getOptionLabel(option) }}</span>
+                <span
+                  v-if="getOptionSubtitle(option)"
+                  class="mt-0.5 block text-xs font-normal text-bali"
+                >
+                  {{ getOptionSubtitle(option) }}
+                </span>
+              </span>
             </label>
           </div>
         </div>
@@ -147,7 +155,9 @@ const filteredOptions = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
   return props.options.filter(opt => {
     const label = getOptionLabel(opt)
-    return (typeof label === 'string' ? label : String(label)).toLowerCase().includes(q)
+    const subtitle = getOptionSubtitle(opt)
+    const haystack = `${label} ${subtitle}`.toLowerCase()
+    return haystack.includes(q)
   })
 })
 
@@ -173,6 +183,12 @@ const getOptionValue = (option) => {
 
 const getOptionLabel = (option) => {
   return typeof option === 'object' && option !== null ? option.name : option
+}
+
+const getOptionSubtitle = (option) => {
+  if (typeof option !== 'object' || option === null) return ''
+  const sub = option.subtitle ?? option.role
+  return sub != null && String(sub).trim() !== '' ? String(sub).trim() : ''
 }
 
 // Преобразование selectedOptions в формат для emit

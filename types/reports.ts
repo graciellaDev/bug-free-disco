@@ -12,8 +12,16 @@ export interface RecruitersReportVacancyRow {
   rejections_count: number;
   /** % от добавленных; если `null`, фронт считает от rejections_count / candidates_added_count. */
   rejections_percentage: number | null;
+  /** Срок найма, дни. */
   avg_days_to_hire: number | null;
+  /** Планируемый срок закрытия, дни. */
+  planned_close_days: number | null;
+  /** Фактический/средний срок закрытия, дни (legacy). */
   avg_days_to_close: number | null;
+  /** Дата открытия вакансии (как пришла из API). */
+  opened_at: string | null;
+  /** Дней в работе. */
+  days_in_work: number | null;
 }
 
 /** Группа по рекрутеру. */

@@ -18,6 +18,7 @@
             :application="application"
             :type="typeSave"
             @go-to-publish="switchTab('publish')"
+            @save-and-continue="onSaveAndContinue"
           />
         </KeepAlive>
       </template>
@@ -125,17 +126,50 @@
     void router.replace({ path: route.path, query: nextQuery });
   }
 
+  const isSaveInProgress = ref(false);
+
+  function resolveVacancyId(): number | null {
+    const raw = vacancyId.value ?? route.params.id ?? route.query._vid ?? route.query.id;
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function goToNextTabOrFinish() {
+    const idx = TAB_ORDER.indexOf(currentTab.value);
+    if (idx === TAB_ORDER.length - 1) {
+      void navigateTo('/vacancies');
+    } else if (idx >= 0 && idx < TAB_ORDER.length - 1) {
+      switchTab(TAB_ORDER[idx + 1]);
+    }
+  }
+
   async function onSaveAndContinue() {
+    if (isSaveInProgress.value) return;
     const handler = saveAndContinueHandler.value;
-    if (!handler) return;
+    const onInfoTab = currentTab.value === 'info';
+    const existingId = resolveVacancyId();
+    if (onInfoTab && !handler) return;
+    if (!onInfoTab && !handler && existingId == null) return;
+
+    isSaveInProgress.value = true;
     try {
-      // На вкладке «Описание» handler уже делает сохранение; на остальных вкладках вызываем общее сохранение (InfoTab), чтобы вакансия сохранялась при нажатии кнопки с любой вкладки.
+      // На вкладке «Описание» handler сохраняет и валидирует форму; на остальных — по возможности mainSave (InfoTab), но переход не блокируем, если вакансия уже создана.
       let result: { id?: number } | void;
-      if (currentTab.value === 'info') {
-        result = await handler();
+      if (onInfoTab) {
+        result = await handler!();
       } else {
         const mainSave = mainSaveHandler.value;
-        result = mainSave ? await mainSave() : await handler();
+        if (mainSave) {
+          try {
+            result = await mainSave();
+          } catch {
+            if (existingId == null) return;
+            result = { id: existingId };
+          }
+        } else if (handler) {
+          result = await handler();
+        }
       }
       const createdId = result && typeof result === 'object' && 'id' in result ? result.id : undefined;
 
@@ -154,14 +188,11 @@
         return;
       }
 
-      const idx = TAB_ORDER.indexOf(currentTab.value);
-      if (idx === TAB_ORDER.length - 1) {
-        await navigateTo('/vacancies');
-      } else if (idx >= 0 && idx < TAB_ORDER.length - 1) {
-        switchTab(TAB_ORDER[idx + 1]);
-      }
+      goToNextTabOrFinish();
     } catch (_) {
-      // Ошибка сохранения — остаёмся на вкладке
+      // Ошибка сохранения на «Описание» — остаёмся на вкладке
+    } finally {
+      isSaveInProgress.value = false;
     }
   }
 

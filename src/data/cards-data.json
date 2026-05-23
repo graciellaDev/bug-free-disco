@@ -21,9 +21,10 @@
     "selectedRate": null
   },
   {
-    "id": "basket-5",
-    "name": "superjob",
-    "icon": "superjob",
+    "id": "add-site",
+    "name": "Добавить другой сайт",
+    "isAddSite": true,
+    "icon": false,
     "isPng": false,
     "selectedRate": null
   }

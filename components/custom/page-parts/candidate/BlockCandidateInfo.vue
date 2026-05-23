@@ -34,6 +34,13 @@
   import { getCandidateProfileExternalUrl, getCandidateResumePdfUrl, getCandidateViewOnSourceMenuLabel } from '@/utils/candidateSourceLinks';
   import { displayCandidateEmailOrEmpty } from '@/utils/candidateDisplayEmail';
   import { buildCandidateCopyPayload } from '@/utils/buildCandidateCopyPayload';
+  import { getCandidateStageOverdueInfo } from '@/utils/candidateStageOverdue';
+  import {
+    findRejectionStage,
+    isRejectionStage,
+    isRejectionStageName,
+    vacancyUsesRejectionReasons,
+  } from '@/utils/candidateRejectionStage';
 
   import type { Candidate, CandidateUpdateRequest } from '@/types/candidates';
   import type { Stage } from '@/types/funnels';
@@ -60,18 +67,23 @@
     'candidate-activity-refresh': [];
   }>();
 
+  const stageOverdueInfo = computed(() =>
+    getCandidateStageOverdueInfo(
+      props.candidate,
+      props.vacancy?.stages ?? (props.stages as Array<{ id: number; max_days?: number | null }>)
+    )
+  );
+
   const isRejectedStage = computed(() => {
     const sid = props.candidate?.stage;
     if (sid == null || !props.stages?.length) return false;
     const st = props.stages.find(s => s.id === sid);
-    const name = (st?.name || '').trim();
-    return (
-      name === 'Отклоненные' ||
-      name === 'Отклонённые' ||
-      name === 'Отказ' ||
-      sid === 4
-    );
+    return isRejectionStage(st ?? { id: sid });
   });
+
+  const activeVacancy = computed(() => props.vacancy ?? vacancy.value);
+
+  const pendingRejectionTransfer = ref<{ targetStage: Stage } | null>(null);
 
   const vacancyName = ref<string>('');
   const vacancy = ref<Vacancy | null>(null);
@@ -232,6 +244,21 @@
     popups.removeFromVacancy.open();
   };
 
+  function resetStageTransferLabel() {
+    if (props.stages?.length && props.candidate) {
+      selectedLabel.value = getNextStageName(
+        props.candidate.stage,
+        props.stages
+      );
+    }
+  }
+
+  function handleRefusePopupClose() {
+    pendingRejectionTransfer.value = null;
+    resetStageTransferLabel();
+    popups.refuseCandidate.close();
+  }
+
   const handleRefuseCandidate = async (data: {
     rejection_reason_id?: number;
     internal_comment?: string;
@@ -241,28 +268,27 @@
       return;
     }
 
-    const rejectedStage = props.stages.find(stage => {
-      const name = (stage.name || '').trim();
-      return (
-        stage.id === 4 ||
-        name === 'Отклоненные' ||
-        name === 'Отклонённые' ||
-        name === 'Отказ'
-      );
-    });
+    const pending = pendingRejectionTransfer.value;
+    const rejectedStage =
+      pending?.targetStage ?? findRejectionStage(props.stages);
     if (!rejectedStage) {
-      console.error('[handkeRefuseCandidate] Этап "Отклонённые" не найден');
+      console.error('[handkeRefuseCandidate] Этап «Отказ» не найден');
       return;
     }
 
+    pendingRejectionTransfer.value = null;
+
     try {
-      const updateData: CandidateUpdateRequest = {
+      const updateData: CandidateUpdateRequest & { context_vacancy_id?: number } = {
         id: props.candidate.id,
         firstname: props.candidate.firstname,
         email: props.candidate.email,
         phone: props.candidate.phone,
         stage: rejectedStage.id,
       };
+      if (activeVacancy.value?.id) {
+        updateData.context_vacancy_id = activeVacancy.value.id;
+      }
       if (data.rejection_reason_id != null) {
         updateData.rejection_reason_id = data.rejection_reason_id;
       }
@@ -281,8 +307,7 @@
         }
       }
 
-      // Сначала создаём comment, затем обновляем карточку/ленту.
-      emit('candidate-moved', fresh);
+      emit('candidate-moved', fresh, rejectedStage.id);
       emit('candidate-updated', fresh);
       emit('candidate-activity-refresh');
       popups.refuseCandidate.close();
@@ -291,6 +316,7 @@
         '[handleRefuseCandidate] Ошибка при отказе кандидату:',
         err
       );
+      resetStageTransferLabel();
     }
   };
 
@@ -455,6 +481,15 @@
       return;
     }
 
+    if (
+      isRejectionStageName(stageName)
+      && vacancyUsesRejectionReasons(activeVacancy.value)
+    ) {
+      pendingRejectionTransfer.value = { targetStage };
+      popups.refuseCandidate.open();
+      return;
+    }
+
     try {
       const updateData: CandidateUpdateRequest & { context_vacancy_id?: number } = {
         id: props.candidate.id,
@@ -615,6 +650,17 @@
 </script>
 <template>
   <div class="relative mb-15px rounded-fifteen bg-white p-25px pt-15px">
+    <div
+      v-if="isFunnel && stageOverdueInfo.overdue"
+      class="mb-3 flex items-start gap-2 rounded-ten border border-pink bg-pink/40 px-3 py-2.5"
+      role="status"
+    >
+      <svg-icon name="stop20" width="18" height="18" class="shrink-0 text-red-custom mt-0.5" />
+      <p class="text-sm text-space leading-normal">
+        <span class="font-medium text-red-custom">Просрочка на этапе.</span>
+        {{ stageOverdueInfo.hint ?? 'Превышен лимит времени на этапе.' }}
+      </p>
+    </div>
     <CandidateInfoHeader
       :isFunnel="isFunnel"
       :options="options"
@@ -622,6 +668,7 @@
       :dropdownOptions="dropdownOptions"
       :show-refuse-button="!isRejectedStage"
       :candidate-email="candidateHeaderClipboardEmail"
+      :stage-overdue="stageOverdueInfo.overdue"
       @select-item="candidateActionsUI.handleSelectItem"
       @add-comment="handleAddCommentClick"
       @new-task="handleNewTaskClick"
@@ -641,6 +688,7 @@
     <CandidateInfoContent
       :candidate="candidate"
       :vacancy-name="vacancyName"
+      :vacancy-id="vacancy?.id ?? props.vacancy?.id ?? null"
       @telegram="candidateActionsUI.handleClickTelegram"
       @messenger-max="candidateActionsUI.handleClickMessengerMax"
       @write-email="popups.mailToCandidate.open()"
@@ -688,7 +736,7 @@
     />
     <CandidateRefusePopup
       :isOpen="popups.refuseCandidate.isOpen"
-      @close="popups.refuseCandidate.close"
+      @close="handleRefusePopupClose"
       @submit="handleRefuseCandidate"
     />
   </div>

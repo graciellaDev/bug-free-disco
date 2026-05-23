@@ -1,9 +1,9 @@
 <template>
   <div
-    class="flex h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0 w-full flex-col overflow-hidden rounded-b-fifteen"
+    class="flex h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0 w-full flex-col overflow-hidden rounded-fifteen bg-white"
   >
       <div
-        class="hh-original-popup-scroll flex min-h-0 flex-1 basis-0 flex-col overflow-y-auto overscroll-y-contain px-25px pb-25px pt-25px rounded-t-fifteen"
+        class="popup-scroll flex min-h-0 flex-1 basis-0 flex-col overflow-y-auto overscroll-y-contain px-25px pb-25px pt-25px"
       >
       <div v-if="!loading" class="mb-25px">
         <p class="text-xl font-semibold text-space mb-1">{{ popupTitle }}</p>
@@ -1852,38 +1852,3 @@ watch(
 );
 </script>
 
-<style scoped>
-.hh-original-popup-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #79869a transparent;
-}
-
-.hh-original-popup-scroll::-webkit-scrollbar {
-  width: 10px;
-}
-
-.hh-original-popup-scroll::-webkit-scrollbar-track {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
-/* Отступ ползунка от верха/низа: margin у track в WebKit ненадёжен, задаём через прозрачный border + clip */
-.hh-original-popup-scroll::-webkit-scrollbar-thumb {
-  border-top: 10px solid transparent;
-  border-bottom: 10px solid transparent;
-  border-left: 0;
-  border-right: 0;
-  border-radius: 5px;
-  background-color: #79869a;
-  background-clip: content-box;
-}
-
-.hh-original-popup-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #5a6a7f;
-}
-
-.hh-original-popup-scroll::-webkit-scrollbar-corner {
-  background: transparent;
-}
-</style>

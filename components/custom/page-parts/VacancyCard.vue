@@ -4,7 +4,7 @@
       class="mb-px bg-white p-25px pb-15px"
       :class="!vacancy.footerData ? 'rounded-fifteen' : 'rounded-t-fifteen'"
     >
-      <div class="mb-[27px] flex justify-between items-baseline gap-x-3">
+      <div class="mb-[27px] flex justify-between items-center gap-x-3">
         <div class="flex items-baseline gap-x-2 min-w-0 flex-1">
           <NuxtLink :to="`/vacancies/${vacancy.id}`" class="min-w-0">
             <h2 class="text-lg font-medium leading-normal text-space truncate">
@@ -14,6 +14,15 @@
           <span v-if="titleMetaLine" class="text-13px font-normal text-bali-light shrink-0">{{ titleMetaLine }}</span>
         </div>
         <div class="shrink-0 flex items-center gap-x-15px">
+          <button
+            v-if="showPlaceButton"
+            type="button"
+            class="inline-flex h-10 shrink-0 items-center rounded-ten border border-athens bg-athens-gray px-3.5 text-sm font-normal leading-normal text-slate-custom box-border transition-colors hover:bg-white hover:text-space"
+            :title="promoteButtonTitle"
+            @click="onPromoteButtonClick"
+          >
+            {{ promoteButtonLabel }}
+          </button>
           <UiButton v-if="vacancy.editButton" variant="orange" size="action">
             Продолжить редактирование
           </UiButton>
@@ -42,14 +51,16 @@
           >
             <div class="title-wrapper">
               <div
-                class="rounded-ten p-1 text-center cursor-pointer"
+                class="group/stage rounded-ten p-1 text-center cursor-pointer outline-none focus-visible:outline-none"
                 role="button"
                 tabindex="0"
                 @click="goToStage(column)"
                 @keydown.enter.prevent="goToStage(column)"
                 @keydown.space.prevent="goToStage(column)"
               >
-                <div class="mb-1 text-sm font-normal text-space">
+                <div
+                  class="mb-1 text-sm font-normal text-space transition-colors group-hover/stage:text-dodger"
+                >
                   {{ column.count !== undefined && column.count !== null ? column.count : '-' }}
                 </div>
                 <div
@@ -85,7 +96,7 @@
           class="text-13px font-normal text-bali-light"
           v-if="vacancy.footerData.sites != null"
         >
-          Публикаций:
+          Размещений:
           {{ vacancy.footerData.sites }}
         </p>
         <p
@@ -186,6 +197,33 @@
   const statusOptions = STATUS_OPTIONS;
   const currentStatusDisplay = computed(() => API_TO_STATUS[props.currentStatus] ?? 'Открыта');
 
+  const showPlaceButton = computed(() => {
+    return props.currentStatus === 'active' || props.vacancy?.status === 'active';
+  });
+
+  const promoteButtonLabel = computed(() =>
+    props.vacancy?.mainFormReady ? 'Рекламировать' : 'Заполнить',
+  );
+
+  const promoteButtonTitle = computed(() =>
+    props.vacancy?.mainFormReady
+      ? 'Разместить вакансию на job-сайтах'
+      : 'Заполните обязательные поля в основной форме вакансии',
+  );
+
+  function onPromoteButtonClick() {
+    const id = props.vacancy?.id;
+    if (id == null) return;
+    router.push({
+      path: '/vacancies/newvacancy',
+      query: {
+        id,
+        type: 'edit',
+        tab: props.vacancy?.mainFormReady ? 'publish' : 'info',
+      },
+    });
+  }
+
   const MAX_RECRUITER_NAMES_LENGTH = 50;
 
   function goToStage(column) {
@@ -214,14 +252,34 @@
     return idStr || cityStr || '';
   });
 
+  const HIRED_STAGE_NAME = 'Нанят на работу';
+
+  function hiredCountFromFooter(fd) {
+    if (fd?.candidatesHired != null) return Number(fd.candidatesHired);
+    const stages = Array.isArray(fd?.stages) ? fd.stages : [];
+    const hiredStage = stages.find((s) => s?.name === HIRED_STAGE_NAME);
+    return hiredStage?.count != null ? Number(hiredStage.count) : 0;
+  }
+
   const footerCandidatesLine = computed(() => {
     const fd = props.vacancy?.footerData;
-    if (!fd || fd.candidatesTotal == null || Number(fd.candidatesTotal) < 1) return '';
-    const total = Number(fd.candidatesTotal);
+    if (!fd) return '';
+    const total = fd.candidatesTotal != null ? Number(fd.candidatesTotal) : 0;
     const active = fd.candidatesActive != null ? Number(fd.candidatesActive) : total;
+    const hiringPlan = fd.hiringPlan != null && fd.hiringPlan !== '' ? Number(fd.hiringPlan) : null;
+    const hired = hiredCountFromFooter(fd);
     const lastAt = fd.lastCandidateAt ? String(fd.lastCandidateAt) : '';
-    const parts = [`Кандидатов: ${total}`, `Активно в воронке: ${active}`];
-    if (lastAt) parts.push(`Последний кандидат: ${lastAt}`);
+    const hasCandidates = total >= 1;
+    const hasHiringPlan = hiringPlan != null && hiringPlan > 0;
+    if (!hasCandidates && !hasHiringPlan) return '';
+    const parts = [];
+    if (hasCandidates) {
+      parts.push(`Кандидатов: ${total}`, `Активно в воронке: ${active}`);
+    }
+    if (hasHiringPlan) {
+      parts.push(`Нанято ${hired} из ${hiringPlan}`);
+    }
+    if (lastAt && hasCandidates) parts.push(`Последний кандидат: ${lastAt}`);
     return parts.join(' · ');
   });
 
@@ -382,6 +440,13 @@
     }
     if (item === 'Удалить вакансию') {
       showDeletePopup.value = true;
+      return;
+    }
+    if (item === 'Размещения') {
+      router.push({
+        path: '/vacancies/newvacancy',
+        query: { id: props.vacancy.id, type: 'edit', tab: 'publish' },
+      });
       return;
     }
     if (item === 'Настроить воронку') {

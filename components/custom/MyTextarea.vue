@@ -47,7 +47,7 @@ const textSizeClass = computed(() =>
   <div class="flex">
     <textarea rows="5"
       :class="[
-        'bg-athens-gray w-full p-15px border border-athens-gray rounded-ten focus:border-dodger focus:outline-none resize-none',
+        'bg-athens-gray w-full p-15px border border-athens-gray rounded-ten text-space focus:border-dodger focus:outline-none resize-none',
         textSizeClass,
       ]"
       @focus="isFocused = true" :placeholder="isFocused ? '' : placeholder" @blur="isFocused = false"

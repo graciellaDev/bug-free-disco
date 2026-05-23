@@ -34,6 +34,11 @@ export async function getTasks(
 
     const assignee = search?.assignee?.trim();
     if (assignee) query['filters[assignee]'] = assignee;
+    if (Array.isArray(search?.assignees) && search.assignees.length) {
+      query['filters[assignees]'] = search.assignees
+        .map((name) => String(name || '').trim())
+        .filter((name) => name.length > 0);
+    }
     if (search?.candidate_id != null && Number.isFinite(search.candidate_id) && search.candidate_id > 0) {
       query['filters[candidate_id]'] = search.candidate_id;
     }

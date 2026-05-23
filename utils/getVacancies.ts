@@ -468,7 +468,7 @@ export const putHhPublicationOriginal = async (
 };
 
 export const getVacanciesNames = async () => {
-  const vacancies: any = await getVacancies();
+  const vacancies: any = await getVacancies('per_page=all');
   return (
     vacancies?.map((vacancy: string | number, key: keyof any) => {
       (vacancy as any)['name'] = (vacancy as any)['title'];

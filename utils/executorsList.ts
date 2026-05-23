@@ -9,6 +9,7 @@ interface Team {
     'name': string;
     'email': string;
     'role': string;
+    invitationPending?: boolean;
 }
 
 interface Division {
@@ -35,6 +36,7 @@ interface ApiTeam {
         'id': number,
         'name': string
     };
+    invitation_pending?: boolean;
 }
 
 interface ApiDepartment {
@@ -96,6 +98,62 @@ export async function  executorsList() {
 
         return { executors };
 };
+
+/** Согласующие по заявке: рекрутеры и администраторы. */
+export async function approversList(): Promise<{ approvers: Executor[] }> {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+
+    const mapRow = (row: ApiExecutor): Executor => ({
+        id: row.id,
+        name: row.name,
+        role: row.role?.name ?? '',
+    });
+
+    try {
+        const response: ApiResponseExecutors = await $fetch(
+            `${config.public.apiBase}/approvers`,
+            {
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${authToken}`,
+                    'X-Auth-User': `${authUser}`,
+                },
+            }
+        );
+        if (response?.data && Array.isArray(response.data)) {
+            return { approvers: response.data.map(mapRow) };
+        }
+    } catch (e) {
+        console.warn('approversList /approvers:', (e as Error)?.message || e);
+    }
+
+    const { executors: recruiters = [] } = await executorsList().catch(() => ({
+        executors: [] as Executor[],
+    }));
+    let admins: Executor[] = [];
+    try {
+        const responsibles = await responsiblesList();
+        admins = responsibles.filter(
+            r =>
+                String(r.role ?? '')
+                    .trim()
+                    .toLowerCase() === 'администратор'
+        );
+    } catch {
+        /* ignore */
+    }
+
+    const byId = new Map<number, Executor>();
+    for (const person of [...recruiters, ...admins]) {
+        if (person?.id != null) byId.set(person.id, person);
+    }
+    const approvers = [...byId.values()].sort((a, b) =>
+        (a.name || '').localeCompare(b.name || '', 'ru')
+    );
+    return { approvers };
+}
 
 export async function getCrmRoles(): Promise<{ id: number; name: string }[]> {
     const config = useRuntimeConfig();
@@ -291,7 +349,8 @@ export async function  teamList(id: string) {
             id: executor.id,
             name: executor.name,
             email: executor.email,
-            role: executor?.role?.name ?? ''
+            role: executor?.role?.name ?? '',
+            invitationPending: Boolean(executor.invitation_pending),
         }));
 
         return employees;

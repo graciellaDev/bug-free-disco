@@ -15,41 +15,53 @@
                   v-for="card in cartStore.cardsData"
                   :key="card.id"
                   class="p-25px bg-white rounded-fifteen flex flex-col min-w-56"
+                  :class="{ 'border border-dashed border-athens': card.isAddSite }"
                 >
-                  <div class="flex items-center justify-between mb-3.5">
-                    <div class="flex items-center gap-2.5">
-                      <CardIcon
-                        :icon="card.icon"
-                        :isPng="card.isPng"
-                        :imagePath="card.imagePath"
-                      />
-                      <p class="text-sm font-medium text-slate-custom">{{ card.name }}</p>
+                  <template v-if="card.isAddSite">
+                    <div class="flex items-center gap-2.5 mb-3.5">
+                      <div
+                        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-ten bg-zumthor text-dodger text-xl font-light leading-none"
+                        aria-hidden="true"
+                      >
+                        +
+                      </div>
+                      <p class="text-sm font-medium text-space leading-snug">{{ card.name }}</p>
                     </div>
-                    <DotsDropdown
-                      v-if="isPlatformAuthenticated(card.name)"
-                      :items="platformDropdownOptions"
-                      @select-item="(item) => handlePlatformDropdown(item, card.name)"
-                    />
-                  </div>
-                  <div class="w-full h-[1px] bg-athens mb-3.5"></div>
-                  <UiButton
-                    :variant="isPlatformAuthenticated(card.name) ? 'action' : 'gray'"
-                    size="action"
-                    @click="isPlatformAuthenticated(card.name) ? openPopupNewPublication(card.name) : authPlatform(card.name)"
-                  >
-                    {{ isPlatformAuthenticated(card.name) ? 'Опубликовать' : 'Подключить аккаунт' }}
-                    <!-- <svg-icon
-                      v-if="isPlatformAuthenticated(card.name)"
-                      name="check-success"
-                      width="16"
-                      height="16"
-                    /> -->
-                  </UiButton>
-                  <Transition name="fade">
-                    <span v-if="authError[card.name]" class="text-sm font-medium text-red-custom">
-                      {{ authError[card.name] }}
-                    </span>
-                  </Transition>
+                    <div class="w-full h-[1px] bg-athens mb-3.5"></div>
+                    <UiButton variant="gray" size="action" @click="openAddSitePopup">
+                      Оставить заявку
+                    </UiButton>
+                  </template>
+                  <template v-else>
+                    <div class="flex items-center justify-between mb-3.5">
+                      <div class="flex items-center gap-2.5">
+                        <CardIcon
+                          :icon="card.icon"
+                          :isPng="card.isPng"
+                          :imagePath="card.imagePath"
+                        />
+                        <p class="text-sm font-medium text-slate-custom">{{ card.name }}</p>
+                      </div>
+                      <DotsDropdown
+                        v-if="isPlatformAuthenticated(card.name)"
+                        :items="platformDropdownOptions"
+                        @select-item="(item) => handlePlatformDropdown(item, card.name)"
+                      />
+                    </div>
+                    <div class="w-full h-[1px] bg-athens mb-3.5"></div>
+                    <UiButton
+                      :variant="isPlatformAuthenticated(card.name) ? 'action' : 'gray'"
+                      size="action"
+                      @click="isPlatformAuthenticated(card.name) ? openPopupNewPublication(card.name) : authPlatform(card.name)"
+                    >
+                      {{ isPlatformAuthenticated(card.name) ? 'Опубликовать' : 'Подключить аккаунт' }}
+                    </UiButton>
+                    <Transition name="fade">
+                      <span v-if="authError[card.name]" class="text-sm font-medium text-red-custom">
+                        {{ authError[card.name] }}
+                      </span>
+                    </Transition>
+                  </template>
                 </div>
               </div>
               <!-- <div class="max-w-[275px] w-full">
@@ -172,23 +184,73 @@
             />
         </Popup>
 
-        <!-- Попап отвязки профиля -->
+        <!-- Заявка на подключение другого job-сайта (отступы как у DeleteConfirmPopup) -->
+        <Popup
+            :isOpen="isAddSitePopupOpen"
+            @close="closeAddSitePopup"
+            :showCloseButton="false"
+            width="490px"
+            :height="'fit-content'"
+            :disableOverflowHidden="true"
+            :lgSize="false"
+            :parentRounded="true"
+            :contentRounded="false"
+            :contentPadding="false"
+        >
+            <div class="flex flex-col gap-y-6">
+                <h2 class="text-xl font-semibold text-space">Подключение сайта</h2>
+                <p class="text-sm text-slate-custom">
+                    Укажите название площадки — мы получим заявку и свяжемся с вами для настройки интеграции.
+                </p>
+                <div class="flex flex-col gap-y-3.5">
+                    <p class="text-sm font-medium text-space">Название сайта</p>
+                    <MyInput
+                        class="w-full"
+                        placeholder="Например, zarplata.ru"
+                        :model-value="addSiteName"
+                        :error="!!addSiteError"
+                        @update:model-value="(v) => { addSiteName = v; addSiteError = '' }"
+                    />
+                    <p v-if="addSiteError" class="text-xs text-red-500">{{ addSiteError }}</p>
+                    <p v-else-if="addSiteSuccess" class="text-xs text-dodger">{{ addSiteSuccess }}</p>
+                </div>
+                <div class="flex gap-x-3">
+                    <UiButton
+                        variant="action"
+                        size="action"
+                        :disabled="addSiteSubmitting"
+                        @click="submitAddSiteRequest"
+                    >
+                        {{ addSiteSubmitting ? 'Отправка...' : 'Отправить заявку' }}
+                    </UiButton>
+                    <UiButton variant="back" size="back" @click="closeAddSitePopup">
+                        Отмена
+                    </UiButton>
+                </div>
+            </div>
+        </Popup>
+
+        <!-- Попап отвязки профиля (отступы как у DeleteConfirmPopup) -->
         <Popup
             :isOpen="isUnlinkPopupOpen"
             @close="closeUnlinkPopup"
             :showCloseButton="false"
-            :width="'490px'"
+            width="490px"
             :height="'fit-content'"
             :disableOverflowHidden="true"
+            :lgSize="false"
+            :parentRounded="true"
+            :contentRounded="false"
+            :contentPadding="false"
         >
-            <div>
-                <p class="text-xl font-semibold text-space mb-2.5">Отвязка профиля</p>
-                <p class="text-sm font-normal text-slate-custom mb-25px">
+            <div class="flex flex-col gap-y-6">
+                <h2 class="text-xl font-semibold text-space">Отвязка профиля</h2>
+                <p class="text-sm text-slate-custom">
                     Вы действительно хотите отвязать профиль <span class="font-medium text-space">{{ platformToUnlink }}</span>?
-                    После отвязки вам потребуется повторная авторизация для публикации вакансий на этой платформе.
+                    После отвязки вам потребуется повторная авторизация для размещения вакансий на этой платформе.
                 </p>
-
-                <div class="flex gap-x-15px">
+                <p v-if="unlinkError" class="text-red-500 text-xs">{{ unlinkError }}</p>
+                <div class="flex gap-x-3">
                     <UiButton variant="delete" size="delete" @click="confirmUnlink" :disabled="isUnlinking">
                         {{ isUnlinking ? 'Отвязка...' : 'Отвязать' }}
                     </UiButton>
@@ -196,14 +258,11 @@
                         Отмена
                     </UiButton>
                 </div>
-                <p class="text-red-500 text-xs mt-3" v-if="unlinkError">
-                    {{ unlinkError }}
-                </p>
             </div>
         </Popup>
 
 
-        <!-- Попап импорта публикаций (отступы как у DeleteConfirmPopup: один слой p-25px снаружи) -->
+        <!-- Попап импорта размещений (отступы как у DeleteConfirmPopup: один слой p-25px снаружи) -->
         <Popup
             :isOpen="isImportPopupOpen"
             @close="closeImportPopup"
@@ -221,12 +280,12 @@
             <div class="flex flex-col gap-6 pr-25px">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="text-xl font-semibold text-space">Импорт публикаций</p>
+                        <p class="text-xl font-semibold text-space">Импорт размещений</p>
                         <p class="text-sm font-normal text-slate-custom mt-1">
-                            Публикации с платформы {{ selectedImportPlatform }}
+                            Размещения с платформы {{ selectedImportPlatform }}
                         </p>
                         <p
-                            v-if="isHhImportBackfillLoading && selectedImportPlatform === 'hh.ru' && !isLoadingImport"
+                            v-if="isHhImportBackfillLoading && selectedImportPlatform === 'hh.ru' && !isLoadingImport && !isImportingPublication"
                             class="text-xs font-normal text-slate-custom mt-1"
                         >
                             Загружаем полный список с hh.ru…
@@ -237,21 +296,21 @@
                     </button>
                 </div>
 
-                <!-- Прелоадер -->
+                <!-- Прелоадер загрузки списка с площадки -->
                 <div v-if="isLoadingImport" class="flex flex-col items-center justify-center py-60px">
                     <div class="loader mb-15px"></div>
-                    <p class="text-sm font-normal text-slate-custom">Загрузка публикаций...</p>
+                    <p class="text-sm font-normal text-slate-custom">Загрузка размещений...</p>
                 </div>
 
                 <!-- Ошибка -->
-                <div v-else-if="importError" class="py-40px text-center">
+                <div v-else-if="importError && !isImportingPublication" class="py-40px text-center">
                     <p class="text-sm font-normal text-red-500 mb-15px">{{ importError }}</p>
                     <UiButton variant="action" size="action" @click="openImportPopup(selectedImportPlatform)">
                         Повторить
                     </UiButton>
                 </div>
 
-                <!-- Список публикаций -->
+                <!-- Список размещений -->
                 <template v-else-if="importedPublications.length > 0">
                     <MyInput
                         v-model="importSearchQuery"
@@ -261,7 +320,14 @@
                     <div v-if="filteredImportedPublications.length === 0" class="py-40px text-center">
                         <p class="text-sm font-normal text-slate-custom">Ничего не найдено</p>
                     </div>
-                    <div v-else class="max-h-[400px] overflow-y-auto">
+                    <div v-else class="relative max-h-[400px] overflow-y-auto">
+                        <div
+                            v-if="isImportingPublication"
+                            class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-fifteen bg-white/90"
+                        >
+                            <div class="loader mb-15px"></div>
+                            <p class="text-sm font-normal text-slate-custom">Импорт публикации...</p>
+                        </div>
                         <div class="import-table">
                             <div class="import-table-header">
                                 <div class="px-2.5">Название</div>
@@ -286,9 +352,9 @@
                                         :variant="pub.isImported ? 'back' : 'semiaction'"
                                         :size="pub.isImported ? 'second-back' : 'semiaction'"
                                         @click="importPublication(pub)"
-                                        :disabled="!!pub.isImported || isLoadingImport"
+                                        :disabled="!!pub.isImported || isLoadingImport || isImportingPublication"
                                     >
-                                        {{ pub.isImported ? 'Импортировано' : (isLoadingImport ? 'Импорт...' : 'Импорт') }}
+                                        {{ pub.isImported ? 'Импортировано' : (isImportingPublication ? 'Импорт...' : 'Импорт') }}
                                     </UiButton>
                                 </div>
                             </div>
@@ -298,7 +364,7 @@
 
                 <!-- Пустой список -->
                 <div v-else class="py-40px text-center">
-                    <p class="text-sm font-normal text-slate-custom">Публикации не найдены</p>
+                    <p class="text-sm font-normal text-slate-custom">Размещения не найдены</p>
                 </div>
 
                 <div class="flex justify-end">
@@ -309,7 +375,7 @@
             </div>
         </Popup>
 
-        <!-- Попапы редактирования и добавления публикации (всегда в DOM) -->
+        <!-- Попапы редактирования и добавления размещения (всегда в DOM) -->
         <Popup
             :isOpen="isEditPopupOpen"
             @close="closeEditPopup"
@@ -319,6 +385,7 @@
             :disableOverflowHidden="true"
             :contentPadding="false"
             :contentRounded="true"
+            :parentRounded="true"
             :noOuterPadding="true"
             :noScrollbarGutter="true"
             :max-height-value="'90vh'"
@@ -376,6 +443,8 @@
             :showCloseButton="false"
             :disableOverflowHidden="true"
             :contentPadding="false"
+            :contentRounded="true"
+            :parentRounded="true"
             :noScrollbarGutter="true"
             :noOuterPadding="true"
             :max-height-value="'90vh'"
@@ -399,6 +468,7 @@
             :disableOverflowHidden="true"
             :contentPadding="false"
             :contentRounded="true"
+            :parentRounded="true"
             :noOuterPadding="true"
             :noScrollbarGutter="true"
             :max-height-value="'90vh'"
@@ -410,7 +480,7 @@
                     <div>
                         <p class="text-xl font-semibold text-space mb-1">{{ createPublicationTitle }}</p>
                         <p class="text-sm font-normal text-slate-custom">
-                            Заполните форму для публикации вакансии
+                            Заполните форму для размещения вакансии
                         </p>
                     </div>
                     <button type="button" @click="closeCreatePublicationPopup" class="text-slate-custom hover:text-space transition-colors">
@@ -432,10 +502,10 @@
                         class="absolute inset-0 z-10 flex min-h-[min(420px,calc(90dvh-100px))] flex-1 flex-col items-center justify-center bg-white py-15px"
                         role="status"
                         aria-busy="true"
-                        aria-label="Загрузка формы публикации"
+                        aria-label="Загрузка формы размещения"
                     >
                         <UiDotsLoader class="w-full" />
-                        <span class="sr-only">Загрузка формы публикации</span>
+                        <span class="sr-only">Загрузка формы размещения</span>
                     </div>
                 </div>
             </div>
@@ -445,10 +515,10 @@
         <!-- Заголовок -->
         <div class="flex justify-between bg-white rounded-fifteen p-25px items-center mb-15px">
             <div>
-                <p class="text-xl font-semibold text-space mb-2.5">Активные публикации</p>
+                <p class="text-xl font-semibold text-space mb-2.5">Размещения на сайтах</p>
                 <p class="text-sm font-normal text-slate-custom">
-                    Сюда перемещаются активные объявления опубликованные на&nbsp;сайтах или импортированные
-                    из&nbsp;подключенных профилей
+                    Вакансии, опубликованные на&nbsp;работных сайтах или импортированные из&nbsp;подключённых профилей.
+                    В&nbsp;списке — активные и&nbsp;архивные размещения.
                 </p>
             </div>
         </div>
@@ -547,19 +617,19 @@
 
         <DeleteConfirmPopup
             :is-open="archiveConfirmOpen"
-            title="Снять с публикации"
+            title="Снять с размещения"
             confirm-label="Снять"
             loading-label="Снятие..."
             :loading="isArchivingPublication"
             @close="closeArchiveConfirm"
             @confirm="confirmUnpublishPublication"
         >
-            Снять публикацию с площадки? Вакансия «{{ archiveTargetTitle }}» будет переведена в архив в системе.
+            Снять размещение с площадки? Вакансия «{{ archiveTargetTitle }}» будет переведена в архив в системе.
         </DeleteConfirmPopup>
 
         <DeleteConfirmPopup
             :is-open="deletePublicationConfirmOpen"
-            title="Удалить публикацию"
+            title="Удалить размещение"
             confirm-label="Удалить"
             loading-label="Удаление..."
             :loading="isDeletingPublication"
@@ -569,11 +639,53 @@
             <span class="block leading-relaxed">
                 Вакансия «{{ deletePublicationTargetTitle }}» будет удалена только в нашей системе: на работном сайте она
                 <strong>не снимется</strong>
-                с публикации автоматически.
+                с размещения автоматически.
                 <br><br>
                 Отклики и кандидаты, уже привязанные к основной вакансии, останутся в вакансии и не удаляются.
             </span>
         </DeleteConfirmPopup>
+
+        <DeleteConfirmPopup
+            :is-open="bulkArchiveConfirmOpen"
+            title="Снять с размещения"
+            confirm-label="Снять"
+            loading-label="Снятие..."
+            :loading="bulkPublicationActionLoading"
+            @close="closeBulkArchiveConfirm"
+            @confirm="confirmBulkUnpublishPublications"
+        >
+            Снять с размещения выбранные размещения ({{ bulkArchiveEligibleCount }})? На работных сайтах объявления будут переведены в архив, в системе — статус «архив».
+        </DeleteConfirmPopup>
+
+        <DeleteConfirmPopup
+            :is-open="bulkDeleteConfirmOpen"
+            title="Удалить размещения"
+            confirm-label="Удалить"
+            loading-label="Удаление..."
+            :loading="bulkPublicationActionLoading"
+            @close="closeBulkDeleteConfirm"
+            @confirm="confirmBulkDeletePublications"
+        >
+            <span class="block leading-relaxed">
+                Удалить из системы выбранные размещения ({{ bulkDeleteEligibleCount }})? На работных сайтах они
+                <strong>не снимутся</strong> автоматически.
+                <br><br>
+                Отклики и кандидаты, привязанные к основной вакансии, не удаляются.
+            </span>
+        </DeleteConfirmPopup>
+
+        <BulkActionBar
+            :visible="selectedPublicationCount > 0"
+            :selected-count="selectedPublicationCount"
+            :all-selected="publicationAllSelected"
+            :list-length="publicationPlatforms.length"
+            :loading="bulkPublicationActionLoading"
+            :actions="publicationBulkActions"
+            :pinned-count="2"
+            aria-label="Действия с выбранными размещениями"
+            @update:all-selected="handlePublicationBulkSelectAll"
+            @action="runPublicationBulkAction"
+        />
 
         <Teleport to="body">
             <Transition name="fields-tab-toast-fade">
@@ -598,6 +710,7 @@
 <script setup>
 import { ref, computed, defineAsyncComponent, watch, onMounted, onActivated, onBeforeUnmount, nextTick, inject } from "vue";
 import DeleteConfirmPopup from '~/components/custom/DeleteConfirmPopup.vue';
+import BulkActionBar from '~/components/custom/BulkActionBar.vue';
 import { useJoblyToastTopStyle } from '@/composables/useJoblyToastTopStyle';
 import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdown from '~/components/custom/DotsDropdown.vue';
@@ -656,6 +769,7 @@ import { mapPublicationToVacancy, getPlatformId } from '@/utils/mapPublicationTo
 import { resolvePublicationViewUrl } from '@/utils/publicationViewUrl'
 import { validateVacancyData, normalizeVacancyData } from '@/utils/validateVacancyData'
 import { resolveOAuthApiPrefix } from '@/utils/resolveOAuthApiPrefix'
+import { submitPlatformConnectionRequest } from '@/utils/submitPlatformConnectionRequest'
 import { HH_EMPLOYMENT_TYPES, HH_WORK_SCHEDULE_BY_DAYS, HH_EDUCATION_LAVEL } from '@/src/constants'
 import {
     hhPublicationStatusLabelFromApi,
@@ -690,7 +804,7 @@ const sortKey = ref(""); // Поле для сортировки
 const sortOrder = ref("asc"); // Порядок сортировки
 const sortDirection = ref("asc");
 const isOpenPopup = ref(false);
-/** Смена key при каждом открытии модалки «Публикация» — форма подхватывает актуальный provide вакансии. */
+/** Смена key при каждом открытии модалки «Размещение» — форма подхватывает актуальный provide вакансии. */
 const createPublicationModalKey = ref(0);
 const publicationsHh = ref([]);
 const publicationPlatforms = ref([]);
@@ -699,7 +813,7 @@ const cartStore = useCartStore()
 const saveAndContinueHandler = inject('saveAndContinueHandler', null)
 const setPublicationsCount = inject('setPublicationsCount', null)
 
-// Синхронизация количества публикаций с вкладкой (для подписи «Публикации (N)»)
+// Синхронизация количества размещений с вкладкой (для подписи «Размещения (N)»)
 watch(() => publicationPlatforms.value.length, (len) => { setPublicationsCount?.(len); }, { immediate: true })
 
 // if (publications && !publications.error && !publications.errorRoles) {
@@ -724,7 +838,7 @@ const authError = ref({
     'rabota.ru': null,
     'superjob': null,
 });
-const platformDropdownOptions = ['Импорт публикаций', 'Отвязать профиль']
+const platformDropdownOptions = ['Импорт размещений', 'Отвязать профиль']
 
 // Автоматическое скрытие ошибки авторизации через 3 секунды для каждой платформы
 const authErrorTimeouts = {};
@@ -744,7 +858,7 @@ watch(authError, (newValue) => {
     });
 }, { deep: true });
 
-// Попап публикации вакансии
+// Попап размещения вакансии
 const isPublishPopupOpen = ref(false);
 /** Черновик полей hh.ru при открытии «Опубликовать» на hh */
 /** `undefined` — префилл ещё грузится (попап уже открыт); объект — готово к показу */
@@ -756,12 +870,12 @@ const selectedPlatformForPublish = ref(null);
 const createPublicationTitle = computed(() => {
     const platform = String(selectedPlatformForPublish.value || '').toLowerCase();
     if (platform === 'avito' || platform === 'avito.ru') {
-        return 'Публикация вакансии на avito';
+        return 'Размещение вакансии на avito';
     }
-    return 'Публикация вакансии';
+    return 'Размещение вакансии';
 });
 
-const editPublicationSubtitle = 'Заполните форму для публикации вакансии';
+const editPublicationSubtitle = 'Заполните форму для размещения вакансии';
 
 const editPublicationTitle = computed(() => {
     const pd = editingVacancy.value?.platforms_data?.[0];
@@ -830,7 +944,7 @@ const hhBillingTypes = ref([]);
 const selectedBillingType = ref(null);
 const hhBillingTypesRaw = ref([]); // Исходные объекты тарифов для отправки
 
-// Данные формы публикации
+// Данные формы размещения
 const publishFormData = ref({
     name: '',
     code: '',
@@ -879,15 +993,70 @@ const workSpaceCards = ref([
     { id: '3', title: 'Удаленно', description: 'Сотрудники работают из дома' },
 ]);
 
+// Заявка на подключение другого job-сайта
+const isAddSitePopupOpen = ref(false);
+const addSiteName = ref('');
+const addSiteError = ref('');
+const addSiteSuccess = ref('');
+const addSiteSubmitting = ref(false);
+const vacancyIdRef = inject('vacancyIdRef', null);
+
+function openAddSitePopup() {
+    addSiteName.value = '';
+    addSiteError.value = '';
+    addSiteSuccess.value = '';
+    isAddSitePopupOpen.value = true;
+}
+
+function closeAddSitePopup() {
+    isAddSitePopupOpen.value = false;
+    addSiteName.value = '';
+    addSiteError.value = '';
+    addSiteSuccess.value = '';
+    addSiteSubmitting.value = false;
+}
+
+async function submitAddSiteRequest() {
+    const name = String(addSiteName.value || '').trim();
+    if (name.length < 2) {
+        addSiteError.value = 'Укажите название сайта (не менее 2 символов)';
+        addSiteSuccess.value = '';
+        return;
+    }
+    addSiteSubmitting.value = true;
+    addSiteError.value = '';
+    addSiteSuccess.value = '';
+    const vid =
+        currentVacancyId.value
+        ?? (vacancyIdRef && typeof vacancyIdRef === 'object' && 'value' in vacancyIdRef
+            ? vacancyIdRef.value
+            : vacancyIdRef)
+        ?? null;
+    const result = await submitPlatformConnectionRequest({
+        site_name: name,
+        vacancy_id: vid != null && String(vid).trim() !== '' ? vid : null,
+    });
+    addSiteSubmitting.value = false;
+    if (result.ok) {
+        addSiteSuccess.value = result.message || 'Заявка отправлена';
+        addSiteError.value = '';
+        setTimeout(() => closeAddSitePopup(), 1800);
+    } else {
+        addSiteError.value = result.error || 'Не удалось отправить заявку';
+    }
+}
+
 // Попап отвязки профиля
 const isUnlinkPopupOpen = ref(false);
 const platformToUnlink = ref(null);
 const isUnlinking = ref(false);
 const unlinkError = ref(null);
 
-// Попап импорта публикаций
+// Попап импорта размещений
 const isImportPopupOpen = ref(false);
 const isLoadingImport = ref(false);
+/** Импорт одной публикации из списка (кнопка «Импорт» в строке). */
+const isImportingPublication = ref(false);
 /** Догрузка полного списка hh.ru после быстрого first_page_only */
 const isHhImportBackfillLoading = ref(false);
 const importedPublications = ref([]);
@@ -954,7 +1123,7 @@ async function loadPublicationPlatforms() {
     }
 }
 
-/** Статус публикации в строке таблицы (HH / Avito). */
+/** Статус размещения в строке таблицы (HH / Avito). */
 /** Колонка «Истекает»: для Avito — finish_time с API, иначе дата из CRM. */
 function publicationRowExpiresLabel(item) {
     if (Number(item?.platforms_data?.[0]?.id) === 2 && item.avitoExpiresAt) {
@@ -979,7 +1148,7 @@ function publicationRowStatusLabel(item) {
     return publicationRowHhStatusLabel(item);
 }
 
-/** Статус hh.ru в строке таблицы публикаций (как в попапе импорта). Для других площадок — «—». */
+/** Статус hh.ru в строке таблицы размещений (как в попапе импорта). Для других площадок — «—». */
 function publicationRowHhStatusLabel(item) {
     const pd = item?.platforms_data?.[0];
     if (Number(pd?.id) !== 1) return '—';
@@ -994,7 +1163,7 @@ function publicationRowHhStatusLabel(item) {
     return hhPublicationStatusLabelFromApi(null);
 }
 
-/** Пункт «Снять с публикации» — только для строк со статусом «Активна» (и для др. площадок: не архив в CRM). */
+/** Пункт «Снять с размещения» — только для строк со статусом «Активна» (и для др. площадок: не архив в CRM). */
 function showUnpublishPublicationRow(item) {
     const label = publicationRowStatusLabel(item);
     if (label === 'Активна') return true;
@@ -1004,11 +1173,11 @@ function showUnpublishPublicationRow(item) {
 }
 
 function publicationRowDropdownItems(item) {
-    const items = ['Редактировать текст', 'Посмотреть публикацию'];
+    const items = ['Редактировать текст', 'Посмотреть размещение'];
     if (showUnpublishPublicationRow(item)) {
-        items.push('Снять с публикации');
+        items.push('Снять с размещения');
     }
-    items.push('Дублировать публикацию', 'Показать отчет по публикации', 'Удалить');
+    items.push('Дублировать размещение', 'Показать отчет по размещению', 'Удалить');
     return items;
 }
 
@@ -1045,7 +1214,7 @@ const PUBLICATION_STATS_INTERVAL_MS = 5 * 60 * 1000;
 let publicationStatsPollId = null;
 
 /**
- * ID вакансии в CRM для откликов и счётчика: при публикации с родителем (черновик)
+ * ID вакансии в CRM для откликов и счётчика: при размещения с родителем (черновик)
  * кандидаты должны попадать на базовую вакансию — иначе они не видны на /vacancies/{baseId}.
  */
 function crmVacancyIdForPublicationRow(item) {
@@ -1065,7 +1234,7 @@ function clearPublicationStatsPolling() {
     }
 }
 
-/** Отклики по этой публикации: vacancy + внешний id на площадке (старые записи без поля — тоже входят в счёт). */
+/** Отклики по этой размещения: vacancy + внешний id на площадке (старые записи без поля — тоже входят в счёт). */
 async function getImportedCandidatesCountForVacancy(vacancyId, platformPublicationId) {
     const vid = Number(vacancyId);
     if (!Number.isFinite(vid)) return 0;
@@ -1259,7 +1428,7 @@ async function refreshPublicationPlatformsStats() {
             item.responses = await getImportedCandidatesCountForVacancy(vacancyId, extVacancyId);
             touchPublicationStatsCachedAt(item);
         } catch (e) {
-            console.warn('Обновление публикации в таблице:', e);
+            console.warn('Обновление размещения в таблице:', e);
         }
     }));
 
@@ -1400,7 +1569,7 @@ function isPlatformAuthenticated(platformName) {
 
 async function handlePlatformButtonClick(platformName) {
     if (isPlatformAuthenticated(platformName)) {
-        // Платформа авторизована - открываем попап публикации
+        // Платформа авторизована - открываем попап размещения
         await openPublishPopup(platformName);
     } else {
         // Платформа не авторизована - начинаем авторизацию
@@ -1432,7 +1601,7 @@ async function openPublishPopup(platformName) {
                 hhRolesData.value = pr;
             } catch (e) {
                 console.error('Ошибка загрузки ролей:', e);
-                publishError.value = 'Ошибка при загрузке данных для публикации';
+                publishError.value = 'Ошибка при загрузке данных для размещения';
                 return;
             }
             console.log('Данные ролей загружены:', hhRolesData.value);
@@ -1475,8 +1644,8 @@ async function openPublishPopup(platformName) {
 
         isPublishPopupOpen.value = true;
     } catch (err) {
-        console.error('Ошибка при загрузке данных для публикации:', err);
-        publishError.value = 'Ошибка при загрузке данных для публикации';
+        console.error('Ошибка при загрузке данных для размещения:', err);
+        publishError.value = 'Ошибка при загрузке данных для размещения';
     } finally {
         isLoadingPublishForm.value = false;
     }
@@ -1735,7 +1904,7 @@ async function confirmPublish() {
     }
 
     if (selectedPlatformForPublish.value !== 'hh.ru') {
-        publishError.value = 'Публикация на эту платформу пока не поддерживается';
+        publishError.value = 'Размещение на эту платформу пока не поддерживается';
         return;
     }
 
@@ -1766,7 +1935,7 @@ async function confirmPublish() {
             }
         }
 
-        // Формируем данные для публикации на hh.ru
+        // Формируем данные для размещения на hh.ru
         const professionalRoleId = publishFormData.value.professional_role.id;
         // Преобразуем id в строку (FormData всегда работает со строками)
         const roleId = String(professionalRoleId);
@@ -1821,7 +1990,7 @@ async function confirmPublish() {
             if (Array.isArray(errors)) {
                 const errorMessages = errors.map((e) => {
                     if (e.type === 'vacancies' && e.value === 'not_enough_purchased_services') {
-                        return 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+                        return 'Недостаточно купленных услуг для размещения вакансии. Пожалуйста, пополните баланс или выберите другой тариф размещения.';
                     }
                     return e.message || e.value || JSON.stringify(e);
                 }).join(', ');
@@ -1830,31 +1999,31 @@ async function confirmPublish() {
                 // Если errors - объект
                 const errorObj = errors;
                 if (errorObj.type === 'vacancies' && errorObj.value === 'not_enough_purchased_services') {
-                    publishError.value = 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+                    publishError.value = 'Недостаточно купленных услуг для размещения вакансии. Пожалуйста, пополните баланс или выберите другой тариф размещения.';
                 } else {
-                    publishError.value = errorObj.message || errorObj.value || 'Ошибка при публикации вакансии';
+                    publishError.value = errorObj.message || errorObj.value || 'Ошибка при размещения вакансии';
                 }
             } else {
-                publishError.value = 'Ошибка при публикации вакансии';
+                publishError.value = 'Ошибка при размещения вакансии';
             }
         } else {
-            // Успешная публикация
+            // Успешная размещение
             alert(`Вакансия "${publishFormData.value.name}" успешно опубликована на ${selectedPlatformForPublish.value}`);
             closePublishPopup();
         }
     } catch (err) {
-        console.error('Ошибка при публикации вакансии:', err);
+        console.error('Ошибка при размещения вакансии:', err);
         
         // Обработка ошибок из исключения
         const errorData = err?.response?._data;
         if (errorData && errorData.type === 'vacancies' && errorData.value === 'not_enough_purchased_services') {
-            publishError.value = 'Недостаточно купленных услуг для публикации вакансии. Пожалуйста, пополните баланс или выберите другой тариф публикации.';
+            publishError.value = 'Недостаточно купленных услуг для размещения вакансии. Пожалуйста, пополните баланс или выберите другой тариф размещения.';
         } else if (errorData && errorData.message) {
             publishError.value = errorData.message;
         } else if (errorData && errorData.error) {
             publishError.value = errorData.error;
         } else {
-            publishError.value = 'Ошибка при публикации вакансии';
+            publishError.value = 'Ошибка при размещения вакансии';
         }
     } finally {
         isPublishing.value = false;
@@ -1862,7 +2031,7 @@ async function confirmPublish() {
 }
 
 function handlePlatformDropdown(item, platformName) {
-    if (item === 'Импорт публикаций') {
+    if (item === 'Импорт размещений') {
         openImportPopup(platformName);
     } else if (item === 'Отвязать профиль') {
         openUnlinkPopup(platformName);
@@ -1873,7 +2042,7 @@ function applyImportResultToList(result, platformName) {
     const publications = result?.roles?.items || [];
 
     if (publications.length === 0) {
-        console.log('Список публикаций пуст для платформы:', platformName);
+        console.log('Список размещений пуст для платформы:', platformName);
         importedPublications.value = [];
         return;
     }
@@ -1889,21 +2058,21 @@ function applyImportResultToList(result, platformName) {
         return;
     }
 
-    console.log(`Начинаем проверку импорта для ${publications.length} публикаций платформы ${platformName} (platform_id: ${platformId})`);
-    console.log(`Используем существующий список активных публикаций для проверки: ${publicationPlatforms.value.length} вакансий`);
+    console.log(`Начинаем проверку импорта для ${publications.length} размещений платформы ${platformName} (platform_id: ${platformId})`);
+    console.log(`Используем существующий список активных размещений для проверки: ${publicationPlatforms.value.length} вакансий`);
     console.log('publicationPlatforms.value:', publicationPlatforms.value);
 
     importedPublications.value = publications.map((pub) => {
         const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
         if (!publicationId) {
-            console.warn(`Публикация без ID для платформы ${platformName}:`, pub);
+            console.warn(`Размещение без ID для платформы ${platformName}:`, pub);
             return {
                 ...pub,
                 isImported: false,
             };
         }
 
-        console.log(`Проверка публикации для платформы ${platformName}:`, {
+        console.log(`Проверка размещения для платформы ${platformName}:`, {
             publicationId,
             pubId: pub.id,
             pubVacancyId: pub.vacancy_id,
@@ -1913,7 +2082,7 @@ function applyImportResultToList(result, platformName) {
         });
 
         const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
-        console.log(`Результат проверки публикации ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
+        console.log(`Результат проверки размещения ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
 
         return {
             ...pub,
@@ -1940,12 +2109,12 @@ async function openImportPopup(platformName) {
     isHhImportBackfillLoading.value = false;
 
     try {
-        // Для hh.ru, rabota.ru и avito.ru загружаем и активные, и архивные публикации
+        // Для hh.ru, rabota.ru и avito.ru загружаем и активные, и архивные размещения
         let result;
         if (platformName === 'hh.ru') {
             const quick = await getAllPublications({ firstPageOnly: true });
             if (quick?.error || quick?.errorRoles) {
-                importError.value = quick?.error || quick?.errorRoles || 'Ошибка при загрузке публикаций';
+                importError.value = quick?.error || quick?.errorRoles || 'Ошибка при загрузке размещений';
                 return;
             }
             applyImportResultToList(quick, platformName);
@@ -1957,7 +2126,7 @@ async function openImportPopup(platformName) {
                         applyImportResultToList(full, platformName);
                     }
                 })
-                .catch((e) => console.error('Полный список публикаций hh.ru:', e))
+                .catch((e) => console.error('Полный список размещений hh.ru:', e))
                 .finally(() => {
                     isHhImportBackfillLoading.value = false;
                 });
@@ -1973,14 +2142,14 @@ async function openImportPopup(platformName) {
         }
 
         if (result?.error || result?.errorRoles) {
-            importError.value = result?.error || result?.errorRoles || 'Ошибка при загрузке публикаций';
+            importError.value = result?.error || result?.errorRoles || 'Ошибка при загрузке размещений';
             return;
         }
 
         const publications = result?.roles?.items || [];
         
         if (publications.length === 0) {
-            console.log('Список публикаций пуст для платформы:', platformName);
+            console.log('Список размещений пуст для платформы:', platformName);
             importedPublications.value = [];
             return;
         }
@@ -1998,27 +2167,27 @@ async function openImportPopup(platformName) {
             return;
         }
         
-        console.log(`Начинаем проверку импорта для ${publications.length} публикаций платформы ${platformName} (platform_id: ${platformId})`);
+        console.log(`Начинаем проверку импорта для ${publications.length} размещений платформы ${platformName} (platform_id: ${platformId})`);
         
-        // Используем уже загруженный список вакансий из таблицы "Активные публикации"
+        // Используем уже загруженный список вакансий из таблицы "Активные размещения"
         // Не перезагружаем список, чтобы не обновлять таблицу при открытии попапа импорта
-        console.log(`Используем существующий список активных публикаций для проверки: ${publicationPlatforms.value.length} вакансий`);
+        console.log(`Используем существующий список активных размещений для проверки: ${publicationPlatforms.value.length} вакансий`);
         console.log('publicationPlatforms.value:', publicationPlatforms.value);
         
-        // Проверяем каждую публикацию на наличие в таблице "Активные публикации"
+        // Проверяем каждую размещение на наличие в таблице "Активные размещения"
         // Используем уже загруженный список publicationPlatforms
         importedPublications.value = publications.map((pub) => {
             // Для hh.ru используем pub.id, для rabota.ru ID может быть в разных форматах
             const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
             if (!publicationId) {
-                console.warn(`Публикация без ID для платформы ${platformName}:`, pub);
+                console.warn(`Размещение без ID для платформы ${platformName}:`, pub);
                 return {
                     ...pub,
                     isImported: false
                 };
             }
             
-            console.log(`Проверка публикации для платформы ${platformName}:`, {
+            console.log(`Проверка размещения для платформы ${platformName}:`, {
                 publicationId,
                 pubId: pub.id,
                 pubVacancyId: pub.vacancy_id,
@@ -2028,7 +2197,7 @@ async function openImportPopup(platformName) {
             });
             
             const isImported = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
-            console.log(`Результат проверки публикации ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
+            console.log(`Результат проверки размещения ${publicationId} (${pub.name || pub.title || 'без названия'}): isImported = ${isImported}`);
             
             return {
                 ...pub,
@@ -2044,8 +2213,8 @@ async function openImportPopup(platformName) {
             details: importedPublications.value.map(p => ({ id: p.id, name: p.name, isImported: p.isImported }))
         });
     } catch (err) {
-        console.error('Ошибка при импорте публикаций:', err);
-        importError.value = 'Ошибка при загрузке публикаций';
+        console.error('Ошибка при импорте размещений:', err);
+        importError.value = 'Ошибка при загрузке размещений';
     } finally {
         isLoadingImport.value = false;
     }
@@ -2058,10 +2227,11 @@ function closeImportPopup() {
     selectedImportPlatform.value = null;
     importSearchQuery.value = '';
     isHhImportBackfillLoading.value = false;
+    isImportingPublication.value = false;
 }
 
 /**
- * Перепроверка всех публикаций в списке на предмет импорта
+ * Перепроверка всех размещений в списке на предмет импорта
  * Вызывается после успешного импорта для обновления статусов
  */
 async function recheckImportedPublications() {
@@ -2078,20 +2248,20 @@ async function recheckImportedPublications() {
     }
     
     try {
-        // Используем уже загруженный список вакансий из таблицы "Активные публикации"
+        // Используем уже загруженный список вакансий из таблицы "Активные размещения"
         // Список должен быть обновлен в функции importPublication перед вызовом этой функции
-        console.log(`Перепроверка публикаций использует список из ${publicationPlatforms.value.length} активных публикаций`);
+        console.log(`Перепроверка размещений использует список из ${publicationPlatforms.value.length} активных размещений`);
         
-        // Перепроверяем каждую публикацию в списке
+        // Перепроверяем каждую размещение в списке
         // Обновляем напрямую свойство isImported для сохранения реактивности Vue
-        // Перепроверяем ВСЕ публикации, включая уже помеченные, чтобы учесть вакансии,
-        // которые уже есть в активных публикациях (раздел "Активные публикации")
+        // Перепроверяем ВСЕ размещения, включая уже помеченные, чтобы учесть вакансии,
+        // которые уже есть в активных размещениех (раздел "Активные размещения")
         importedPublications.value.forEach((pub, index) => {
             // Для rabota.ru ID может быть в разных форматах
             const publicationId = pub.id || pub.vacancy_id || pub.vacancyId;
             
             if (!publicationId) {
-                console.warn(`Публикация без ID при перепроверке для платформы ${platformName}:`, pub);
+                console.warn(`Размещение без ID при перепроверке для платформы ${platformName}:`, pub);
                 importedPublications.value[index].isImported = false;
                 return;
             }
@@ -2101,17 +2271,17 @@ async function recheckImportedPublications() {
             importedPublications.value[index].isImported = !!isImported;
             
             if (isImported) {
-                console.log(`Публикация ${publicationId} найдена в активных публикациях после перепроверки`);
+                console.log(`Размещение ${publicationId} найдена в активных размещениех после перепроверки`);
             }
         });
         
         await nextTick(); // Ждем обновления DOM
         
-        console.log('Перепроверка публикаций завершена. Обновленные статусы:', 
+        console.log('Перепроверка размещений завершена. Обновленные статусы:', 
             importedPublications.value.map(p => ({ id: p.id, isImported: p.isImported }))
         );
     } catch (error) {
-        console.error('Ошибка при перепроверке публикаций:', error);
+        console.error('Ошибка при перепроверке размещений:', error);
     }
 }
 
@@ -2183,13 +2353,13 @@ function checkVacancyImported(platformId, vacancyId, vacanciesList = null) {
 }
 
 async function importPublication(publication) {
-    // Проверяем, не импортирована ли уже эта публикация
+    // Проверяем, не импортирована ли уже эта размещение
     if (publication.isImported) {
-        importError.value = 'Эта публикация уже импортирована';
+        importError.value = 'Это размещение уже импортирована';
         return;
     }
     
-    isLoadingImport.value = true;
+    isImportingPublication.value = true;
     importError.value = null;
     
     try {
@@ -2217,7 +2387,7 @@ async function importPublication(publication) {
             if (publicationId) {
                 const isDuplicate = checkVacancyImported(platformId, publicationId, publicationPlatforms.value);
                 if (isDuplicate) {
-                    importError.value = 'Эта публикация уже импортирована в систему';
+                    importError.value = 'Это размещение уже импортирована в систему';
                     // Обновляем флаг в списке
                     const pubIndex = importedPublications.value.findIndex(p => (p.id === publicationId || p.id === publication.id));
                     if (pubIndex !== -1) {
@@ -2228,7 +2398,7 @@ async function importPublication(publication) {
             }
         }
         
-        // Получаем статистику публикации (только для hh.ru, для других платформ может не поддерживаться)
+        // Получаем статистику размещения (только для hh.ru, для других платформ может не поддерживаться)
         // Необязательно, не блокируем импорт при ошибке
         if (platform === 'hh.ru') {
             try {
@@ -2251,7 +2421,7 @@ async function importPublication(publication) {
                 console.warn('Не удалось получить статистику откликов:', err);
             }
         } else {
-            // Для других платформ (rabota.ru, avito.ru) статистика может быть в самой публикации
+            // Для других платформ (rabota.ru, avito.ru) статистика может быть в самой размещения
             if (publication.countViews !== undefined) {
                 publication.countViews = publication.countViews;
             }
@@ -2260,7 +2430,7 @@ async function importPublication(publication) {
             }
         }
         
-        // Преобразуем данные публикации в формат вакансии
+        // Преобразуем данные размещения в формат вакансии
         let vacancyData = mapPublicationToVacancy(
             publication, 
             platform, 
@@ -2294,7 +2464,7 @@ async function importPublication(publication) {
 
         // Логируем данные для отладки (только для rabota.ru)
         if (platform === 'rabota.ru') {
-            console.log('Импорт вакансии rabota.ru - исходные данные публикации:', {
+            console.log('Импорт вакансии rabota.ru - исходные данные размещения:', {
                 id: publication.id,
                 title: publication.title,
                 name: publication.name,
@@ -2358,7 +2528,7 @@ async function importPublication(publication) {
             return;
         }
         
-        // Добавляем ID созданной вакансии к публикации
+        // Добавляем ID созданной вакансии к размещения
         publication.vacancyId = createdVacancy.data.id;
         publication.importedAt = new Date().toISOString();
         publication.isImported = true; // Помечаем как импортированную
@@ -2370,7 +2540,7 @@ async function importPublication(publication) {
             console.log(`Обновлен список publicationPlatforms после импорта, всего вакансий: ${publicationPlatforms.value.length}`);
         }
         
-        // Обновляем флаг в списке импортированных публикаций
+        // Обновляем флаг в списке импортированных размещений
         // Для rabota.ru ID может быть в разных форматах
         const publicationId = publication.id || publication.vacancy_id || publication.vacancyId;
         const pubIndex = importedPublications.value.findIndex(p => {
@@ -2383,15 +2553,15 @@ async function importPublication(publication) {
             importedPublications.value[pubIndex].vacancyId = createdVacancy.data.id;
             // Также обновляем сам объект publication для консистентности
             publication.isImported = true;
-            console.log(`Обновлен флаг isImported для публикации ${publicationId}`);
+            console.log(`Обновлен флаг isImported для размещения ${publicationId}`);
             
             // Принудительно триггерим реактивность через nextTick
             await nextTick();
         } else {
-            console.warn('Публикация не найдена в списке для обновления:', publicationId || publication.id);
+            console.warn('Размещение не найдена в списке для обновления:', publicationId || publication.id);
         }
         
-        // Добавляем публикацию в список активных
+        // Добавляем размещение в список активных
         if (!publicationsHh.value.find(p => p.id === publicationId || p.id === publication.id)) {
             publicationsHh.value.push(publication);
         }
@@ -2420,8 +2590,8 @@ async function importPublication(publication) {
             }
         }
         
-        // Перепроверяем все публикации в списке после успешного импорта и обновления списка вакансий
-        // Функция recheckImportedPublications проверит все публикации на наличие в активных публикациях
+        // Перепроверяем все размещения в списке после успешного импорта и обновления списка вакансий
+        // Функция recheckImportedPublications проверит все размещения на наличие в активных размещениех
         await recheckImportedPublications();
 
         // Сразу подтянуть просмотры/отклики в таблицу (polling стартует refresh без await)
@@ -2429,15 +2599,15 @@ async function importPublication(publication) {
             try {
                 await refreshPublicationPlatformsStats();
             } catch (statsErr) {
-                console.warn('Не удалось сразу обновить статистику публикаций:', statsErr);
+                console.warn('Не удалось сразу обновить статистику размещений:', statsErr);
             }
         }
 
         const pubTitle = publication.name || publication.title || 'Вакансия';
-        showPublicationToastMessage(`Публикация «${pubTitle}» успешно импортирована`);
+        showPublicationToastMessage(`Размещение «${pubTitle}» успешно импортирована`);
         closeImportPopup();
 
-        console.log('Публикация успешно импортирована:', {
+        console.log('Размещение успешно импортирована:', {
             platform: platform,
             publicationId: publicationId || publication.id,
             vacancyId: createdVacancy.data.id,
@@ -2447,11 +2617,11 @@ async function importPublication(publication) {
         });
         
     } catch (err) {
-        console.error('Ошибка при импорте публикации:', err);
+        console.error('Ошибка при импорте размещения:', err);
         const errorMessage = err?.response?.data?.message || err?.message || err?.toString() || 'Неизвестная ошибка';
-        importError.value = `Ошибка при импорте публикации: ${errorMessage}`;
+        importError.value = `Ошибка при импорте размещения: ${errorMessage}`;
     } finally {
-        isLoadingImport.value = false;
+        isImportingPublication.value = false;
     }
 }
 
@@ -2709,35 +2879,125 @@ const isUpdatingFromToggleAll = ref(false);
 
 const toggleAll = (isChecked) => {
     isUpdatingFromToggleAll.value = true;
-    publicationsHh.value.forEach((item) => {
-        selected.value[item.id] = isChecked;
+    publicationPlatforms.value.forEach((item) => {
+        if (isChecked) {
+            selected.value[item.id] = true;
+        } else {
+            delete selected.value[item.id];
+        }
     });
     isUpdatingFromToggleAll.value = false;
 };
 
+const selectedPublicationRows = computed(() =>
+    publicationPlatforms.value.filter((item) => !!selected.value[item.id])
+);
+
+const selectedPublicationCount = computed(() => selectedPublicationRows.value.length);
+
+/** Синхронизация «выбрать всех» в шапке таблицы и на нижней панели */
+const publicationAllSelected = computed({
+    get: () => allSelected.value,
+    set: (v) => {
+        allSelected.value = v;
+    },
+});
+
+const publicationBulkActions = [
+    {
+        id: 'unpublish',
+        label: 'Снять с размещения',
+        icon: 'stop20',
+        iconClass: 'text-red-custom',
+    },
+    {
+        id: 'delete',
+        label: 'Удалить',
+        icon: 'basket-basket',
+        iconClass: 'text-red-custom',
+    },
+];
+
+const bulkPublicationActionLoading = ref(false);
+const bulkArchiveConfirmOpen = ref(false);
+const bulkDeleteConfirmOpen = ref(false);
+
+const bulkArchiveEligibleRows = computed(() =>
+    selectedPublicationRows.value.filter((item) => showUnpublishPublicationRow(item))
+);
+
+const bulkArchiveEligibleCount = computed(() => bulkArchiveEligibleRows.value.length);
+
+const bulkDeleteEligibleRows = computed(() =>
+    selectedPublicationRows.value.filter((item) => {
+        if (!item?.id) return false;
+        if (currentVacancyId.value && String(item.id) === String(currentVacancyId.value)) {
+            return false;
+        }
+        return true;
+    })
+);
+
+const bulkDeleteEligibleCount = computed(() => bulkDeleteEligibleRows.value.length);
+
+function clearPublicationSelection() {
+    selected.value = {};
+    allSelected.value = false;
+}
+
+function handlePublicationBulkSelectAll(isSelected) {
+    toggleAll(isSelected);
+    allSelected.value = isSelected;
+}
+
+function runPublicationBulkAction(id) {
+    if (bulkPublicationActionLoading.value) return;
+    if (id === 'unpublish') {
+        if (!bulkArchiveEligibleCount.value) {
+            showPublicationToastMessage(
+                'Среди выбранных нет активных размещений, которые можно снять с площадки',
+                'error'
+            );
+            return;
+        }
+        bulkArchiveConfirmOpen.value = true;
+        return;
+    }
+    if (id === 'delete') {
+        if (!bulkDeleteEligibleCount.value) {
+            showPublicationToastMessage(
+                'Нет размещений для удаления (базовая вакансия не удаляется из списка)',
+                'error'
+            );
+            return;
+        }
+        bulkDeleteConfirmOpen.value = true;
+    }
+}
+
+function closeBulkArchiveConfirm() {
+    if (bulkPublicationActionLoading.value) return;
+    bulkArchiveConfirmOpen.value = false;
+}
+
+function closeBulkDeleteConfirm() {
+    if (bulkPublicationActionLoading.value) return;
+    bulkDeleteConfirmOpen.value = false;
+}
 
 // Следить за изменениями состояния частных чекбоксов
 watch(selected, (newSelected) => {
-    // Пропускаем обновление, если это обновление из toggleAll
     if (isUpdatingFromToggleAll.value) {
         return;
     }
 
-    // Проверяем, выбраны ли все элементы
-    const allChecked = publicationsHh.value.length > 0 && publicationsHh.value.every(item => newSelected[item.id]);
-    const noneChecked = publicationsHh.value.every(item => !newSelected[item.id]);
+    const list = publicationPlatforms.value;
+    const allChecked =
+        list.length > 0 && list.every((item) => newSelected[item.id]);
+    allSelected.value = allChecked;
+}, { deep: true });
 
-    allSelected.value = allChecked; // Обновляем общий чекбокс
-
-    // Логика для состояния "частично выбрано" (например, при необходимости в будущем)
-    if (!allChecked && !noneChecked) {
-        console.log("Частично выбрано"); // Для добавления UI-реакции
-    }
-}, { deep: true }); // Обязательно deep, так как мы следим за вложенными объектами
-
-// Следить за изменениями общего чекбокса (только при ручном клике пользователя)
 watch(allSelected, (newValue) => {
-    // Пропускаем, если это обновление из watch на selected
     if (!isUpdatingFromToggleAll.value) {
         toggleAll(newValue);
     }
@@ -2746,19 +3006,19 @@ watch(allSelected, (newValue) => {
 // Состояние для редактирования вакансии
 const isEditPopupOpen = ref(false);
 const editingVacancy = ref(null);
-/** Режим «пустая форма + только название публикации» для импортированных строк (см. shouldEditImportedPublicationAsLightShell). */
+/** Режим «пустая форма + только название размещения» для импортированных строк (см. shouldEditImportedPublicationAsLightShell). */
 const editPublicationLightShell = ref(false);
 /** Прелоадер в модалке «Редактирование вакансии» до окончания async setup AddPublication */
 const isEditPublicationLoading = ref(false);
 const EDIT_POPUP_LOADING_TIMEOUT_MS = 12000;
 let editPopupLoadingTimer = null;
-/** Прелоадер в модалке «Публикация вакансии» (карточка платформы) до form-ready AddPublication */
+/** Прелоадер в модалке «Размещение вакансии» (карточка платформы) до form-ready AddPublication */
 const isCreatePublicationLoading = ref(false);
 let createPublicationLoadingTimer = null;
 /** Попап полей оригинала hh.ru (отдельное хранилище, не форма Наймикс). */
 const isHhOriginalPopupOpen = ref(false);
 const hhOriginalEditRow = ref(null);
-/** Открыто с карточки «Опубликовать»: без записи снимка в БД при GET, заголовок «Публикация…». */
+/** Открыто с карточки «Опубликовать»: без записи снимка в БД при GET, заголовок «Размещение…». */
 const hhOriginalFromPublishCard = ref(false);
 /** ID записи вакансии в CRM для строки таблицы — совпадает с vacancy_id в vacancy_platform. */
 const hhOriginalVacancyApiId = computed(() => {
@@ -2820,7 +3080,7 @@ function deletePublicationErrorMessage(error) {
         error?.data?.message ||
         error?.response?._data?.message ||
         error?.message ||
-        'Не удалось удалить публикацию'
+        'Не удалось удалить размещение'
     );
 }
 
@@ -2844,7 +3104,7 @@ async function confirmDeletePublicationRow() {
             showPublicationToastMessage(deletePublicationErrorMessage(error), 'error');
             return;
         }
-        showPublicationToastMessage('Публикация удалена из системы', 'success');
+        showPublicationToastMessage('Размещение удалено из системы', 'success');
         await loadPublicationPlatforms();
     } finally {
         isDeletingPublication.value = false;
@@ -2870,13 +3130,13 @@ async function confirmUnpublishPublication() {
     }
 }
 
-async function handleArchivePublication(vacancyItem) {
+async function tryArchivePublicationRow(vacancyItem) {
     const platformData = vacancyItem?.platforms_data?.[0];
     const platformId = platformData?.id;
-    const publicationId = platformData?.platform_id != null ? String(platformData.platform_id) : null;
+    const publicationId =
+        platformData?.platform_id != null ? String(platformData.platform_id) : null;
     if (!platformData || !publicationId) {
-        showPublicationToastMessage('Не удалось определить платформу или ID публикации.', 'error');
-        return;
+        return { ok: false, error: 'Не удалось определить платформу или ID размещения.' };
     }
     let result = { data: null, error: null };
     if (platformId === 1) result = await archivePublicationHh(publicationId);
@@ -2884,23 +3144,93 @@ async function handleArchivePublication(vacancyItem) {
     else if (platformId === 3) result = await archivePublicationRabota(publicationId);
     else if (platformId === 4) result = await archivePublicationSuperjob(publicationId);
     else {
-        showPublicationToastMessage('Неизвестная платформа.', 'error');
-        return;
+        return { ok: false, error: 'Неизвестная платформа.' };
     }
     if (result.error) {
-        showPublicationToastMessage(result.error, 'error');
-        return;
+        return { ok: false, error: result.error };
     }
     const updateResult = await updateVacancy(vacancyItem.id, { status: 'archive' });
     if (updateResult?.error) {
-        showPublicationToastMessage(
-            'Публикация снята с платформы, но не удалось обновить статус в системе: ' + (updateResult.error || '').slice(0, 80),
-            'error'
-        );
-    } else {
-        showPublicationToastMessage('Вакансия снята с публикации', 'success');
+        return {
+            ok: false,
+            error:
+                'Снято с платформы, но не удалось обновить статус в системе: ' +
+                String(updateResult.error || '').slice(0, 80),
+        };
     }
+    return { ok: true };
+}
+
+async function handleArchivePublication(vacancyItem) {
+    const r = await tryArchivePublicationRow(vacancyItem);
+    if (!r.ok) {
+        showPublicationToastMessage(r.error || 'Не удалось снять с размещения', 'error');
+        return;
+    }
+    showPublicationToastMessage('Вакансия снята с размещения', 'success');
     loadPublicationPlatforms();
+}
+
+async function confirmBulkUnpublishPublications() {
+    const rows = [...bulkArchiveEligibleRows.value];
+    bulkArchiveConfirmOpen.value = false;
+    if (!rows.length) return;
+
+    bulkPublicationActionLoading.value = true;
+    let ok = 0;
+    let fail = 0;
+    try {
+        for (const row of rows) {
+            const r = await tryArchivePublicationRow(row);
+            if (r.ok) ok += 1;
+            else fail += 1;
+        }
+        await loadPublicationPlatforms();
+        clearPublicationSelection();
+        if (ok && !fail) {
+            showPublicationToastMessage(
+                ok === 1 ? 'Размещение снято с площадки' : `Снято с размещения: ${ok}`,
+                'success'
+            );
+        } else if (ok && fail) {
+            showPublicationToastMessage(`Снято: ${ok}, с ошибкой: ${fail}`, 'error');
+        } else {
+            showPublicationToastMessage('Не удалось снять выбранные размещения', 'error');
+        }
+    } finally {
+        bulkPublicationActionLoading.value = false;
+    }
+}
+
+async function confirmBulkDeletePublications() {
+    const rows = [...bulkDeleteEligibleRows.value];
+    bulkDeleteConfirmOpen.value = false;
+    if (!rows.length) return;
+
+    bulkPublicationActionLoading.value = true;
+    let ok = 0;
+    let fail = 0;
+    try {
+        for (const row of rows) {
+            const { error } = await deleteVacancy(row.id);
+            if (error) fail += 1;
+            else ok += 1;
+        }
+        await loadPublicationPlatforms();
+        clearPublicationSelection();
+        if (ok && !fail) {
+            showPublicationToastMessage(
+                ok === 1 ? 'Размещение удалено из системы' : `Удалено размещений: ${ok}`,
+                'success'
+            );
+        } else if (ok && fail) {
+            showPublicationToastMessage(`Удалено: ${ok}, с ошибкой: ${fail}`, 'error');
+        } else {
+            showPublicationToastMessage('Не удалось удалить выбранные размещения', 'error');
+        }
+    } finally {
+        bulkPublicationActionLoading.value = false;
+    }
 }
 
 function closeHhOriginalPopup() {
@@ -2925,27 +3255,27 @@ const handleDropdownAction = (action, vacancyItem) => {
             return;
         }
         openEditPopup(vacancyItem);
-    } else if (action === "Посмотреть публикацию") {
+    } else if (action === "Посмотреть размещение") {
         void (async () => {
             const url = await resolvePublicationViewUrl(vacancyItem);
             if (url) {
                 window.open(url, '_blank', 'noopener,noreferrer');
             } else {
-                console.warn('Не удалось сформировать ссылку на публикацию', vacancyItem);
+                console.warn('Не удалось сформировать ссылку на размещение', vacancyItem);
                 showPublicationToastMessage(
-                    'Не удалось открыть ссылку: нет данных публикации в системе или нет доступа к Avito. Обновите список и проверьте привязку к площадке.',
+                    'Не удалось открыть ссылку: нет данных размещения в системе или нет доступа к Avito. Обновите список и проверьте привязку к площадке.',
                     'error',
                 );
             }
         })();
-    } else if (action === "Снять с публикации") {
+    } else if (action === "Снять с размещения") {
         openArchiveConfirm(vacancyItem);
-    } else if (action === "Дублировать публикацию") {
-        // TODO: Реализовать дублирование публикации
-        console.log("Дублировать публикацию", vacancyItem);
-    } else if (action === "Показать отчет по публикации") {
+    } else if (action === "Дублировать размещение") {
+        // TODO: Реализовать дублирование размещения
+        console.log("Дублировать размещение", vacancyItem);
+    } else if (action === "Показать отчет по размещению") {
         // TODO: Реализовать показ отчета
-        console.log("Показать отчет по публикации", vacancyItem);
+        console.log("Показать отчет по размещению", vacancyItem);
     } else if (action === "Удалить") {
         openDeletePublicationConfirm(vacancyItem);
     }
@@ -2960,7 +3290,7 @@ function markVacancyIdAsImportedPublicationLightEdit(vacancyId) {
     importedPublicationLightEditIds.value = { ...importedPublicationLightEditIds.value, [String(n)]: true };
 }
 
-/** Импортированная активная публикация: pivot с базовой вакансией ≠ id строки, или вакансия создана импортом в этой вкладке. */
+/** Импортированная активная размещение: pivot с базовой вакансией ≠ id строки, или вакансия создана импортом в этой вкладке. */
 function shouldEditImportedPublicationAsLightShell(row) {
     const pd = row?.platforms_data?.[0];
     if (!pd?.id || Number(pd.id) === 1) return false;
@@ -3044,7 +3374,7 @@ function onCreatePublicationFormReady() {
     isCreatePublicationLoading.value = false;
 }
 
-// Закрытие попапа создания публикации
+// Закрытие попапа создания размещения
 const closeCreatePublicationPopup = () => {
     clearCreatePublicationLoadingTimer();
     isCreatePublicationLoading.value = false;
@@ -3055,11 +3385,11 @@ const closeCreatePublicationPopup = () => {
 // Обработчик успешного обновления вакансии
 const handleVacancyUpdated = () => {
     closeEditPopup();
-    // Перезагружаем список активных публикаций
+    // Перезагружаем список активных размещений
     loadPublicationPlatforms();
 };
 
-/** Публикация с карточки платформы: на hh.ru — форма как снимок HH, поля из вакансии по карте vacancy-export; иначе AddPublication. */
+/** Размещение с карточки платформы: на hh.ru — форма как снимок HH, поля из вакансии по карте vacancy-export; иначе AddPublication. */
 const openPopupNewPublication = async (platformName) => {
     selectedPlatformForPublish.value = platformName;
     if (platformName === 'hh.ru') {
@@ -3111,7 +3441,7 @@ const openPopupNewPublication = async (platformName) => {
                     },
                 );
             } catch (e) {
-                console.error('Подготовка формы публикации hh:', e);
+                console.error('Подготовка формы размещения hh:', e);
                 hhPublishInitialDraft.value = {};
             }
         })();
@@ -3124,7 +3454,7 @@ const openPopupNewPublication = async (platformName) => {
     createPublicationLoadingTimer = setTimeout(() => {
         if (!isOpenPopup.value) return;
         if (!isCreatePublicationLoading.value) return;
-        console.warn('PublishTab: fallback-снятие прелоадера публикации по таймауту', {
+        console.warn('PublishTab: fallback-снятие прелоадера размещения по таймауту', {
             platform: platformName,
             timeoutMs: EDIT_POPUP_LOADING_TIMEOUT_MS,
         });

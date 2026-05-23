@@ -181,7 +181,7 @@ export const unlinkAvitoProfile = async () => {
 };
 
 /**
- * Нормализация элемента публикации Avito в единый формат
+ * Нормализация элемента размещения Avito в единый формат
  * Avito возвращает: { id, title, price, address, status, url, category }
  * Нужный формат: { id, name, salary: { from, to, currency }, area: { name }, status, url }
  */
@@ -198,7 +198,7 @@ function normalizeAvitoItem(item: any): any {
 }
 
 /**
- * Получение одной публикации Avito по id
+ * Получение одной размещения Avito по id
  */
 export type AvitoPublicationTableStats = {
   status?: string | null
@@ -206,7 +206,7 @@ export type AvitoPublicationTableStats = {
   applications_count?: number | null
   /** Дата активации на Avito (start_time), ISO. */
   published_at?: string | null
-  /** Дата окончания публикации (finish_time), ISO. */
+  /** Дата окончания размещения (finish_time), ISO. */
   expires_at?: string | null
   /** Просмотры не удалось получить (ни client_credentials, ни user OAuth). */
   views_scope_missing?: boolean
@@ -295,7 +295,7 @@ export const syncAvitoPublicationMessenger = async (
   }
 }
 
-/** Статистика публикации для таблицы «Активные публикации». */
+/** Статистика размещения для таблицы «Активные размещения». */
 export const getAvitoPublicationTableStats = async (id: string | number) => {
   const authTokens = getAuthTokens()
   if (!authTokens) {
@@ -349,11 +349,11 @@ export const getAvitoPublication = async (id: string | number) => {
     result.value.data = publication;
   } catch (err: any) {
     if (err.response?.status === 404) {
-      result.value.error = err.response?._data?.message ?? 'Публикация не найдена';
+      result.value.error = err.response?._data?.message ?? 'Размещение не найдено';
     } else if (err.response?.status === 401) {
       handle401Error();
     } else {
-      result.value.error = err.response?._data?.message ?? 'Ошибка при загрузке публикации';
+      result.value.error = err.response?._data?.message ?? 'Ошибка при загрузке размещения';
     }
   } finally {
     return result.value;
@@ -361,7 +361,7 @@ export const getAvitoPublication = async (id: string | number) => {
 };
 
 /**
- * Перевод публикации в архив на Avito (снятие с публикации).
+ * Перевод размещения в архив на Avito (снятие с размещения).
  * @param publicationId - ID объявления на платформе (platform_id из platforms_data)
  */
 export const archiveAvitoPublication = async (publicationId: string | number) => {
@@ -384,16 +384,16 @@ export const archiveAvitoPublication = async (publicationId: string | number) =>
     result.value.data = response?.data ?? response;
   } catch (err: any) {
     if (err.response?.status === 401) handle401Error();
-    result.value.error = err.response?._data?.message ?? 'Ошибка при переводе публикации в архив';
+    result.value.error = err.response?._data?.message ?? 'Ошибка при переводе размещения в архив';
   } finally {
     return result.value;
   }
 };
 
 /**
- * Получение публикаций с avito.ru
- * @param includeArchived - Включать ли архивные публикации
- * @returns Список публикаций
+ * Получение размещений с avito.ru
+ * @param includeArchived - Включать ли архивные размещения
+ * @returns Список размещений
  */
 export const getAvitoPublications = async (includeArchived: boolean = false) => {
   const authTokens = getAuthTokens();
@@ -440,8 +440,8 @@ export const getAvitoPublications = async (includeArchived: boolean = false) => 
 }
 
 /**
- * Получение всех публикаций Avito.ru (активных и архивных)
- * @returns Список всех публикаций
+ * Получение всех размещений Avito.ru (активных и архивных)
+ * @returns Список всех размещений
  */
 export const getAllAvitoPublications = async () => {
   const authTokens = getAuthTokens();
@@ -452,7 +452,7 @@ export const getAllAvitoPublications = async () => {
   const result = ref<ApiHhResult>({ data: null, error: null });
 
   try {
-    // Получаем активные публикации
+    // Получаем активные размещения
     const activeResponse = await $fetch<PlatformHhResponse>('/avito/publications', {
       baseURL: config.public.apiBase as string,
       headers: {
@@ -465,7 +465,7 @@ export const getAllAvitoPublications = async () => {
     // Avito API возвращает { meta, resources: [...] }
     const activeItems = activeResponse.data?.resources || activeResponse.data?.items || [];
     
-    // Нормализуем и помечаем активные публикации
+    // Нормализуем и помечаем активные размещения
     const activeWithStatus = activeItems.map((item: any) => ({
       ...normalizeAvitoItem(item),
       status: item.status || 'published',
@@ -473,7 +473,7 @@ export const getAllAvitoPublications = async () => {
 
     let allItems = [...activeWithStatus];
 
-    // Пытаемся получить архивные публикации
+    // Пытаемся получить архивные размещения
     try {
       const archivedResponse = await $fetch<PlatformHhResponse>('/avito/publications', {
         baseURL: config.public.apiBase as string,
@@ -488,7 +488,7 @@ export const getAllAvitoPublications = async () => {
       // Avito API возвращает { meta, resources: [...] }
       const archivedItems = archivedResponse.data?.resources || archivedResponse.data?.items || [];
       
-      // Нормализуем и помечаем архивные публикации
+      // Нормализуем и помечаем архивные размещения
       const archivedWithStatus = archivedItems.map((item: any) => ({
         ...normalizeAvitoItem(item),
         status: 'archived',
@@ -496,11 +496,11 @@ export const getAllAvitoPublications = async () => {
 
       allItems = [...activeWithStatus, ...archivedWithStatus];
     } catch (archivedErr: any) {
-      // Если запрос архивных публикаций не поддерживается, 
-      // проверяем статус в активных публикациях
-      console.log('Архивные публикации не доступны через отдельный запрос, проверяем статус в активных');
+      // Если запрос архивных размещений не поддерживается, 
+      // проверяем статус в активных размещениях
+      console.log('Архивные размещения не доступны через отдельный запрос, проверяем статус в активных');
       
-      // Фильтруем публикации по статусу, если он есть в ответе
+      // Фильтруем размещения по статусу, если он есть в ответе
       const itemsWithStatus = activeItems.map((item: any) => {
         const normalized = normalizeAvitoItem(item);
         // Если статус уже есть и он архивный, оставляем его
@@ -536,9 +536,9 @@ export const getAllAvitoPublications = async () => {
 }
 
 /**
- * Публикация вакансии на avito.ru (без черновика)
+ * Размещение вакансии на avito.ru (без черновика)
  * @param draftData - Данные вакансии в формате DraftDataHh
- * @returns Результат публикации
+ * @returns Результат размещения
  */
 export function buildAvitoPublicationRequestBody(
   draftData: DraftDataHh | Record<string, unknown>,
@@ -692,7 +692,7 @@ export const getAvitoBusinessAreas = async () => {
 }
 
 /**
- * Сотрудники / телефоны аккаунта Avito для блока «Контакты» публикации.
+ * Сотрудники / телефоны аккаунта Avito для блока «Контакты» размещения.
  */
 export const getAvitoContactEmployees = async () => {
   const authTokens = getAuthTokens();
