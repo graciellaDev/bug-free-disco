@@ -9,6 +9,7 @@ export type RecruitersReportParams = {
   date_from?: string | null;
   date_to?: string | null;
   vacancy_id?: number | null;
+  vacancy_ids?: number[];
   participant_ids?: number[];
   department_ids?: number[];
   cities?: string[];
@@ -89,7 +90,25 @@ function parseVacancyRow(item: Record<string, unknown>): RecruitersReportVacancy
     rejections_count: Math.max(0, rejectionsCount),
     rejections_percentage: rejPct,
     avg_days_to_hire: numOrNull(item.avg_days_to_hire ?? item.avg_hire_days),
+    planned_close_days: numOrNull(
+      item.planned_close_days ??
+        item.plan_close_days ??
+        item.planned_days_to_close ??
+        item.target_close_days
+    ),
     avg_days_to_close: numOrNull(item.avg_days_to_close ?? item.avg_close_days),
+    opened_at: str(
+      item.opened_at ??
+        item.open_date ??
+        item.opened_date ??
+        item.date_opened
+    ) || null,
+    days_in_work: numOrNull(
+      item.days_in_work ??
+        item.days_in_job ??
+        item.work_days ??
+        item.days_open
+    ),
   };
 }
 
@@ -178,6 +197,9 @@ function buildRecruitersQuery(params: RecruitersReportParams): Record<string, st
   if (params.date_to) q.date_to = params.date_to;
   if (params.vacancy_id != null && Number.isFinite(params.vacancy_id)) {
     q.vacancy_id = params.vacancy_id;
+  }
+  if (params.vacancy_ids?.length) {
+    q.vacancy_ids = params.vacancy_ids.join(',');
   }
   if (params.participant_ids?.length) {
     q.participant_ids = params.participant_ids.join(',');

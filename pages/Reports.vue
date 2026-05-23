@@ -28,10 +28,10 @@ import type { RecruitersReportData, RecruitersReportVacancyRow } from '~/types/r
 const segmentOptions = ['Сотрудники', 'Рекрутинг'];
 const metricOptions = [
   'Воронка статусов по вакансии',
-  'Отчет по отказам',
   'Отчет по рекрутерам',
+  'Отчет по отказам',
   'Среднее время на этапе',
-  'Возможные источники',
+  'Источники',
   'Поток кандидатов',
 ];
 
@@ -41,16 +41,21 @@ const dateRange = ref<{ from: string | null; to: string | null }>({ from: null, 
 
 const vacancyOptions = ref<{ value: number; name: string }[]>([]);
 const selectedVacancy = ref<number | null>(null);
+const selectedRecruiterVacancies = ref<number[]>([]);
+const vacancyMetaById = ref<Record<number, { opened_at: string | null; days_in_work: number | null }>>({});
 const vacancyStages = ref<{ id: number; name: string; count: number }[]>([]);
 const vacancyCandidates = ref<Candidate[]>([]);
 const candidatesLoading = ref(false);
 const selectedVacancyRaw = ref<any | null>(null);
 const vacancyPlatformViewsBySourceKey = ref<Record<string, number>>({});
-/** Смена ключа перезапускает анимацию радиальных блоков «Возможные источники». */
+/** Смена ключа перезапускает анимацию радиальных блоков «Источники». */
 const possibleSourcesRadialAnimKey = ref(0);
 
-const participantOptions = ref<{ value: number; name: string }[]>([]);
+const participantOptions = ref<{ value: number; name: string; role?: string }[]>([]);
 const selectedParticipants = ref<number[]>([]);
+const participantsFilterLabel = computed(() =>
+  metric.value === 'Отчет по рекрутерам' ? 'Рекрутеры' : 'Участники'
+);
 
 const isActiveFunnel = ref(false);
 const isHoveredFunnel = ref(false);
@@ -87,17 +92,19 @@ onMounted(async () => {
       getDepartments(true).catch(() => null),
     ]);
     const items = Array.isArray(list) ? list : [];
+    vacancyMetaById.value = buildVacancyMetaById(items as Array<Record<string, unknown>>);
     vacancyOptions.value = items.map((v: { id: number; name?: string; title?: string }) => ({
       value: v.id,
       name: (v.name ?? v.title ?? '').trim() || `Вакансия #${v.id}`,
     }));
-    if (vacancyOptions.value.length > 0 && selectedVacancy.value === null) {
-      selectedVacancy.value = vacancyOptions.value[0].value;
+    if (items.length > 0 && selectedVacancy.value === null) {
+      selectedVacancy.value = pickDefaultVacancyId(items);
     }
     const users = Array.isArray(employees) ? employees : [];
-    participantOptions.value = users.map((u: { id: number; name?: string }) => ({
+    participantOptions.value = users.map((u: { id: number; name?: string; role?: string }) => ({
       value: u.id,
       name: (u.name ?? '').trim() || `Участник #${u.id}`,
+      role: (u.role ?? '').trim() || undefined,
     }));
     if (Array.isArray(citiesList) && citiesList.length) {
       citiesFilterOptions.value = citiesList.map((name) => ({ value: name, name }));
@@ -208,6 +215,108 @@ function normalizeDotDateForApi(s: string): string {
   return `${d.padStart(2, '0')}.${mo.padStart(2, '0')}.${y}`;
 }
 
+/** Число кандидатов по вакансии из списка GET /vacancies (без отдельного запроса). */
+function vacancyListItemCandidatesCount(v: Record<string, unknown>): number {
+  const footer = v.footerData as { candidatesTotal?: number } | undefined;
+  if (typeof footer?.candidatesTotal === 'number') {
+    return footer.candidatesTotal;
+  }
+  if (typeof v.candidatesTotal === 'number') {
+    return v.candidatesTotal;
+  }
+  const stages = v.stages;
+  if (Array.isArray(stages)) {
+    const allRow = stages.find(
+      (s: { name?: string; id?: number | null }) => s?.name === 'Все' || s?.id == null
+    ) as { count?: number } | undefined;
+    if (typeof allRow?.count === 'number') {
+      return allRow.count;
+    }
+  }
+  return 0;
+}
+
+function pickDefaultVacancyId(items: { id: number }[]): number | null {
+  if (!items.length) return null;
+  const withData = items.find((v) => vacancyListItemCandidatesCount(v as Record<string, unknown>) > 0);
+  return (withData ?? items[0]).id;
+}
+
+function firstString(...vals: unknown[]): string | null {
+  for (const v of vals) {
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function firstNumber(...vals: unknown[]): number | null {
+  for (const v of vals) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function buildVacancyMetaById(items: Array<Record<string, unknown>>): Record<number, { opened_at: string | null; days_in_work: number | null }> {
+  const out: Record<number, { opened_at: string | null; days_in_work: number | null }> = {};
+  for (const v of items) {
+    const id = Number(v.id);
+    if (!Number.isFinite(id)) continue;
+    out[id] = {
+      opened_at: firstString(
+        v.opened_at,
+        v.open_date,
+        v.opened_date,
+        v.date_opened,
+        v.started_at,
+        v.start_date,
+        v.date_start,
+        v.created_at
+      ),
+      days_in_work: firstNumber(
+        v.days_in_work,
+        v.days_in_job,
+        v.work_days,
+        v.days_open
+      ),
+    };
+  }
+  return out;
+}
+
+function selectedRecruiterVacancyIds(): number[] {
+  const uniq = [...new Set(selectedRecruiterVacancies.value)]
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id));
+  return uniq;
+}
+
+function allRecruiterVacancyIds(): number[] {
+  return vacancyOptions.value
+    .map((v) => Number(v.value))
+    .filter((id) => Number.isFinite(id));
+}
+
+function ensureRecruiterVacanciesSelectedByDefault() {
+  if (metric.value !== 'Отчет по рекрутерам') return;
+  const allIds = allRecruiterVacancyIds();
+  if (!allIds.length) {
+    selectedRecruiterVacancies.value = [];
+    return;
+  }
+  const allIdsSet = new Set(allIds);
+  const normalized = selectedRecruiterVacancies.value
+    .map((id) => Number(id))
+    .filter((id) => allIdsSet.has(id));
+  if (!normalized.length) {
+    selectedRecruiterVacancies.value = [...allIds];
+    return;
+  }
+  if (normalized.length !== selectedRecruiterVacancies.value.length) {
+    selectedRecruiterVacancies.value = normalized;
+  }
+}
+
 function buildCandidateFilters() {
   const filters: Record<string, string> = {};
   if (dateRange.value?.from && dateRange.value?.to) {
@@ -275,7 +384,7 @@ watch(
   { deep: true }
 );
 
-/** Заглушка для отчётов без своей логики (не «Возможные источники»). */
+/** Заглушка для отчётов без своей логики (не «Источники»). */
 const fallbackChartData = [
   { value: '5000', label: 'просмотры' },
   { value: '832', label: 'отклики' },
@@ -379,7 +488,7 @@ const rejectionStageId = computed(() => {
   return byName?.id ?? null;
 });
 
-/** Отчёт «Возможные источники»: агрегация GET /candidates по полю source и этапам воронки. */
+/** Отчёт «Источники»: агрегация GET /candidates по полю source и этапам воронки. */
 const possibleSourcesTableRows = computed(() => {
   const list = vacancyCandidates.value;
   const firstId = firstVacancyStageId.value;
@@ -898,7 +1007,7 @@ function stageAvgBarWidthPct(days: number) {
 }
 
 watch(
-  [metric, selectedVacancy, dateRange, selectedParticipants, filterCity, filterDepartment],
+  [metric, selectedVacancy, selectedRecruiterVacancies, dateRange, selectedParticipants, filterCity, filterDepartment],
   () => {
     void fetchStageAverageDuration();
     void fetchRejectionByStageReport();
@@ -937,7 +1046,7 @@ const stagesLegendSources = computed(() => {
 });
 
 /** Сегменты полосы для конкретного этапа (по stage.id) */
-function getStageSegments(stageId: number): { color: string; share: number; count: number }[] {
+function getStageSegments(stageId: number): { name: string; color: string; share: number; count: number }[] {
   const bySource = stageSourceBreakdown.value[stageId] ?? {};
   const total = Object.values(bySource).reduce((a, b) => a + b, 0);
   if (total === 0) return [];
@@ -945,10 +1054,107 @@ function getStageSegments(stageId: number): { color: string; share: number; coun
   return sources
     .filter(s => (bySource[s.name] ?? 0) > 0)
     .map(s => ({
+      name: s.name,
       color: s.color,
       share: (bySource[s.name] ?? 0) / total,
       count: bySource[s.name] ?? 0,
     }));
+}
+
+type FunnelStageSegmentTooltip = {
+  visible: boolean;
+  label: string;
+  x: number;
+  y: number;
+};
+
+const funnelStageSegmentTooltip = ref<FunnelStageSegmentTooltip>({
+  visible: false,
+  label: '',
+  x: 0,
+  y: 0,
+});
+
+function showFunnelStageSegmentTooltip(event: MouseEvent, seg: { name: string; count: number }) {
+  funnelStageSegmentTooltip.value = {
+    visible: true,
+    label: `${seg.name}: ${seg.count}`,
+    x: event.clientX,
+    y: event.clientY,
+  };
+}
+
+function moveFunnelStageSegmentTooltip(event: MouseEvent) {
+  if (!funnelStageSegmentTooltip.value.visible) return;
+  funnelStageSegmentTooltip.value.x = event.clientX;
+  funnelStageSegmentTooltip.value.y = event.clientY;
+}
+
+function hideFunnelStageSegmentTooltip() {
+  funnelStageSegmentTooltip.value.visible = false;
+}
+
+type RejectionReasonSegment = {
+  color: string;
+  share: number;
+  label: string;
+  count: number;
+};
+
+type RejectionReasonSegmentTooltip = {
+  visible: boolean;
+  label: string;
+  x: number;
+  y: number;
+};
+
+const rejectionReasonSegmentTooltip = ref<RejectionReasonSegmentTooltip>({
+  visible: false,
+  label: '',
+  x: 0,
+  y: 0,
+});
+
+function showRejectionReasonSegmentTooltip(event: MouseEvent, seg: RejectionReasonSegment) {
+  rejectionReasonSegmentTooltip.value = {
+    visible: true,
+    label: `${seg.label}: ${seg.count}`,
+    x: event.clientX,
+    y: event.clientY,
+  };
+}
+
+function moveRejectionReasonSegmentTooltip(event: MouseEvent) {
+  if (!rejectionReasonSegmentTooltip.value.visible) return;
+  rejectionReasonSegmentTooltip.value.x = event.clientX;
+  rejectionReasonSegmentTooltip.value.y = event.clientY;
+}
+
+function hideRejectionReasonSegmentTooltip() {
+  rejectionReasonSegmentTooltip.value.visible = false;
+}
+
+const REJECTION_REASON_PALETTE = [
+  '#3b82f6', // blue
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#a855f7', // purple
+  '#ef4444', // red
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#ec4899', // pink
+  '#84cc16', // lime
+  '#14b8a6', // teal
+];
+
+function rejectionReasonColor(label: string): string {
+  const src = label.trim().toLowerCase() || 'без причины';
+  let hash = 0;
+  for (let i = 0; i < src.length; i++) {
+    hash = ((hash << 5) - hash + src.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(hash) % REJECTION_REASON_PALETTE.length;
+  return REJECTION_REASON_PALETTE[idx]!;
 }
 
 /** Отчёт «Отчет по отказам» — GET /candidates/rejection-by-stage */
@@ -996,18 +1202,48 @@ function rejectionReportRowPct(row: RejectionByStageRow): number {
   return Math.round((row.rejections_count / row.candidates_count) * 100);
 }
 
-function rejectionReportRowSegments(row: RejectionByStageRow): { color: string; share: number }[] {
+function rejectionReportRowSegments(row: RejectionByStageRow): RejectionReasonSegment[] {
   const rc = row.rejections_count;
   if (rc <= 0) return [];
   if (row.reasons?.length) {
     return row.reasons
       .filter((x) => x.count > 0)
       .map((r) => ({
-        color: (r.color && r.color.trim()) || colorForSourceLabel(r.label),
+        label: r.label,
+        count: r.count,
+        color: rejectionReasonColor(r.label),
         share: r.count / rc,
       }));
   }
-  return [{ color: '#5898ff', share: 1 }];
+  return [{ label: 'Без детализации', count: rc, color: '#5898ff', share: 1 }];
+}
+
+const rejectionReasonsLegendItems = computed(() => {
+  const byReason = new Map<string, { label: string; count: number; color: string }>();
+  for (const row of rejectionReportDisplayRows.value) {
+    for (const seg of rejectionReportRowSegments(row)) {
+      const key = seg.label.trim().toLowerCase();
+      const prev = byReason.get(key);
+      if (prev) {
+        prev.count += seg.count;
+      } else {
+        byReason.set(key, { label: seg.label, count: seg.count, color: seg.color });
+      }
+    }
+  }
+  return [...byReason.values()]
+    .filter((x) => x.count > 0)
+    .sort((a, b) => b.count - a.count);
+});
+
+const rejectionReasonsLegendTotal = computed(() =>
+  rejectionReasonsLegendItems.value.reduce((sum, item) => sum + item.count, 0)
+);
+
+function rejectionReasonsLegendPct(count: number): number {
+  const total = rejectionReasonsLegendTotal.value;
+  if (total <= 0) return 0;
+  return Math.round((count / total) * 100);
 }
 
 async function fetchRejectionByStageReport() {
@@ -1067,10 +1303,92 @@ function vacanciesCountWord(n: number): string {
   return 'вакансий';
 }
 
+function peopleCountWord(n: number): string {
+  const abs = Math.abs(n) % 100;
+  const d1 = abs % 10;
+  if (abs > 10 && abs < 20) return 'человек';
+  if (d1 === 1) return 'человека';
+  if (d1 >= 2 && d1 <= 4) return 'человека';
+  return 'человек';
+}
+
 function formatAvgDaysDays(d: number | null): string {
   if (d == null || !Number.isFinite(d)) return '—';
   const rounded = Math.round(d);
   return `${rounded} дн.`;
+}
+
+function daysWord(n: number): string {
+  const abs = Math.abs(n) % 100;
+  const d1 = abs % 10;
+  if (abs > 10 && abs < 20) return 'дней';
+  if (d1 === 1) return 'день';
+  if (d1 >= 2 && d1 <= 4) return 'дня';
+  return 'дней';
+}
+
+function formatOpenedAtDate(s: string | null): string {
+  if (!s) return '—';
+  const raw = String(s).trim();
+  if (!raw) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return convertDateFromApi(raw) ?? raw;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    return convertDateFromApi(raw.slice(0, 10)) ?? raw.slice(0, 10);
+  }
+  return raw;
+}
+
+function formatDaysInWork(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  const rounded = Math.max(0, Math.round(n));
+  return `${rounded} ${daysWord(rounded)}`;
+}
+
+function parseOpenedAtToUtcDate(s: string | null): Date | null {
+  if (!s) return null;
+  const raw = String(s).trim();
+  if (!raw) return null;
+  const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) {
+    const y = Number(ymd[1]);
+    const m = Number(ymd[2]);
+    const d = Number(ymd[3]);
+    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+      return new Date(Date.UTC(y, m - 1, d));
+    }
+  }
+  const dmy = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (dmy) {
+    const d = Number(dmy[1]);
+    const m = Number(dmy[2]);
+    const y = Number(dmy[3]);
+    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+      return new Date(Date.UTC(y, m - 1, d));
+    }
+  }
+  return null;
+}
+
+function recruiterVacancyOpenedAt(v: RecruitersReportVacancyRow): string | null {
+  if (v.opened_at) return v.opened_at;
+  return vacancyMetaById.value[v.vacancy_id]?.opened_at ?? null;
+}
+
+function recruiterVacancyDaysInWork(v: RecruitersReportVacancyRow): number | null {
+  if (v.days_in_work != null && Number.isFinite(v.days_in_work)) return v.days_in_work;
+  const fromVacancyMeta = vacancyMetaById.value[v.vacancy_id]?.days_in_work;
+  if (fromVacancyMeta != null && Number.isFinite(fromVacancyMeta)) {
+    return fromVacancyMeta;
+  }
+  const openedAt = recruiterVacancyOpenedAt(v);
+  const openedDate = parseOpenedAtToUtcDate(openedAt);
+  if (!openedDate) return null;
+  const now = new Date();
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const diffMs = todayUtc.getTime() - openedDate.getTime();
+  return Math.max(0, Math.floor(diffMs / 86400000));
 }
 
 function vacancyIsOnPause(status: string): boolean {
@@ -1122,7 +1440,13 @@ async function fetchRecruitersReport() {
     const params: Parameters<typeof getRecruitersReport>[0] = {};
     if (from) params.date_from = from;
     if (to) params.date_to = to;
-    if (selectedVacancy.value != null) params.vacancy_id = selectedVacancy.value;
+    const selectedVacancyIds = selectedRecruiterVacancyIds();
+    if (selectedVacancyIds.length === 1) {
+      params.vacancy_id = selectedVacancyIds[0];
+    }
+    if (selectedVacancyIds.length > 1) {
+      params.vacancy_ids = selectedVacancyIds;
+    }
     if (selectedParticipants.value.length) {
       params.participant_ids = [...selectedParticipants.value];
     }
@@ -1231,6 +1555,9 @@ function triggerRejectionReportAnimation() {
 watch(
   () => metric.value,
   (m) => {
+    if (m === 'Отчет по рекрутерам') {
+      ensureRecruiterVacanciesSelectedByDefault();
+    }
     if (m === 'Воронка статусов по вакансии') {
       triggerFunnelBarAnimation();
     }
@@ -1238,6 +1565,14 @@ watch(
       triggerRejectionReportAnimation();
     }
   }
+);
+
+watch(
+  () => vacancyOptions.value,
+  () => {
+    ensureRecruiterVacanciesSelectedByDefault();
+  },
+  { deep: true }
 );
 
 watch(
@@ -1324,6 +1659,17 @@ function selectedVacancyTitleForExport(): string {
   return (o?.name ?? '').trim() || `Вакансия #${id}`;
 }
 
+function selectedRecruiterVacancyTitlesForExport(): string {
+  const ids = selectedRecruiterVacancyIds();
+  if (!ids.length) return '';
+  return ids
+    .map((id) => {
+      const o = vacancyOptions.value.find((v) => v.value === id);
+      return (o?.name ?? '').trim() || `Вакансия #${id}`;
+    })
+    .join('; ');
+}
+
 function periodLabelForExport(): string {
   const from = dateRange.value?.from;
   const to = dateRange.value?.to;
@@ -1333,15 +1679,20 @@ function periodLabelForExport(): string {
 
 function pushExportMetaRows(out: (string | number | null | undefined)[][]) {
   out.push(['Отчёт', metric.value]);
-  const vn = selectedVacancyTitleForExport();
-  if (vn) out.push(['Вакансия', vn]);
+  const recruiterVacancies = selectedRecruiterVacancyTitlesForExport();
+  if (metric.value === 'Отчет по рекрутерам' && recruiterVacancies) {
+    out.push(['Вакансии', recruiterVacancies]);
+  } else {
+    const vn = selectedVacancyTitleForExport();
+    if (vn) out.push(['Вакансия', vn]);
+  }
   const p = periodLabelForExport();
   if (p) out.push(['Период (фильтр)', p]);
   if (selectedParticipants.value.length) {
     const names = selectedParticipants.value
       .map((id) => participantOptions.value.find((o) => o.value === id)?.name ?? String(id))
       .join('; ');
-    out.push(['Участники', names]);
+    out.push([metric.value === 'Отчет по рекрутерам' ? 'Рекрутеры' : 'Участники', names]);
   }
   if (filterDepartment.value.length) {
     const names = filterDepartment.value
@@ -1471,11 +1822,13 @@ function buildCsvRecruiters(): string {
     'Прогресс найма',
     'Отказы',
     '% отказов от добавленных',
-    'Ср. срок найма',
-    'Ср. срок закрытия',
+    'Срок найма',
+    'Планируемый срок закрытия',
+    'Дата открытия',
+    'Дней в работе',
   ]);
   for (const rec of recs) {
-    const summary = `${rec.vacancies_count} ${vacanciesCountWord(rec.vacancies_count)} на ${rec.target_headcount} чел.`;
+    const summary = `${rec.vacancies_count} ${vacanciesCountWord(rec.vacancies_count)}: нужно нанять ${rec.target_headcount} ${peopleCountWord(rec.target_headcount)}`;
     rows.push(['Рекрутер', rec.name, rec.position_title ?? '', summary, '', '', '', '', '', '', '', '', '', '']);
     for (const vac of rec.vacancies) {
       rows.push([
@@ -1492,7 +1845,9 @@ function buildCsvRecruiters(): string {
         vac.rejections_count,
         rejectionsRatePercent(vac) ?? '—',
         formatAvgDaysDays(vac.avg_days_to_hire),
-        formatAvgDaysDays(vac.avg_days_to_close),
+        formatAvgDaysDays(vac.planned_close_days ?? vac.avg_days_to_close),
+        formatOpenedAtDate(recruiterVacancyOpenedAt(vac)),
+        formatDaysInWork(recruiterVacancyDaysInWork(vac)),
       ]);
     }
   }
@@ -1539,7 +1894,7 @@ function buildCurrentReportCsv(): string {
       return buildCsvStageAverage();
     case 'Отчет по рекрутерам':
       return buildCsvRecruiters();
-    case 'Возможные источники':
+    case 'Источники':
       return buildCsvPossibleSources();
     default:
       return buildCsvFallback();
@@ -1561,7 +1916,7 @@ function exportReportsCsv() {
   <div class="container pb-28px pt-35px">
     <!-- Карточка фильтров: макет Figma — белая карточка 15px, отступы 25px -->
     <div class="relative z-10 mb-15px rounded-fifteen bg-white p-25px shadow-sm">
-      <div class="mb-5 grid grid-cols-1 gap-5 md:grid-cols-3 md:items-end">
+      <div class="mb-5 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <!--<div>
           <label class="mb-2 block text-sm font-medium text-space">Сегмент</label>
           <MyDropdown
@@ -1572,21 +1927,21 @@ function exportReportsCsv() {
             class="w-full"
           />
         </div>-->
-        <div>
+        <div class="w-fit max-w-full shrink-0">
           <label class="mb-2 block text-sm font-medium text-space">Отчет</label>
           <MyDropdown
             v-model="metric"
             :options="metricOptions"
             placeholder="Выберите отчет"
             trigger-variant="semiaction"
-            class="w-full"
+            fit-content
           />
         </div>
-        <div class="flex justify-end">
+        <div class="flex shrink-0 sm:ml-4">
           <UiButton
             variant="semiaction"
             size="semiaction"
-            class="bg-space text-white hover:bg-space/90"
+            class="w-full bg-space text-white hover:bg-space/90 sm:w-auto"
             type="button"
             @click="exportReportsCsv"
           >
@@ -1597,11 +1952,24 @@ function exportReportsCsv() {
 
       <div class="my-5 border-b border-athens" role="separator" aria-hidden="true" />
 
-      <!-- Поля и кнопки: Вакансия (один выбор), Кандидаты за период, Участники, кнопка фильтров, Применить -->
+      <!-- Поля и кнопки: Вакансия, период, Участники, кнопка фильтров, Применить -->
       <div class="flex flex-wrap items-end gap-4">
         <div class="min-w-0 flex-1 basis-40">
           <label class="mb-2 block text-sm font-medium text-space">Вакансия</label>
+          <template v-if="metric === 'Отчет по рекрутерам'">
+            <MultiSelect
+              v-model="selectedRecruiterVacancies"
+              :options="vacancyOptions"
+              default-value="Выберите вакансии"
+              searchable
+              search-placeholder="Поиск вакансий"
+              show-select-all
+              select-all-label="Выбрать все вакансии"
+              class="w-full"
+            />
+          </template>
           <MyDropdown
+            v-else
             v-model="selectedVacancy"
             :options="vacancyOptions"
             placeholder="Выберите вакансию"
@@ -1612,20 +1980,22 @@ function exportReportsCsv() {
           />
         </div>
         <div class="min-w-0 flex-1 basis-40">
-          <label class="mb-2 block text-sm font-medium text-space">Кандидаты за период</label>
+          <label class="mb-2 block text-sm font-medium text-space">
+            {{ metric === 'Воронка статусов по вакансии' ? 'Период' : 'Кандидаты за период' }}
+          </label>
           <DropdownPeriodPicker
             v-model="dateRange"
             class="w-full"
           />
         </div>
         <div class="min-w-0 flex-1 basis-40">
-          <label class="mb-2 block text-sm font-medium text-space">Участники</label>
+          <label class="mb-2 block text-sm font-medium text-space">{{ participantsFilterLabel }}</label>
           <MultiSelect
             v-model="selectedParticipants"
             :options="participantOptions"
-            default-value="Участники"
+            :default-value="participantsFilterLabel"
             searchable
-            search-placeholder="Поиск участников"
+            :search-placeholder="metric === 'Отчет по рекрутерам' ? 'Поиск рекрутеров' : 'Поиск участников'"
             class="w-full"
           />
         </div>
@@ -1706,6 +2076,13 @@ function exportReportsCsv() {
             loading-title="Загрузка этапов вакансии…"
           />
         </template>
+        <template v-else-if="!candidatesLoading && stagesLegendTotal === 0">
+          <ListSectionPlaceholder
+            variant="reports"
+            title="Нет данных по вакансии"
+            description="По выбранной вакансии и фильтрам пока нет кандидатов. Измените период или выберите другую вакансию."
+          />
+        </template>
         <div v-else class="flex gap-8">
           <!-- Воронка кандидатов: название этапа напротив полосы, в скобках — накопительное количество (прошло через этап) -->
           <div class="min-w-0 flex-1">
@@ -1730,6 +2107,9 @@ function exportReportsCsv() {
                         v-for="(seg, segIndex) in getStageSegments(stage.id)"
                         :key="segIndex"
                         class="transition-[width] duration-700 ease-out"
+                        @mouseenter="showFunnelStageSegmentTooltip($event, seg)"
+                        @mousemove="moveFunnelStageSegmentTooltip($event)"
+                        @mouseleave="hideFunnelStageSegmentTooltip"
                         :style="{
                           width: `${seg.share * 100}%`,
                           backgroundColor: seg.color,
@@ -1795,8 +2175,9 @@ function exportReportsCsv() {
           />
         </template>
         <template v-else>
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[640px] text-left text-sm">
+          <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+            <div class="min-w-0 flex-1 overflow-x-auto">
+              <table class="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr class="border-b border-athens">
                   <th colspan="2" class="pb-2 pr-4 text-xs font-normal text-bali">
@@ -1844,6 +2225,9 @@ function exportReportsCsv() {
                               v-for="(seg, si) in rejectionReportRowSegments(row)"
                               :key="si"
                               class="h-full min-w-0"
+                              @mouseenter="showRejectionReasonSegmentTooltip($event, seg)"
+                              @mousemove="moveRejectionReasonSegmentTooltip($event)"
+                              @mouseleave="hideRejectionReasonSegmentTooltip"
                               :style="{
                                 width: `${seg.share * 100}%`,
                                 backgroundColor: seg.color,
@@ -1865,7 +2249,26 @@ function exportReportsCsv() {
                   </td>
                 </tr>
               </tbody>
-            </table>
+              </table>
+            </div>
+            <div class="w-full lg:w-64 lg:flex-shrink-0">
+              <p class="mb-2 text-sm font-bold text-space">Причины отказов</p>
+              <p class="mb-3 text-lg font-bold text-dodger">{{ rejectionReasonsLegendTotal }}</p>
+              <ul class="space-y-1.5 text-sm text-slate-custom">
+                <li
+                  v-for="item in rejectionReasonsLegendItems"
+                  :key="item.label"
+                  class="flex items-center gap-2"
+                >
+                  <span
+                    class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    :style="{ backgroundColor: item.color }"
+                  />
+                  <span class="min-w-0 truncate">{{ item.label }}</span>
+                  <span class="flex-shrink-0">{{ item.count }} ({{ rejectionReasonsLegendPct(item.count) }}%)</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </template>
       </div>
@@ -1895,7 +2298,7 @@ function exportReportsCsv() {
               Отклики
             </span>
               <span class="inline-flex items-center gap-2 text-slate-custom">
-              <span class="h-3 w-3 rounded-sm bg-[#FFBA08]" />
+              <span class="h-3 w-3 rounded-sm bg-dodger" />
               Движение по воронке
             </span>
           </div>
@@ -1932,7 +2335,7 @@ function exportReportsCsv() {
                       :title="'Отклики: ' + row.responses"
                     />
                     <div
-                      class="funnel-bar-fill w-[42px] max-w-[42px] shrink-0 rounded-[5px] bg-[#FFBA08] md:w-[49px] md:max-w-[49px]"
+                      class="funnel-bar-fill w-[42px] max-w-[42px] shrink-0 rounded-[5px] bg-dodger md:w-[49px] md:max-w-[49px]"
                       :style="{
                         height: funnelBarHeightPct(row.funnel_movements),
                         animationDelay: `${ri * 45 + 55}ms`,
@@ -2157,24 +2560,30 @@ function exportReportsCsv() {
           />
         </template>
         <template v-else>
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto rounded-fifteen border border-athens bg-white">
             <table class="w-full min-w-[720px] table-fixed text-left text-sm">
               <thead>
-                <tr class="border-b border-athens bg-catskill">
-                  <th class="w-[32%] py-3 pl-15px pr-4 font-medium text-space">
+                <tr class="bg-catskill">
+                  <th class="w-[30%] py-3 pl-15px pr-4 font-medium text-space">
                     Сотрудники и их вакансии
                   </th>
-                  <th class="w-[14%] py-3 pr-4 text-right font-medium text-space">
+                  <th class="w-[12%] py-3 pr-4 text-right font-medium text-space">
                     Добавленные кандидаты
                   </th>
-                  <th class="w-[16%] py-3 pr-4 text-right font-medium text-space">
+                  <th class="w-[12%] py-3 pr-4 text-right font-medium text-space">
                     Нанятые
                   </th>
-                  <th class="w-[16%] py-3 pr-4 text-right font-medium text-space">
+                  <th class="w-[10%] py-3 pr-4 text-right font-medium text-space">
                     Отказы
                   </th>
-                  <th class="w-[22%] bg-athens py-3 pr-15px pl-4 text-right font-medium text-space">
-                    Ср. срок найма и закрытия
+                  <th class="w-[12%] py-3 pr-4 pl-4 text-right font-medium text-space">
+                    Срок найма
+                  </th>
+                  <th class="w-[12%] py-3 pr-4 pl-2 text-right font-medium text-space">
+                    Планируемый срок закрытия
+                  </th>
+                  <th class="w-[12%] py-3 pr-15px pl-2 text-right font-medium text-space">
+                    Дата открытия и дней в работе
                   </th>
                 </tr>
               </thead>
@@ -2183,18 +2592,18 @@ function exportReportsCsv() {
                   v-for="rec in recruitersReportData?.recruiters ?? []"
                   :key="'recruiter-' + rec.recruiter_id"
                 >
-                  <tr class="border-b border-athens bg-zumthor/60">
+                  <tr class="border-y border-athens bg-zumthor/60">
                     <td colspan="4" class="py-3 pl-15px pr-4 align-middle">
                       <span class="font-bold text-space">{{ rec.name }}</span>
                       <span v-if="rec.position_title" class="font-bold text-space">
                         ({{ rec.position_title }})
                       </span>
                       <span class="font-normal text-slate-custom">
-                        • {{ rec.vacancies_count }} {{ vacanciesCountWord(rec.vacancies_count) }} на
-                        {{ rec.target_headcount }} чел.
+                        • {{ rec.vacancies_count }} {{ vacanciesCountWord(rec.vacancies_count) }}: нужно нанять
+                        {{ rec.target_headcount }} {{ peopleCountWord(rec.target_headcount) }}
                       </span>
                     </td>
-                    <td class="bg-athens py-3 pr-15px pl-4" />
+                    <td colspan="3" class="bg-zumthor/60 py-3 pr-15px pl-4" />
                   </tr>
                   <tr
                     v-for="vac in rec.vacancies"
@@ -2202,7 +2611,13 @@ function exportReportsCsv() {
                     class="border-b border-athens last:border-0"
                   >
                     <td class="py-3 pl-15px pr-4 align-top">
-                      <div class="font-medium text-space">{{ vac.title }}</div>
+                      <NuxtLink
+                        :to="`/vacancies/${vac.vacancy_id}`"
+                        class="font-medium text-space transition-colors hover:text-dodger"
+                        :title="`Открыть страницу вакансии «${vac.title}»`"
+                      >
+                        {{ vac.title }}
+                      </NuxtLink>
                       <div
                         v-if="vacancyIsOnPause(vac.status)"
                         class="mt-0.5 text-xs font-medium text-amber-600"
@@ -2229,19 +2644,24 @@ function exportReportsCsv() {
                         {{ rejectionsRatePercent(vac) ?? '—' }}
                       </div>
                     </td>
-                    <td class="bg-athens py-3 pr-15px pl-4 text-right align-top tabular-nums text-space">
+                    <td class="py-3 pr-4 pl-4 text-right align-top tabular-nums text-space">
                       <span class="inline-block min-w-[3.5rem] text-right">{{
                         formatAvgDaysDays(vac.avg_days_to_hire)
                       }}</span>
-                      <span class="mx-2 text-slate-custom">/</span>
+                    </td>
+                    <td class="py-3 pr-4 pl-2 text-right align-top tabular-nums text-space">
                       <span class="inline-block min-w-[3.5rem] text-right">{{
-                        formatAvgDaysDays(vac.avg_days_to_close)
+                        formatAvgDaysDays(vac.planned_close_days ?? vac.avg_days_to_close)
                       }}</span>
+                    </td>
+                    <td class="py-3 pr-15px pl-2 text-right align-top tabular-nums text-space">
+                      <div>{{ formatOpenedAtDate(recruiterVacancyOpenedAt(vac)) }}</div>
+                      <div class="mt-0.5 text-xs text-slate-custom">{{ formatDaysInWork(recruiterVacancyDaysInWork(vac)) }}</div>
                     </td>
                   </tr>
                 </template>
                 <tr v-if="!recruitersReportHasRows">
-                  <td colspan="5" class="py-6 text-center text-slate-custom">
+                  <td colspan="7" class="py-6 text-center text-slate-custom">
                     В ответе нет строк по вакансиям — проверьте фильтры или настройку эндпоинта.
                   </td>
                 </tr>
@@ -2252,7 +2672,7 @@ function exportReportsCsv() {
       </div>
     </template>
 
-    <template v-else-if="metric === 'Возможные источники'">
+    <template v-else-if="metric === 'Источники'">
       <template v-if="!selectedVacancy">
         <ListSectionPlaceholder
           variant="reports"
@@ -2450,6 +2870,29 @@ function exportReportsCsv() {
         </div>
       </div>
     </template>
+
+    <div
+      v-if="funnelStageSegmentTooltip.visible"
+      class="pointer-events-none fixed z-[220] rounded-ten border border-space/15 bg-space px-2.5 py-1 text-xs font-medium leading-none text-white shadow-xl"
+      :style="{
+        left: `${funnelStageSegmentTooltip.x}px`,
+        top: `${funnelStageSegmentTooltip.y - 10}px`,
+        transform: 'translate(-50%, -100%)',
+      }"
+    >
+      {{ funnelStageSegmentTooltip.label }}
+    </div>
+    <div
+      v-if="rejectionReasonSegmentTooltip.visible"
+      class="pointer-events-none fixed z-[220] rounded-ten border border-space/15 bg-space px-2.5 py-1 text-xs font-medium leading-none text-white shadow-xl"
+      :style="{
+        left: `${rejectionReasonSegmentTooltip.x}px`,
+        top: `${rejectionReasonSegmentTooltip.y - 10}px`,
+        transform: 'translate(-50%, -100%)',
+      }"
+    >
+      {{ rejectionReasonSegmentTooltip.label }}
+    </div>
   </div>
 </template>
 

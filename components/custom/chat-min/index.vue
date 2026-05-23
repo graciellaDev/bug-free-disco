@@ -7,6 +7,8 @@
   const props = defineProps({
     initialMessages: { type: Array, default: () => [] },
     containerHeight: { type: Number, default: 400 },
+    /** Заполнить высоту родителя (flex), список сообщений прокручивается внутри */
+    fillHeight: { type: Boolean, default: false },
     padding: {
       type: Object,
       default: () => ({ top: 25, bottom: 25, left: 15, right: 15 }),
@@ -27,16 +29,21 @@
     messages.value.push(newMessage)
   }
 
-  const containerStyle = computed(() => ({
-    '--padding-top': `${props.padding.top}px`,
-    '--padding-bottom': `${props.padding.bottom}px`,
-    minHeight: '100px',
-    maxHeight: `${props.containerHeight}px`,
-    paddingTop: `${props.padding.top}px`,
-    paddingBottom: `${props.padding.bottom}px`,
-    paddingLeft: `${props.padding.left}px`,
-    paddingRight: `${props.padding.right}px`,
-  }))
+  const containerStyle = computed(() => {
+    const style = {
+      '--padding-top': `${props.padding.top}px`,
+      '--padding-bottom': `${props.padding.bottom}px`,
+      paddingTop: `${props.padding.top}px`,
+      paddingBottom: `${props.padding.bottom}px`,
+      paddingLeft: `${props.padding.left}px`,
+      paddingRight: `${props.padding.right}px`,
+    }
+    if (!props.fillHeight) {
+      style.minHeight = '100px'
+      style.maxHeight = `${props.containerHeight}px`
+    }
+    return style
+  })
 
   const scrollToLatestMessage = () => {
     if (timelineRef.value) {
@@ -67,17 +74,25 @@
 </script>
 
 <template>
-  <div class="chat-container">
-    <div>
+  <div
+    class="chat-container"
+    :class="fillHeight ? 'flex h-full min-h-0 flex-col' : ''"
+  >
+    <div :class="fillHeight ? 'flex min-h-0 flex-1 flex-col' : ''">
       <div
         ref="timelineRef"
-        class="overflow-auto custom-webkit"
+        class="custom-webkit overflow-auto"
+        :class="fillHeight ? 'min-h-0 flex-1' : ''"
         :style="containerStyle"
       >
         <MinTimeline :messages="messages" />
       </div>
     </div>
-    <MinChat :messages="messages" @add-message="addMessage" />
+    <MinChat
+      class="shrink-0"
+      :messages="messages"
+      @add-message="addMessage"
+    />
   </div>
 </template>
 

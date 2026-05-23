@@ -1,17 +1,23 @@
 <template>
-  <div class="dropdown-wrapper cursor-pointer relative" ref="dropDown">
+  <div
+    class="dropdown-wrapper relative cursor-pointer"
+    :class="fitContent ? 'w-fit max-w-full' : 'w-full'"
+    ref="dropDown"
+  >
     <div
-      class="dropdown-selected-option relative flex w-full min-w-0 items-center gap-2 rounded-ten py-9px pl-3.5 pr-3.5 text-sm font-normal transition-colors"
-      :class="triggerVariantClasses"
+      class="dropdown-selected-option relative flex min-w-0 items-center gap-2 rounded-ten py-9px pl-3.5 pr-3.5 text-sm font-normal transition-colors"
+      :class="[triggerVariantClasses, fitContent ? 'w-fit' : 'w-full']"
       @click="toggleDropDown"
     >
       <span
-        :class="{
-          'text-bali': !selectedOption && triggerVariant !== 'semiaction',
-          'text-space': selectedOption && triggerVariant !== 'semiaction',
-          'text-dodger': triggerVariant === 'semiaction',
-        }"
-        class="min-w-0 flex-1 truncate text-sm"
+        :class="[
+          fitContent ? 'whitespace-nowrap text-sm' : 'min-w-0 flex-1 truncate text-sm',
+          {
+            'text-bali': !selectedOption && triggerVariant !== 'semiaction',
+            'text-space': selectedOption && triggerVariant !== 'semiaction',
+            'text-dodger': triggerVariant === 'semiaction',
+          },
+        ]"
       >
         {{ displayText }}
       </span>
@@ -34,10 +40,54 @@
         <svg-icon name="dropdown-arrow" width="20" height="20" />
       </div>
     </div>
-    <transition name="slide-fade">
+    <template v-if="teleportToBody">
+      <Teleport to="body">
+        <transition name="slide-fade">
+          <div
+            v-if="isDropDownVisible"
+            ref="optionsRef"
+            class="options-wrapper my-dropdown-list bg-white border border-athens rounded-ten shadow-shadow-droplist"
+            :style="teleportStyle"
+          >
+            <div
+              v-if="searchable"
+              class="border-b border-athens p-2"
+              @click.stop
+            >
+              <input
+                ref="searchInputRef"
+                v-model="searchQuery"
+                type="text"
+                :placeholder="searchPlaceholder"
+                class="w-full rounded-md border border-athens bg-athens-gray py-2 pl-3 pr-3 text-sm text-space placeholder:text-slate-custom focus:border-dodger focus:outline-none"
+                @click.stop
+              />
+            </div>
+            <template v-for="(option, idx) in filteredOptions" :key="option?.type === 'header' ? 'header-' + option.name + idx : getOptionKey(option)">
+              <div
+                v-if="option?.type === 'header'"
+                class="option text-xs font-medium text-slate-custom py-8px px-15px bg-athens-gray cursor-default"
+              >
+                {{ option.name }}
+              </div>
+              <div
+                v-else
+                class="option text-slate-custom text-sm font-normal py-10px px-15px hover:text-space hover:bg-zumthor cursor-pointer whitespace-nowrap"
+                @click="toggleOptionSelect(option)"
+              >
+                {{ getOptionLabel(option) }}
+              </div>
+            </template>
+          </div>
+        </transition>
+      </Teleport>
+    </template>
+    <transition v-else name="slide-fade">
       <div
+        v-if="isDropDownVisible"
+        ref="optionsRef"
         class="options-wrapper my-dropdown-list absolute w-max min-w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
-        v-if="isDropDownVisible">
+      >
         <div
           v-if="searchable"
           class="border-b border-athens p-2"
@@ -73,7 +123,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 const props = defineProps({
   options: {
@@ -121,11 +171,22 @@ const props = defineProps({
     type: String,
     default: 'Поиск…',
   },
+  teleportToBody: {
+    type: Boolean,
+    default: false,
+  },
+  /** Ширина триггера по содержимому (без растягивания на 100%) */
+  fitContent: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'select', 'open'])
 
 const dropDown = ref(null)
+const optionsRef = ref(null)
+const teleportStyle = ref({})
 
 const triggerVariantClasses = computed(() => {
   const base = 'leading-normal'
@@ -217,6 +278,9 @@ const toggleDropDown = () => {
     openDelayTimer.value = setTimeout(() => {
       isDropDownVisible.value = true
       openDelayTimer.value = null
+      if (props.teleportToBody) {
+        nextTick(() => updateTeleportPosition())
+      }
       emit('open')
       if (props.searchable && searchInputRef.value) {
         setTimeout(() => searchInputRef.value?.focus(), 50)
@@ -243,6 +307,9 @@ const resetSelection = () => {
 
 // Закрытие выпадающего списка при клике вне
 const closeDropDown = (event) => {
+  if (dropDown.value?.contains(event.target) || optionsRef.value?.contains(event.target)) {
+    return
+  }
   if (!dropDown.value?.contains(event.target)) {
     if (openDelayTimer.value) {
       clearTimeout(openDelayTimer.value)
@@ -250,6 +317,24 @@ const closeDropDown = (event) => {
     }
     isDropDownVisible.value = false
     searchQuery.value = ''
+  }
+}
+
+const updateTeleportPosition = () => {
+  if (!props.teleportToBody || !dropDown.value) return
+  const rect = dropDown.value.getBoundingClientRect()
+  teleportStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(rect.bottom + 6)}px`,
+    left: `${Math.round(rect.left)}px`,
+    width: `${Math.round(rect.width)}px`,
+    zIndex: 9999,
+  }
+}
+
+const onViewportChange = () => {
+  if (isDropDownVisible.value) {
+    updateTeleportPosition()
   }
 }
 
@@ -289,6 +374,8 @@ watch(() => props.selected, (newSelected) => {
 
 onMounted(() => {
   window.addEventListener('click', closeDropDown)
+  window.addEventListener('resize', onViewportChange)
+  window.addEventListener('scroll', onViewportChange, true)
   initializeSelectedOption()
 })
 
@@ -297,6 +384,8 @@ onBeforeUnmount(() => {
     clearTimeout(openDelayTimer.value)
   }
   window.removeEventListener('click', closeDropDown)
+  window.removeEventListener('resize', onViewportChange)
+  window.removeEventListener('scroll', onViewportChange, true)
 })
 </script>
 

@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    font-family: 'Inter', sans-serif;
+    background-color: #edeff5;
+  }
+
   :root {
     /* --background: #edeff5; */
     /* --background: 225 29 95 / 10%; */

@@ -8,6 +8,7 @@
   import ListSectionPlaceholder from '@/components/custom/ListSectionPlaceholder.vue';
   import { getVacancyName } from '@/src/api/vacancies';
   import { getCandidateSourceLogoPath } from '@/utils/candidateSourceLogo';
+  import { isExternalCandidatePhotoUrl } from '@/utils/candidatePhoto';
 
   interface Props {
     candidates: Candidate[];
@@ -16,6 +17,8 @@
     showCheckboxes?: boolean;
     containerClass?: string;
     allSelected?: boolean;
+    emptyTitle?: string;
+    emptyDescription?: string;
   }
 
   const props: Props = withDefaults(defineProps<Props>(), {
@@ -90,6 +93,33 @@
     return s || '—';
   };
 
+  const getCandidatePhoneForTable = (candidate: Candidate): string => {
+    const p = candidate.phone?.trim();
+    return p || 'Не указано';
+  };
+
+  const getCandidateCityForTable = (candidate: Candidate): string => {
+    const raw = candidate.location?.trim();
+    if (!raw) return 'Не указано';
+
+    // В некоторых источниках в location приходит "Город, адрес ...":
+    // для таблицы оставляем только сам город.
+    const firstChunk = raw.split(/[;,|·]/u)[0]?.trim() || raw;
+    const cityOnly = firstChunk
+      .replace(/^г\.\s*/iu, '')
+      .replace(/^город\s+/iu, '')
+      .trim();
+
+    return cityOnly || 'Не указано';
+  };
+
+  const getCandidateCityForDisplay = (candidate: Candidate): string => {
+    const city = getCandidateCityForTable(candidate);
+    const chars = Array.from(city);
+    if (chars.length <= 15) return city;
+    return `${chars.slice(0, 15).join('')}...`;
+  };
+
   const handlerItemClick = (candidate: Candidate, index: number) => {
     emit('item-click', candidate, index);
   };
@@ -132,6 +162,8 @@
     <ListSectionPlaceholder
       v-else-if="!candidates || candidates.length === 0"
       variant="candidates"
+      :title="emptyTitle"
+      :description="emptyDescription"
     >
       <slot name="empty-action" />
     </ListSectionPlaceholder>
@@ -151,8 +183,8 @@
         <div class="px-2.5">Кандидат</div>
         <div class="px-2.5">Источник</div>
         <div class="px-2.5">Резюме</div>
-        <div class="px-2.5">Вакансия</div>
-        <div class="px-2.5">Этап</div>
+        <div class="px-2.5">Телефон</div>
+        <div class="px-2.5">Город</div>
       </div>
 
     <div class="table-body">
@@ -174,7 +206,10 @@
         <div class="flex items-center gap-2.5 p-2.5">
           <UiAvatar size="candidate">
             <UiAvatarImage
-              v-if="candidate.imagePath"
+              v-if="
+                candidate.imagePath &&
+                !isExternalCandidatePhotoUrl(candidate.imagePath)
+              "
               :src="candidate.imagePath"
               :alt="`${candidate.surname} ${candidate.firstname}`"
             />
@@ -229,18 +264,17 @@
         </div>
         <div class="px-2.5 text-sm font-normal text-space">
           <slot name="cell-resume" :candidate="candidate">
-            {{ candidate.resume || 'Не указано' }}
+            {{ candidate.quickInfo || candidate.resume || 'Не указано' }}
           </slot>
         </div>
         <div class="px-2.5 text-sm font-normal text-space">
-          <slot name="cell-vacancy" :candidate="candidate">
-            {{ getVacancyNameForTable(candidate) }}
-          </slot>
+          {{ getCandidatePhoneForTable(candidate) }}
         </div>
-        <div class="px-2.5 text-sm font-normal text-space">
-          <slot name="cell-stage" :candidate="candidate">
-            {{ getStageName(candidate) }}
-          </slot>
+        <div
+          class="min-w-0 truncate whitespace-nowrap px-2.5 text-sm font-normal text-space"
+          :title="getCandidateCityForTable(candidate)"
+        >
+          {{ getCandidateCityForDisplay(candidate) }}
         </div>
       </div>
     </div>
@@ -250,15 +284,15 @@
 </template>
 <style scoped>
   .table-container {
-    display: grid;
-    grid-template-rows: auto;
-    gap: 1px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .table-header,
   .table-row {
     display: grid;
-    grid-template-columns: 1.778% 26.667% 8% 17.778% 17.778% 23.556%;
+    grid-template-columns: 2% 34% 10% 24% 12% 18%;
     gap: 10px;
     padding: 26px 25px;
     align-items: center;
@@ -272,6 +306,7 @@
   .table-header {
     background-color: #f5f7fa;
     border-radius: 15px 15px 0 0;
+    border-bottom: 1px solid #edeff5;
     font-weight: 500;
     font-size: 14px;
     color: #79869a;
@@ -280,13 +315,11 @@
 
   .table-row {
     background-color: #ffffff;
-  }
-
-  .table-row:not(:last-child) {
-    margin-bottom: 1px;
+    border-bottom: 1px solid #edeff5;
   }
 
   .table-row:last-child {
+    border-bottom: none;
     border-radius: 0 0 15px 15px;
   }
 </style>

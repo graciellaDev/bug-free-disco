@@ -9,6 +9,8 @@
   import ResponseChoose from '~/components/custom/ResponseChoose.vue'
   import Autocomplete from '~/components/custom/Autocomplete.vue'
   import FunnelTemplatePanel from '~/components/funnel/FunnelTemplatePanel.vue'
+  import MyToggleSwitch from '~/components/custom/MyToggleSwitch.vue'
+  import { getVacancyById, patchVacancyUseRejectionReasons } from '@/src/api/vacancies'
   import {
     getVacancyStages,
     createVacancyStage,
@@ -110,6 +112,9 @@
 
   const removingItemTitle = ref('')
 
+  const useRejectionReasons = ref(true)
+  const savingRejectionToggle = ref(false)
+
   // Этапы по умолчанию для отображения до сохранения вакансии (как на бэкенде)
   const DEFAULT_FUNNEL_STAGES: { id: number; title: string; isLocked: boolean; actions: { id: number; title: string }[]; maxDays: number | null }[] = [
     { id: -1, title: 'Новые', isLocked: true, actions: [], maxDays: null },
@@ -128,6 +133,38 @@
       actions: [] as { id: number; title: string }[],
       maxDays: s.max_days ?? null,
     }))
+  }
+
+  const fetchVacancyFunnelSettings = async () => {
+    if (!vacancyId.value) {
+      useRejectionReasons.value = true
+      return
+    }
+    try {
+      const v = await getVacancyById(vacancyId.value)
+      useRejectionReasons.value = !!v?.use_rejection_reasons
+    } catch (e) {
+      console.error('Ошибка при загрузке настроек воронки', e)
+      useRejectionReasons.value = true
+    }
+  }
+
+  async function onToggleUseRejectionReasons(next: boolean) {
+    if (!vacancyId.value) return
+    const previous = useRejectionReasons.value
+    useRejectionReasons.value = next
+    savingRejectionToggle.value = true
+    try {
+      const updated = await patchVacancyUseRejectionReasons(vacancyId.value, next)
+      if (updated) {
+        useRejectionReasons.value = !!updated.use_rejection_reasons
+      }
+    } catch (e) {
+      console.error('Ошибка при сохранении настройки причин отказа', e)
+      useRejectionReasons.value = previous
+    } finally {
+      savingRejectionToggle.value = false
+    }
   }
 
   const fetchItems = async () => {
@@ -304,6 +341,7 @@
     if (saveAndContinueHandler) {
       saveAndContinueHandler.value = async () => {}
     }
+    void fetchVacancyFunnelSettings()
     fetchItems()
   })
   onBeforeUnmount(() => {
@@ -312,6 +350,7 @@
     }
   })
   watch(vacancyId, () => {
+    void fetchVacancyFunnelSettings()
     fetchItems()
   })
 
@@ -657,15 +696,26 @@
             </div>
           </template>
         </draggable>
-        <div class="pl-[55px] mt-18px mb-[34px]">
+        <div class="pl-[55px] mt-18px mb-[34px] flex flex-col gap-4">
           <UiButton
             variant="semiaction"
             size="semiaction"
-            class="bg-athens-gray border border-athens text-space hover:bg-zumthor hover:border-dodger"
+            class="w-fit bg-athens-gray border border-athens text-space hover:bg-zumthor hover:border-dodger"
             @click="addNewItem"
           >
             Добавить этап
           </UiButton>
+          <MyToggleSwitch
+            v-if="vacancyId"
+            id="vacancy-use-rejection-reasons"
+            :model-value="useRejectionReasons"
+            label="Использовать причины отказа"
+            label-color="space"
+            font-weight="medium"
+            font-size="sm"
+            :disabled="savingRejectionToggle || loadingStages"
+            @update:model-value="onToggleUseRejectionReasons"
+          />
         </div>
         <div v-if="loadingStages" class="text-sm text-slate-custom pl-[55px]">
           Загрузка этапов...

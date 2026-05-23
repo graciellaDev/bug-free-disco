@@ -3,7 +3,7 @@
     <div :class="fixedModalFooter ? 'flex min-h-0 flex-1 flex-col' : 'flex gap-x-[24px]'">
       <div :class="fixedModalFooter ? 'flex min-h-0 w-full flex-1 flex-col bg-transparent' : 'max-w-[100%] flex-grow bg-white rounded-fifteen'">
         <div
-          :class="fixedModalFooter ? 'min-h-[min(320px,calc(90dvh-220px))] flex-1 overflow-y-auto overscroll-y-contain px-25px pb-25px' : 'contents'"
+          :class="fixedModalFooter ? 'popup-scroll min-h-[min(320px,calc(90dvh-220px))] flex-1 overflow-y-auto overscroll-y-contain px-25px pb-25px' : 'contents'"
         >
         <template v-if="currentPlatform === 'hh'">
           <p class="text-space text-xl font-semibold mb-2">
@@ -969,6 +969,8 @@
     :max-height-value="'85vh'"
     :disable-overflow-hidden="true"
     :content-padding="false"
+    :content-rounded="true"
+    :parent-rounded="true"
     :no-outer-padding="true"
     :no-scrollbar-gutter="true"
     @close="avitoRequestPreviewOpen = false"
@@ -990,7 +992,7 @@
           <svg-icon name="close" width="20" height="20" />
         </button>
       </div>
-      <div class="min-h-0 flex-1 overflow-auto px-25px py-15px">
+      <div class="popup-scroll min-h-0 flex-1 overflow-auto px-25px py-15px">
         <p v-if="avitoRequestPreviewError" class="text-sm text-red-custom mb-3">{{ avitoRequestPreviewError }}</p>
         <pre
           v-else

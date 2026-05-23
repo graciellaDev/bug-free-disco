@@ -98,13 +98,17 @@
     }
   };
 
-  watch(
-    isOpenValue,
-    newVal => {
-      if (newVal) checkScrollbar();
-    },
-    { immediate: false }
-  );
+  const resolvedMaxHeight = computed(() => {
+    if (props.maxHeight) return 'none';
+    if (props.maxHeightValue !== '80vh') return props.maxHeightValue;
+    return props.lgSize ? 'calc(90vh - 3.125rem)' : props.maxHeightValue;
+  });
+
+  watch(isOpenValue, newVal => {
+    if (newVal) {
+      requestAnimationFrame(() => checkScrollbar());
+    }
+  });
 
   watch(
     () => scrollContainer.value?.scrollHeight,
@@ -115,10 +119,36 @@
 
   /** Сколько модалок сейчас открыто — чтобы при вложенных попапах вернуть scroll только когда все закрыты */
   let bodyScrollLockCount = 0;
+  let scrollbarGutterPx = 0;
+
+  function applyScrollbarGutter() {
+    scrollbarGutterPx = Math.max(
+      0,
+      window.innerWidth - document.documentElement.clientWidth
+    );
+    if (scrollbarGutterPx <= 0) return;
+    document.body.style.paddingRight = `${scrollbarGutterPx}px`;
+    document.querySelectorAll('[data-jobly-top-chrome]').forEach(el => {
+      if (el instanceof HTMLElement) {
+        el.style.paddingRight = `${scrollbarGutterPx}px`;
+      }
+    });
+  }
+
+  function clearScrollbarGutter() {
+    document.body.style.paddingRight = '';
+    document.querySelectorAll('[data-jobly-top-chrome]').forEach(el => {
+      if (el instanceof HTMLElement) {
+        el.style.paddingRight = '';
+      }
+    });
+    scrollbarGutterPx = 0;
+  }
 
   function lockDocumentScroll() {
     bodyScrollLockCount += 1;
     if (bodyScrollLockCount === 1) {
+      applyScrollbarGutter();
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
     }
@@ -130,6 +160,7 @@
     if (bodyScrollLockCount === 0) {
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
+      clearScrollbarGutter();
     }
   }
 
@@ -154,42 +185,43 @@
 </script>
 
 <template>
-  <div
-    v-if="isOpenValue"
-    class="fixed inset-0 z-50 flex items-center justify-center overscroll-none"
-    @click.self="closePopup"
-    :class="[
-      props.noBackdrop ? 'bg-transparent' : 'bg-black bg-opacity-50',
-      isOpenValue ? 'opacity-100' : 'opacity-0',
-      overflowContainer
-        ? 'overflow-y-auto'
-        : overflowVisible || allowDropdownOverflow
-          ? 'overflow-visible'
-          : 'overflow-hidden',
-      parentRounded ? 'rounded-fifteen' : 'rounded-none',
-    ]"
-  >
+  <ClientOnly>
+    <Teleport to="body">
+      <div
+        v-if="isOpenValue"
+      class="fixed inset-0 z-[200] flex min-h-[100dvh] justify-center overscroll-none"
+      @click.self="closePopup"
+      :class="[
+        props.noBackdrop ? 'bg-transparent' : 'bg-black bg-opacity-50',
+        isOpenValue ? 'opacity-100' : 'opacity-0',
+        lgSize ? 'items-start pt-[10vh]' : 'items-center',
+        overflowContainer
+          ? 'overflow-y-auto'
+          : overflowVisible || allowDropdownOverflow
+            ? 'overflow-visible'
+            : 'overflow-hidden',
+      ]"
+    >
     <div
       @click.self="closePopup"
-      class="absolute w-full rounded-fifteen bg-white"
+      class="relative mx-auto flex w-full min-h-0 flex-col rounded-fifteen bg-white"
       :class="[
         props.noOuterPadding
           ? 'p-0'
           : noScrollbarGutter
             ? 'pl-25px pt-25px pb-25px pr-0'
             : 'p-25px',
-        props.allowDropdownOverflow || props.disableOverflowHidden
-          ? 'overflow-visible'
-          : 'overflow-hidden',
+        props.allowDropdownOverflow ? 'overflow-visible' : 'overflow-hidden',
         props.panelExtraClass,
       ]"
       :style="{
         maxWidth: width,
-        top: lgSize ? '10%' : 'auto',
+        maxHeight: resolvedMaxHeight,
+        height: height === 'auto' ? 'auto' : height,
       }"
     >
       <div
-        class="relative h-full w-full transform bg-white"
+        class="relative flex min-h-0 w-full flex-1 flex-col bg-white"
         :class="[
           contentRounded ? 'rounded-fifteen' : 'rounded-none',
           contentPadding ? 'p-25px' : 'p-0',
@@ -197,29 +229,26 @@
         ]"
         :style="{
           maxWidth: width,
-          height: height === 'auto' ? 'auto' : lgSize ? 'auto' : height,
+          top: topActive ? '-10%' : 'auto',
           overflow: allowDropdownOverflow
             ? 'visible'
             : disableOverflowHidden
               ? 'visible'
               : 'hidden',
-          top: topActive ? '-10%' : 'auto',
-          maxHeight: maxHeight ? 'none' : maxHeightValue,
         }"
       >
         <div
           ref="scrollContainer"
-          class="h-full overflow-y-auto"
+          class="popup-scroll min-h-0 flex-1 overflow-y-auto bg-white"
           :class="[
             noScrollbarGutter ? 'pr-0' : 'pr-[15px]',
             {
-              'overflow-y-auto': !allowDropdownOverflow,
-              'overflow-visible': allowDropdownOverflow,
+              'overflow-y-auto': !allowDropdownOverflow && !disableOverflowHidden,
+              'overflow-visible': allowDropdownOverflow || disableOverflowHidden,
             },
           ]"
           :style="{
             ...customStyles,
-            maxHeight: height === 'auto' ? '100%' : height,
             overflow: allowDropdownOverflow
               ? 'visible'
               : disableOverflowHidden
@@ -237,9 +266,9 @@
           <template v-if="noScrollbarGutter">
             <!-- Отступ справа у контента задаётся внутри слота у overflow-контейнера, иначе полоса оказывается левее края -->
             <div
-              class="min-h-0 w-full max-w-full"
+              class="min-h-0 w-full max-w-full bg-white"
               :style="
-                disableOverflowHidden
+                disableOverflowHidden && !maxHeight
                   ? { maxHeight: maxHeightValue }
                   : undefined
               "
@@ -251,31 +280,11 @@
         </div>
       </div>
     </div>
-  </div>
+      </div>
+    </Teleport>
+  </ClientOnly>
 </template>
 
 <style scoped>
-  ::-webkit-scrollbar {
-    width: 10px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    border: none;
-    background-color: #79869a;
-    border-radius: 5px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: #5a6a7f;
-  }
-
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
+/* Скроллбар модалки — класс .popup-scroll в assets/css/main.scss */
 </style>

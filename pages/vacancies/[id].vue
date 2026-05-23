@@ -19,6 +19,7 @@
   import { useCandidateList } from '@/components/custom/page-parts/composables/useCandidateList';
   import { useCandidateAddForm } from '@/components/custom/page-parts/composables/useCandidateAddForm';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
+  import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
 
   import type { Vacancy } from '@/types/vacancy';
   import type { UserRole } from '@/types/roles';
@@ -143,8 +144,13 @@
   //   return { vacancy_id: vacancy.value.id };
   // });
 
+  /** Первая страница и подгрузка при скролле списка слева */
+  const CANDIDATES_LIST_PER_PAGE = 100;
+
   const candidateFilter = computed(() => {
-    const filter: Record<string, any> = {};
+    const filter: Record<string, any> = {
+      per_page: CANDIDATES_LIST_PER_PAGE,
+    };
 
     if (vacancy.value?.id) {
       filter.vacancy_id = vacancy.value.id;
@@ -307,9 +313,11 @@
     );
   });
 
-  /** Скролл только внутри списка при >20 строк; иначе колесо прокручивает страницу */
+  const candidateListScrollRef = ref<HTMLElement | null>(null);
+
+  /** Скролл внутри колонки (~20 строк в видимой области, остальное — колесом в списке) */
   const candidateListNeedsInnerScroll = computed(
-    () => (filteredCandidatesList.value?.length ?? 0) > 20
+    () => (candidatesList.value?.length ?? 0) > 0
   );
 
   const isInitialLoading = computed(
@@ -324,6 +332,49 @@
       stages.value.find(stage => stage.id === selectedStageId.value) || null
     );
   });
+
+  const isAllStagesFilter = computed(
+    () => isActiveAll.value || selectedStage.value?.name === 'Все'
+  );
+
+  const candidatesEmptyTitle = computed(() => {
+    if (candidateSearchQuery.value.trim()) {
+      return 'Никого не нашли';
+    }
+    if (!isAllStagesFilter.value && selectedStage.value?.name) {
+      return 'На этом этапе пока пусто';
+    }
+    return 'Пока нет кандидатов';
+  });
+
+  const candidatesEmptyDescription = computed(() => {
+    const query = candidateSearchQuery.value.trim();
+    if (query) {
+      return `По запросу «${query}» нет совпадений. Измените запрос или сбросьте поиск.`;
+    }
+    const vacancyName = vacancy.value?.name || 'вакансии';
+    if (!isAllStagesFilter.value && selectedStage.value?.name) {
+      return `В этапе «${selectedStage.value.name}» по вакансии «${vacancyName}» пока никого нет. Откройте «Все» или добавьте кандидата.`;
+    }
+    return `Добавьте первого кандидата в «${vacancyName}» или дождитесь откликов с работных сайтов.`;
+  });
+
+  const showCandidatesMainEmpty = computed(
+    () =>
+      !selectedCandidate.value &&
+      !!vacancy.value &&
+      !loadingCandidates.value &&
+      filteredCandidatesList.value.length === 0
+  );
+
+  /** Левая колонка (поиск + список) — только если есть кандидаты или идёт загрузка */
+  const showCandidatesSidebar = computed(
+    () =>
+      !!vacancy.value &&
+      (loadingCandidates.value ||
+        (candidatesList.value?.length ?? 0) > 0 ||
+        candidatesTotal.value > 0)
+  );
 
   const fetchCandidateById = (candidateId: number) =>
     getCandidateById(candidateId, getVacancyId());
@@ -469,6 +520,15 @@
     router.push(`/vacancies/${id}`);
     isDropdownOpen.value = false;
   };
+
+  function openFunnelSettings() {
+    const id = vacancy.value?.id ?? route.params.id;
+    if (!id) return;
+    router.push({
+      path: '/vacancies/newvacancy',
+      query: { id: String(id), type: 'edit', tab: 'funnel' },
+    });
+  }
 
   const handleFormSubmit = async (formData: Record<string, any>) => {
     if (!vacancy.value?.id && isLoadingVacancy.value) {
@@ -1506,6 +1566,15 @@
           {{ (stage as { count?: number }).count ?? candidatesCountByStage[stage.id] ?? 0 }}
         </span>
       </button>
+      <button
+        type="button"
+        class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-ten text-[#92989B] transition-colors hover:bg-athens-gray hover:text-space"
+        title="Настройка воронки найма"
+        aria-label="Настройка воронки найма"
+        @click="openFunnelSettings"
+      >
+        <svg-icon name="settings" width="20" height="20" />
+      </button>
     </div>
     <div v-if="isInitialLoading">
       <UiDotsLoader />
@@ -1515,7 +1584,7 @@
       <!-- items-start: левая колонка по высоте контента, без пустоты под списком -->
       <div class="flex flex-row items-start gap-x-15px">
         <div
-          v-if="vacancy"
+          v-if="showCandidatesSidebar"
           class="w-[375px] shrink-0 self-start overflow-hidden rounded-sixteen bg-white"
         >
           <div
@@ -1545,6 +1614,7 @@
             </div>
           </div>
           <div
+            ref="candidateListScrollRef"
             :class="
               candidateListNeedsInnerScroll
                 ? 'max-h-[calc(52px_+_(20_*_74px))] overflow-y-auto overscroll-y-contain'
@@ -1559,18 +1629,23 @@
               :loading="loadingCandidates"
               :active-candidate-id="activeListCandidateId"
               :has-more="candidatesHasMore"
+              :scroll-root="candidateListScrollRef"
               @item-click="handleCandidateClick"
               @selection-change="handleSelectionChange"
               @load-more="handleCandidatesLoadMore"
             />
             <div
-              v-else
-              class="flex flex-col items-center justify-center px-4 py-12 text-center text-sm text-slate-custom"
+              v-else-if="candidateSearchQuery.trim()"
+              class="px-15px py-10 text-center text-sm text-slate-custom"
             >
-              <p v-if="candidateSearchQuery.trim()">
-                Нет кандидатов, подходящих под поиск.
-              </p>
-              <p v-else>Кандидаты по выбранному этапу не найдены.</p>
+              <p class="mb-2">Нет совпадений по поиску</p>
+              <button
+                type="button"
+                class="text-sm font-semibold text-dodger underline hover:opacity-90"
+                @click="candidateSearchQuery = ''"
+              >
+                Сбросить поиск
+              </button>
             </div>
           </div>
         </div>
@@ -1621,35 +1696,30 @@
           </template>
         </div>
       </div>
-      <div
-        v-if="
-          !selectedCandidate &&
-          vacancy &&
-          !loadingCandidates &&
-          filteredCandidatesList.length === 0
-        "
-        class="text-center"
-      >
-        <template v-if="candidateSearchQuery.trim()">
-          По запросу «{{ candidateSearchQuery.trim() }}» никого не нашли. Попробуйте
-          другие слова или
+      <div v-if="showCandidatesMainEmpty" class="min-w-0 flex-1 self-stretch">
+        <ListSectionPlaceholder
+          variant="candidates"
+          class="h-full min-h-[360px]"
+          :title="candidatesEmptyTitle"
+          :description="candidatesEmptyDescription"
+        >
           <button
+            v-if="candidateSearchQuery.trim()"
             type="button"
-            class="text-dodger underline hover:opacity-90"
+            class="mb-3 text-sm font-semibold text-dodger underline hover:opacity-90"
             @click="candidateSearchQuery = ''"
           >
-            сбросьте поиск
-          </button>.
-        </template>
-        <template v-else>
-          Кандидаты в вакансии
-          <strong>{{ vacancy?.name }}</strong>
-          <span v-if="selectedStage && selectedStage.name !== 'Все'">
-            для этапа
-            <strong>{{ selectedStage.name }}</strong>
-          </span>
-          не найдены.
-        </template>
+            Сбросить поиск
+          </button>
+          <UiButton
+            v-if="userRole === 'admin' && !candidateSearchQuery.trim()"
+            variant="action"
+            size="semiaction"
+            @click="addCandidatePopup.open()"
+          >
+            Добавить кандидата
+          </UiButton>
+        </ListSectionPlaceholder>
       </div>
     </div>
     <!-- popup -->

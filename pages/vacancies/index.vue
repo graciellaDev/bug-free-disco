@@ -42,6 +42,9 @@
   const containerHeight = ref(0); // отслеживаю высоту контейнера
   const containerRef = ref(null); // ссылка на контейнер
   const loading = ref(true);
+  const tabLoading = ref(false);
+  const loadedStatuses = ref(new Set());
+  const filterDictionariesLoaded = ref(false);
   const clients = ref([]);
   const recruiters = ref([]);
   const departments = ref([]);
@@ -226,11 +229,37 @@
     }
   }
 
+  async function loadVacanciesForStatus(status) {
+    const params = buildFilterParams(status);
+    const result = await getVacancies(params);
+    const list = Array.isArray(result) ? result : [];
+    if (status === 'active') vacancies.value = list;
+    else if (status === 'draft') vacanciesDraft.value = list;
+    else if (status === 'closed') vacanciesClosed.value = list;
+    else vacanciesArchive.value = list;
+    loadedStatuses.value = new Set([...loadedStatuses.value, status]);
+    return list;
+  }
+
+  async function ensureTabVacancies(status) {
+    if (loadedStatuses.value.has(status)) return;
+    tabLoading.value = true;
+    try {
+      await loadVacanciesForStatus(status);
+    } catch (e) {
+      console.warn(`Ошибка загрузки вакансий (${status}):`, e);
+    } finally {
+      tabLoading.value = false;
+      await updateContainerHeight();
+    }
+  }
+
   function showActiveVacancies() {
     activeVacancies.value = true;
     draftVacancies.value = false;
     closedVacancies.value = false;
     archiveVacancies.value = false;
+    void ensureTabVacancies('active');
   }
 
   function showDraftVacancies() {
@@ -238,6 +267,7 @@
     draftVacancies.value = true;
     closedVacancies.value = false;
     archiveVacancies.value = false;
+    void ensureTabVacancies('draft');
   }
 
   function showClosedVacancies() {
@@ -245,6 +275,7 @@
     draftVacancies.value = false;
     closedVacancies.value = true;
     archiveVacancies.value = false;
+    void ensureTabVacancies('closed');
   }
 
   function showArchiveVacancies() {
@@ -252,6 +283,7 @@
     draftVacancies.value = false;
     closedVacancies.value = false;
     archiveVacancies.value = true;
+    void ensureTabVacancies('archive');
   }
 
   // Функция для обновления высоты контейнера
@@ -265,7 +297,7 @@
 
 
   // Обработчик удаления вакансии
-  const handleVacancyDeleted = vacancyId => {
+  const handleVacancyDeleted = async vacancyId => {
     if (activeVacancies.value) {
       vacancies.value = vacancies.value.filter((v) => v.id !== vacancyId);
     } else if (draftVacancies.value) {
@@ -275,6 +307,7 @@
     } else if (archiveVacancies.value) {
       vacanciesArchive.value = vacanciesArchive.value.filter((v) => v.id !== vacancyId);
     }
+    await updateContainerHeight();
   };
 
   const handleVacancyStatusChanged = async (vacancyId, newStatus) => {
@@ -300,24 +333,29 @@
     }
   };
 
-  const { clients: responseClients, error: clientsError } =
-    await clientsList('clients');
-  if (!clientsError) {
-    clients.value = responseClients;
-  }
-
-  const { clients: responseRecruiters, error: recruitersError } =
-    await clientsList('recruiters');
-  if (!recruitersError) {
-    recruiters.value = responseRecruiters;
-  }
-
-  // Инициализация высоты при монтировании
-  // onMounted(updateContainerHeight, fetchVacancies);
-  onMounted(async () => {
+  async function loadFilterDictionaries() {
+    if (filterDictionariesLoaded.value) return;
+    filterDictionariesLoaded.value = true;
     try {
-      const [depts, respList, citiesList] = await Promise.all([
+      const [{ clients: responseClients, errors: clientsErr }, { clients: responseRecruiters, errors: recruitersErr }] =
+        await Promise.all([clientsList('clients'), clientsList('recruiters')]);
+      if (!clientsErr) {
+        clients.value = responseClients;
+      }
+      if (!recruitersErr) {
+        recruiters.value = responseRecruiters;
+      }
+    } catch (e) {
+      filterDictionariesLoaded.value = false;
+      console.warn('Ошибка загрузки справочников фильтров:', e);
+    }
+  }
+
+  async function loadFilterFormDictionaries() {
+    try {
+      const [depts, deptsRaw, respList, citiesList] = await Promise.all([
         getDepartments(),
+        getDepartments(true).catch(() => null),
         responsiblesList(),
         getVacancyCities(),
       ]);
@@ -326,19 +364,49 @@
       if (Array.isArray(citiesList) && citiesList.length) {
         citiesFilterOptions.value = citiesList.map((name) => ({ value: name, name }));
       }
-      const deptsRaw = await getDepartments(true).catch(() => null);
       if (deptsRaw && Array.isArray(deptsRaw)) {
-        departmentsFilterOptions.value = deptsRaw.map((d) => ({ value: d.id, name: d.name || '' }));
+        departmentsFilterOptions.value = deptsRaw.map((d) => ({
+          value: d.id,
+          name: d.name || '',
+        }));
       }
     } catch (e) {
       console.warn('Ошибка загрузки справочников:', e);
     }
-    updateContainerHeight();
-    await loadAllVacancyLists();
+  }
+
+  function loadOtherTabsInBackground() {
+    const others = ['draft', 'closed', 'archive'].filter(
+      (s) => !loadedStatuses.value.has(s)
+    );
+    if (!others.length) return;
+    void Promise.all(others.map((s) => loadVacanciesForStatus(s)))
+      .then(() => updateContainerHeight())
+      .catch((e) => console.warn('Ошибка фоновой загрузки табов:', e));
+  }
+
+  onMounted(() => {
     document.addEventListener('click', handleFiltersClickOutside);
+    void (async () => {
+      loading.value = true;
+      try {
+        await loadVacanciesForStatus('active');
+      } catch (e) {
+        console.warn('Ошибка загрузки открытых вакансий:', e);
+      } finally {
+        loading.value = false;
+        await updateContainerHeight();
+      }
+      loadOtherTabsInBackground();
+      void loadFilterFormDictionaries();
+    })();
   });
 
-  async function buildFilterParams(forceStatus) {
+  watch(isActiveFunnel, (open) => {
+    if (open) void loadFilterDictionaries();
+  });
+
+  function buildFilterParams(forceStatus) {
     const status = forceStatus ?? (activeVacancies.value ? 'active' : draftVacancies.value ? 'draft' : closedVacancies.value ? 'closed' : 'archive');
     const parts = [`filters[status]=${status}`, `sort=${sortMode.value}`];
     const f = filters.value;
@@ -371,30 +439,22 @@
     return parts.join('&');
   }
 
-  /** Загружает списки вакансий по всем четырём статусам с текущими фильтрами (при применении — с фильтрами, при сбросе — без). */
+  /** Перезагрузка всех табов (после применения или сброса фильтров). */
   async function loadAllVacancyLists() {
     loading.value = true;
+    loadedStatuses.value = new Set();
     try {
-      const [paramsActive, paramsDraft, paramsClosed, paramsArchive] = await Promise.all([
-        buildFilterParams('active'),
-        buildFilterParams('draft'),
-        buildFilterParams('closed'),
-        buildFilterParams('archive'),
+      await Promise.all([
+        loadVacanciesForStatus('active'),
+        loadVacanciesForStatus('draft'),
+        loadVacanciesForStatus('closed'),
+        loadVacanciesForStatus('archive'),
       ]);
-      const [activeRes, draftRes, closedRes, archiveRes] = await Promise.all([
-        getVacancies(paramsActive),
-        getVacancies(paramsDraft),
-        getVacancies(paramsClosed),
-        getVacancies(paramsArchive),
-      ]);
-      vacancies.value = Array.isArray(activeRes) ? activeRes : [];
-      vacanciesDraft.value = Array.isArray(draftRes) ? draftRes : [];
-      vacanciesClosed.value = Array.isArray(closedRes) ? closedRes : [];
-      vacanciesArchive.value = Array.isArray(archiveRes) ? archiveRes : [];
     } catch (e) {
       console.warn('Ошибка загрузки списков вакансий:', e);
     } finally {
       loading.value = false;
+      await updateContainerHeight();
     }
   }
 
@@ -436,7 +496,7 @@
   );
 
   const showListPageHeader = computed(
-    () => !loading.value && totalVacancyCount.value > 0
+    () => loading.value || totalVacancyCount.value > 0
   );
 </script>
 
@@ -810,8 +870,8 @@
     </div>
     <div
       ref="containerRef"
-      :style="{ height: `${containerHeight}px` }"
-      class="relative"
+      :style="containerHeight > 0 ? { height: `${containerHeight}px` } : undefined"
+      class="relative overflow-visible"
     >
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="activeVacancies" class="active-view absolute w-full">
@@ -838,7 +898,7 @@
             />
           </div>
           <ListSectionPlaceholder
-            v-if="loading && activeVacancies"
+            v-if="(loading || tabLoading) && activeVacancies"
             variant="vacancy"
             loading
           />
@@ -861,7 +921,7 @@
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="draftVacancies" class="active-view absolute w-full">
           <ListSectionPlaceholder
-            v-if="loading && draftVacancies"
+            v-if="(loading || tabLoading) && draftVacancies"
             variant="vacancy"
             loading
           />
@@ -894,7 +954,7 @@
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="closedVacancies" class="active-view absolute w-full">
           <ListSectionPlaceholder
-            v-if="loading && closedVacancies"
+            v-if="(loading || tabLoading) && closedVacancies"
             variant="vacancy"
             loading
           />
@@ -927,7 +987,7 @@
       <transition name="fade" @after-enter="updateContainerHeight">
         <div v-if="archiveVacancies" class="active-view absolute w-full">
           <ListSectionPlaceholder
-            v-if="loading && archiveVacancies"
+            v-if="(loading || tabLoading) && archiveVacancies"
             variant="vacancy"
             loading
           />

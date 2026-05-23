@@ -13,6 +13,7 @@
   import CardIcon from '@/components/custom/CardIcon.vue';
   import UiDotsLoader from '@/components/custom/UiDotsLoader.vue';
   import { getCandidateSourceLogoPath } from '@/utils/candidateSourceLogo';
+  import { isExternalCandidatePhotoUrl } from '@/utils/candidatePhoto';
   import { getCandidateStageOverdueInfo } from '@/utils/candidateStageOverdue';
 
   import type { Candidate } from '@/types/candidates';
@@ -26,6 +27,8 @@
     activeCandidateId?: number | null;
     /** Есть ли ещё страницы (infinite на странице вакансии) */
     hasMore?: boolean;
+    /** Контейнер со скроллом (иначе подгрузка срабатывает только при скролле всей страницы) */
+    scrollRoot?: HTMLElement | null;
   }>();
 
   const emit = defineEmits<{
@@ -42,6 +45,7 @@
     loadMoreObserver = null;
     if (!sentinelRef.value || !props.hasMore) return;
 
+    const root = props.scrollRoot ?? null;
     loadMoreObserver = new IntersectionObserver(
       entries => {
         const hit = entries[0]?.isIntersecting;
@@ -49,14 +53,19 @@
           emit('load-more');
         }
       },
-      { root: null, rootMargin: '120px', threshold: 0 }
+      { root, rootMargin: '80px', threshold: 0 }
     );
     loadMoreObserver.observe(sentinelRef.value);
   };
 
   watch(
     () =>
-      [props.hasMore, props.loading, props.candidates?.length ?? 0] as const,
+      [
+        props.hasMore,
+        props.loading,
+        props.candidates?.length ?? 0,
+        props.scrollRoot,
+      ] as const,
     () => nextTick(() => bindLoadMoreObserver())
   );
 
@@ -150,7 +159,10 @@
         <div class="candidate-info" @click="handlerItemClick(candidate, index)">
           <UiAvatar size="candidate">
             <UiAvatarImage
-              v-if="candidate.imagePath"
+              v-if="
+                candidate.imagePath &&
+                !isExternalCandidatePhotoUrl(candidate.imagePath)
+              "
               :src="candidate.imagePath"
               :alt="getFullName(candidate)"
             />

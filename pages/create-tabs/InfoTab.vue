@@ -36,7 +36,7 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount, nextTick, inject, isRef } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted, onActivated, onUnmounted, nextTick, inject, isRef } from 'vue'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
@@ -82,7 +82,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['goToPublish'])
+const emit = defineEmits(['goToPublish', 'save-and-continue'])
 
 
 // Тип сотрудника: постоянный или временный — определяет опции «Тип занятости»
@@ -271,6 +271,7 @@ const languageLevelDropdownOptions = computed(() => Array.isArray(languageLevelO
 
 const headerVacancyStatus = inject('headerVacancyStatus', null)
 const vacancyIdRef = inject('vacancyIdRef', null)
+const isSavingVacancy = ref(false)
 
 const defaultDescriptionTemplate = `<p>Обязанности:</p>
 <ul><li></li><li></li></ul>
@@ -1365,19 +1366,31 @@ function cleanDataForSending(data) {
 }
 
 async function saveVacancy(opt) {
+  if (isSavingVacancy.value) {
+    const fromRef =
+      vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef
+    const existingId = fromRef ?? props.id
+    return existingId != null && String(existingId) !== ''
+      ? { id: Number(existingId) }
+      : undefined
+  }
   if (!validateVacancy()) {
     await nextTick()
     scrollToFirstError()
     throw new Error('Validation failed')
   }
-  {
+  isSavingVacancy.value = true
+  try {
     let response, error;
     
     // Используем vacancyData для получения правильных данных (phrases как массив)
     const fullData = { ...vacancyData.value };
     fullData.application = route.query.application ?? null;
     // id для редактирования: при вызове с других вкладок берём из родителя (vacancyIdRef), т.к. props.id у закэшированного InfoTab может быть устаревшим
-    const effectiveId = (props.id || vacancyIdRef?.value) ?? null;
+    const effectiveId =
+      (props.id ||
+        (vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef)) ??
+      null;
     const isEdit = props.type === 'edit' || (effectiveId != null && String(effectiveId) !== '');
     if (isEdit && effectiveId) {
       // При редактировании отправляем только измененные поля
@@ -1421,24 +1434,28 @@ async function saveVacancy(opt) {
     }
     // API создания возвращает { message, data: vacancy } — id в response.data.id
     const id = response?.data?.id ?? response?.id ?? effectiveId ?? props.id
+    if (id != null && vacancyIdRef && isRef(vacancyIdRef)) {
+      vacancyIdRef.value = Number(id)
+    }
     return id != null ? { id: Number(id) } : undefined
+  } finally {
+    isSavingVacancy.value = false
   }
 }
 
 const saveAndContinueHandler = inject('saveAndContinueHandler', null)
 const mainSaveHandler = inject('mainSaveHandler', null)
-onMounted(() => {
+function registerVacancySaveHandlers() {
   if (saveAndContinueHandler) {
     saveAndContinueHandler.value = saveVacancy
   }
   if (mainSaveHandler) {
     mainSaveHandler.value = saveVacancy
   }
-})
-onBeforeUnmount(() => {
-  if (saveAndContinueHandler) {
-    saveAndContinueHandler.value = null
-  }
+}
+onMounted(registerVacancySaveHandlers)
+onActivated(registerVacancySaveHandlers)
+onUnmounted(() => {
   if (mainSaveHandler) {
     mainSaveHandler.value = null
   }
@@ -1446,13 +1463,9 @@ onBeforeUnmount(() => {
 
 defineExpose({ saveVacancy })
 
-/** Обработчик нижней кнопки «Сохранить и продолжить» — перехватывает ошибку валидации, чтобы не было unhandled rejection. */
-async function onSaveAndContinueClick() {
-  try {
-    await saveVacancy({ goToPublish: true })
-  } catch (_) {
-    // Валидация не прошла или ошибка сохранения — остаёмся на вкладке
-  }
+/** Та же логика, что у кнопки в шапке: один save + обновление id в URL. */
+function onSaveAndContinueClick() {
+  emit('save-and-continue')
 }
 
 const updateEvent = (data, property) => {

@@ -2,6 +2,8 @@
   withDefaults(
     defineProps<{
       variant?: 'vacancy' | 'candidates' | 'applications' | 'reports';
+      /** default — список; compact — узкая колонка (воронка вакансии) */
+      size?: 'default' | 'compact';
       loading?: boolean;
       title?: string;
       description?: string;
@@ -10,6 +12,7 @@
     }>(),
     {
       variant: 'vacancy',
+      size: 'default',
       loading: false,
       title: '',
       description: '',
@@ -48,7 +51,12 @@
 
 <template>
   <div
-    class="list-section-placeholder flex w-full flex-col items-center justify-center rounded-fifteen bg-white px-25px py-14 text-center sm:py-16"
+    class="list-section-placeholder flex w-full flex-col items-center justify-center rounded-fifteen bg-white text-center"
+    :class="
+      size === 'compact'
+        ? 'px-15px py-10'
+        : 'min-h-[min(380px,58vh)] px-25px py-14 sm:py-16'
+    "
     role="status"
     :aria-busy="loading"
     :aria-label="loading ? (loadingTitle || defaultCopy[variant].loadingTitle) : (title || defaultCopy[variant].title)"
@@ -142,14 +150,20 @@
       </svg>
     </div>
 
-    <p class="mb-2 text-lg font-semibold leading-snug text-space">
+    <p
+      class="mb-2 font-semibold leading-snug text-space"
+      :class="size === 'compact' ? 'text-base' : 'text-lg'"
+    >
       {{
         loading
           ? (loadingTitle || defaultCopy[variant].loadingTitle)
           : (title || defaultCopy[variant].title)
       }}
     </p>
-    <p class="max-w-[420px] text-sm font-normal leading-relaxed text-slate-custom">
+    <p
+      class="text-sm font-normal leading-relaxed text-slate-custom"
+      :class="size === 'compact' ? 'max-w-[280px]' : 'max-w-[420px]'"
+    >
       {{
         loading
           ? loadingDescription
@@ -157,7 +171,10 @@
       }}
     </p>
 
-    <div v-if="!loading && $slots.default" class="mt-7">
+    <div
+      v-if="!loading && $slots.default"
+      :class="size === 'compact' ? 'mt-4' : 'mt-7'"
+    >
       <slot />
     </div>
 

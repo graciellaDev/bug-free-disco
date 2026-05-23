@@ -1,4 +1,4 @@
-import { apiGet } from './client';
+import { apiGet, apiPut } from './client';
 import type { ApiResponseVacanciesData } from '@/types/vacancy';
 
 import type { Vacancy } from '@/types/vacancy';
@@ -52,6 +52,22 @@ export const getVacancyById = async (id: string): Promise<Vacancy | null> => {
     return null;
   }
 };
+
+export async function patchVacancyUseRejectionReasons(
+  vacancyId: number | string,
+  useRejectionReasons: boolean
+): Promise<Vacancy | null> {
+  try {
+    const response = await apiPut<Vacancy, { use_rejection_reasons: boolean }>(
+      `/vacancies/${vacancyId}`,
+      { use_rejection_reasons: useRejectionReasons }
+    );
+    return response.data ?? null;
+  } catch (err) {
+    console.error('Ошибка при сохранении настройки причин отказа:', err);
+    return null;
+  }
+}
 
 export const getVacancies = async (
   queryParams?: Record<string, any>

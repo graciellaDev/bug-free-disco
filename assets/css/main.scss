@@ -1,15 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ... */
-
-@layer base {
-  html {
-    font-family: 'Inter', sans-serif;
-    background-color: #edeff5;
-  }
-}
+/* Tailwind: ~/assets/css/tailwind.css (@nuxtjs/tailwindcss) */
 
 .PopoverContent {
   width: var(--radix-popover-trigger-width);
@@ -30,4 +19,38 @@
   white-space: break-spaces;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/** Скролл в модальных окнах (как в попапе hh.ru) */
+.popup-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #79869a transparent;
+}
+
+.popup-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.popup-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.popup-scroll::-webkit-scrollbar-thumb {
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 0;
+  border-right: 0;
+  border-radius: 5px;
+  background-color: #79869a;
+  background-clip: content-box;
+}
+
+.popup-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #5a6a7f;
+}
+
+.popup-scroll::-webkit-scrollbar-corner {
+  background: transparent;
 }

@@ -2,10 +2,53 @@
 import path from 'node:path'
 import fs from 'node:fs'
 
+/** Пути проекта в сгенерированных .nuxt-файлах: /app в Docker, абсолютный путь на хосте. */
+function normalizeGeneratedProjectPaths(content: string, rootDir: string, isDocker: boolean): string {
+    const hostPrefix = rootDir.replace(/\\/g, '/').replace(/\/?$/, '/')
+    const dockerPrefix = '/app/'
+    let next = content
+
+    if (isDocker) {
+        // .nuxt мог быть создан на macOS — в контейнере /Users/... не существует
+        next = next.replace(/\/Users\/[^"'\\]+?\/bug-free-disco\//g, dockerPrefix)
+        if (hostPrefix !== dockerPrefix && hostPrefix.startsWith('/')) {
+            const escaped = hostPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            next = next.replace(new RegExp(escaped, 'g'), dockerPrefix)
+        }
+    } else {
+        next = next.replace(/\/app\//g, hostPrefix)
+    }
+
+    return next
+}
+
+const SVG_SPRITE_ICONS_RELATIVE = '../assets/sprite/gen/icons.svg'
+
+function patchSvgSpritePaths(rootDir: string) {
+    const spriteModulePath = path.join(rootDir, '.nuxt', 'svg-sprite.mjs')
+    if (!fs.existsSync(spriteModulePath)) return
+    const content = fs.readFileSync(spriteModulePath, 'utf8')
+    if (!content.includes('export const sprites')) return
+
+    const isDocker = process.env.NUXT_DOCKER === '1'
+    let next = normalizeGeneratedProjectPaths(content, rootDir, isDocker)
+    // Абсолютные пути (/Users/... или /app/...) ломают Vite в Docker — только относительный от .nuxt
+    next = next.replace(
+        /import\(["'][^"']*assets\/sprite\/gen\/icons\.svg["']\)/g,
+        `import("${SVG_SPRITE_ICONS_RELATIVE}")`
+    )
+
+    if (next !== content) {
+        fs.writeFileSync(spriteModulePath, next)
+    }
+}
+
 function patchTailwindConfig(rootDir: string) {
     const tailwindConfigPath = path.join(rootDir, '.nuxt', 'tailwind.config.cjs')
     if (!fs.existsSync(tailwindConfigPath)) return
     const content = fs.readFileSync(tailwindConfigPath, 'utf8')
+    // Не трогаем файл, пока Nuxt ещё дописывает конфиг (иначе ломается PostCSS/Tailwind).
+    if (!content.includes('module.exports = config')) return
     let next = content
     const isDocker = process.env.NUXT_DOCKER === '1'
 
@@ -24,12 +67,7 @@ function patchTailwindConfig(rootDir: string) {
         next = 'const path = require("path");\n' + next
     }
 
-    // В Docker content-пути должны оставаться /app/... (иначе Tailwind не найдёт классы).
-    // Для локального запуска без Docker нормализуем только docker-пути из сгенерированного файла.
-    if (!isDocker) {
-        const rootPrefix = rootDir.replace(/\\/g, '/').replace(/\/?$/, '/')
-        next = next.replace(/\/app\//g, rootPrefix)
-    }
+    next = normalizeGeneratedProjectPaths(next, rootDir, isDocker)
 
     if (next !== content) {
         fs.writeFileSync(tailwindConfigPath, next)
@@ -43,12 +81,19 @@ export default defineNuxtConfig({
     ssr: true,
     hooks: {
         'ready'(nuxt) {
-            patchTailwindConfig(nuxt.options.rootDir)
+            const root = nuxt.options.rootDir
+            patchTailwindConfig(root)
+            patchSvgSpritePaths(root)
+            // svg-sprite.mjs иногда пишется после ready — повторный патч
+            setTimeout(() => {
+                patchTailwindConfig(root)
+                patchSvgSpritePaths(root)
+            }, 500)
         },
         'build:before'() {
-            // Патч ещё раз перед сборкой — шаблон tailwind мог записаться после ready
             const rootDir = process.cwd()
             patchTailwindConfig(rootDir)
+            patchSvgSpritePaths(rootDir)
         },
     },
     build: {
@@ -58,6 +103,21 @@ export default defineNuxtConfig({
         shim: false,
     },
     css: ['~/assets/css/main.scss'],
+    tailwindcss: {
+        config: {
+            content: [
+                './components/**/*.{vue,js,jsx,mjs,ts,tsx}',
+                './layouts/**/*.{vue,js,jsx,mjs,ts,tsx}',
+                './pages/**/*.{vue,js,jsx,mjs,ts,tsx}',
+                './plugins/**/*.{js,ts,mjs}',
+                './composables/**/*.{js,ts,mjs}',
+                './utils/**/*.{js,ts,mjs}',
+                './app.vue',
+                './error.vue',
+                './app.config.{js,ts,mjs}',
+            ],
+        },
+    },
     modules: [['@nuxtjs/google-fonts', {
         families: {
             Inter: [300, 400, 500, 600, 700],
@@ -87,27 +147,19 @@ export default defineNuxtConfig({
                 name: 'jobly-patch-tailwind-docker-paths',
                 enforce: 'pre',
                 configResolved() {
-                    patchTailwindConfig(process.cwd())
+                    const root = process.cwd()
+                    patchTailwindConfig(root)
+                    patchSvgSpritePaths(root)
                 },
                 buildStart() {
-                    patchTailwindConfig(process.cwd())
+                    const root = process.cwd()
+                    patchTailwindConfig(root)
+                    patchSvgSpritePaths(root)
                 },
                 configureServer() {
                     const root = process.cwd()
-                    const nuxtDir = path.join(root, '.nuxt')
                     patchTailwindConfig(root)
-                    let debounce: ReturnType<typeof setTimeout> | undefined
-                    const schedule = () => {
-                        if (debounce) clearTimeout(debounce)
-                        debounce = setTimeout(() => patchTailwindConfig(root), 50)
-                    }
-                    try {
-                        fs.watch(nuxtDir, { persistent: false }, (event, filename) => {
-                            if (filename === 'tailwind.config.cjs') schedule()
-                        })
-                    } catch {
-                        /* .nuxt может ещё не существовать */
-                    }
+                    patchSvgSpritePaths(root)
                 },
             },
         ],
@@ -130,7 +182,7 @@ export default defineNuxtConfig({
             : {}),
     },
     svgSprite: {
-        // input: '~/assets/sprite/'
+        input: '~/assets/sprite/svg',
     },
     app: {
         head: {

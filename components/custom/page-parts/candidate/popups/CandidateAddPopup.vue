@@ -33,13 +33,13 @@
     @close="emit('close')"
     width="490px"
     :showCloseButton="false"
-    :disableOverflowHidden="true"
-    :overflowContainer="true"
-    maxHeight
     :lgSize="true"
+    :parentRounded="true"
+    :contentRounded="false"
+    :contentPadding="false"
   >
-    <div class="gap-y-35px">
-      <h2 class="mb-25px text-xl font-semibold leading-normal text-space">
+    <div class="popup-delete-content flex flex-col gap-y-6">
+      <h2 class="text-xl font-semibold text-space">
         Новый кандидат
       </h2>
 
@@ -47,7 +47,7 @@
       <transition name="fade" v-if="isSuccess !== undefined">
         <div
           v-if="isSuccess"
-          class="border-green-200 bg-green-50 text-green-700 mb-4 flex items-center gap-2 rounded-ten border p-4"
+          class="flex items-center gap-2 rounded-ten border border-green-200 bg-green-50 p-4 text-green-700"
         >
           <svg
             class="h-5 w-5 flex-shrink-0"
@@ -68,7 +68,7 @@
       <transition name="fade">
         <div
           v-if="serverErrors._general"
-          class="mb-4 flex items-start gap-2 rounded-ten border border-red-200 bg-red-50 p-4 text-red-700"
+          class="flex items-start gap-2 rounded-ten border border-red-200 bg-red-50 p-4 text-red-700"
         >
           <svg
             class="mt-0.5 h-5 w-5 flex-shrink-0"

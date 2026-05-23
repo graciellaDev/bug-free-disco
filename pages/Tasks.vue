@@ -2,17 +2,15 @@
   import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
   import { getTasks, completeTask } from '@/src/api/tasks';
   import { getCandidates, deleteCandidateTask } from '@/src/api/candidates';
-  import { getExecutors } from '@/src/api/executors';
+  import { clientsList } from '@/utils/clientsList';
   import { getVacanciesNames } from '@/utils/getVacancies';
-  import GeoInput from '~/components/custom/GeoInput.vue';
-  import { useUserStore } from '@/stores/user';
+  import MultiSelect from '~/components/custom/MultiSelect.vue';
+  import MyDropdown from '~/components/custom/MyDropdown.vue';
   import type { Task, TaskFilter, TaskFilterTab, TaskSort, TaskSortOption, TaskSearchFilters } from '@/types/tasks';
-
-  const userStore = useUserStore();
 
   const tasks = ref<Task[]>([]);
   const loading = ref(false);
-  const activeFilter = ref<TaskFilter>('all');
+  const activeFilter = ref<TaskFilter>('overdue');
   const counts = ref<Partial<Record<TaskFilter, number>>>({});
   const pagination = ref({
     total: 0,
@@ -22,12 +20,10 @@
   });
 
   const filterTabs: TaskFilterTab[] = [
-    { key: 'all', label: 'Все задачи' },
-    { key: 'today', label: 'На сегодня' },
-    { key: 'tomorrow', label: 'На завтра' },
-    { key: 'week', label: 'Неделя' },
-    { key: 'overdue', label: 'Просроченные' },
-    { key: 'completed', label: 'Завершенные' },
+    { key: 'overdue', label: 'Просроченные задачи' },
+    { key: 'today', label: 'Задачи на сегодня' },
+    { key: 'tomorrow', label: 'Задачи на завтра' },
+    { key: 'all', label: 'Задачи на будущее' },
   ];
 
   function tabCount(key: TaskFilter): number {
@@ -42,18 +38,16 @@
   ];
   const showSortPanel = ref(false);
   const activeSort = ref<TaskSort>('newest');
-  const pendingSort = ref<TaskSort>('newest');
 
   function toggleSortPanel() {
     showSortPanel.value = !showSortPanel.value;
     if (showSortPanel.value) {
       showFilterPanel.value = false;
-      pendingSort.value = activeSort.value;
     }
   }
 
-  function applySort() {
-    activeSort.value = pendingSort.value;
+  function applySort(sort: TaskSort) {
+    activeSort.value = sort;
     showSortPanel.value = false;
     loadTasks(1);
   }
@@ -61,28 +55,40 @@
   // --- Filters ---
   const showFilterPanel = ref(false);
   const appliedFilters = ref<TaskSearchFilters>({});
-  /** `filters[assignee]` — произвольная подстрока (LIKE); подсказки из executors через datalist */
-  const pendingAssignee = ref('');
+  /** Выбранные участники фильтра (мультиселект, как в отчетах). */
+  const pendingAssigneeIds = ref<number[]>([]);
+  const appliedAssigneeIds = ref<number[]>([]);
   /** `filters[vacancy_id]` / `filters[candidate_id]` — числовые id из справочников */
-  const pendingVacancyId = ref<number | ''>('');
-  const pendingCandidateId = ref<number | ''>('');
+  const pendingVacancyId = ref<number | null>(null);
+  const pendingCandidateId = ref<number | null>(null);
 
-  const executorsOptions = ref<{ value: number; name: string }[]>([]);
+  const executorsOptions = ref<{ value: number; name: string; role?: string }[]>([]);
   const vacanciesOptions = ref<{ value: number; name: string }[]>([]);
   const candidatesOptions = ref<{ value: number; name: string }[]>([]);
+  const ALLOWED_ASSIGNEE_ROLES = new Set(['рекрутер', 'recruiter', 'администратор', 'admin', 'administrator']);
 
   async function loadFilterOptions() {
     try {
-      const [vacancies, candidatesResult, executors] = await Promise.all([
+      const [vacancies, candidatesResult, { clients: employees }] = await Promise.all([
         getVacanciesNames(),
         getCandidates(1, { per_page: 200 }),
-        getExecutors(),
+        clientsList('employees'),
       ]);
-      executorsOptions.value = (executors || [])
-        .filter((e: { id?: number; name?: string }) => e.id != null && (e.name || '').trim())
-        .map((e: { id: number; name: string }) => ({
-          value: e.id,
-          name: e.name.trim(),
+      executorsOptions.value = (employees || [])
+        .map((e: { id?: number; name?: string; role?: string }) => {
+          const roleName = (e.role ?? '').trim();
+          return {
+            id: e.id,
+            name: e.name?.trim() || '',
+            roleName,
+            roleKey: roleName.toLowerCase(),
+          };
+        })
+        .filter((e) => e.id != null && e.name.length > 0 && ALLOWED_ASSIGNEE_ROLES.has(e.roleKey))
+        .map((e) => ({
+          value: e.id as number,
+          name: e.name,
+          role: e.roleName || undefined,
         }));
       vacanciesOptions.value = (vacancies || []).map((v: { id?: number; name?: string; title?: string }) => ({
         value: v.id as number,
@@ -101,22 +107,25 @@
     showFilterPanel.value = !showFilterPanel.value;
     if (showFilterPanel.value) {
       showSortPanel.value = false;
-      pendingAssignee.value = appliedFilters.value.assignee ?? '';
-      pendingVacancyId.value = appliedFilters.value.vacancy_id ?? '';
-      pendingCandidateId.value = appliedFilters.value.candidate_id ?? '';
+      pendingAssigneeIds.value = [...appliedAssigneeIds.value];
+      pendingVacancyId.value = appliedFilters.value.vacancy_id ?? null;
+      pendingCandidateId.value = appliedFilters.value.candidate_id ?? null;
     }
   }
 
   function applyFilters() {
-    const assignee = pendingAssignee.value.trim() || undefined;
     const vid = pendingVacancyId.value;
     const cid = pendingCandidateId.value;
+    const assignees = pendingAssigneeIds.value
+      .map((id) => executorsOptions.value.find((e) => e.value === id)?.name?.trim() || '')
+      .filter((name) => name.length > 0);
     const vacancy_id =
-      vid !== '' && Number.isFinite(Number(vid)) && Number(vid) > 0 ? Number(vid) : undefined;
+      vid != null && Number.isFinite(Number(vid)) && Number(vid) > 0 ? Number(vid) : undefined;
     const candidate_id =
-      cid !== '' && Number.isFinite(Number(cid)) && Number(cid) > 0 ? Number(cid) : undefined;
+      cid != null && Number.isFinite(Number(cid)) && Number(cid) > 0 ? Number(cid) : undefined;
+    appliedAssigneeIds.value = [...pendingAssigneeIds.value];
     appliedFilters.value = {
-      ...(assignee ? { assignee } : {}),
+      ...(assignees.length ? { assignees } : {}),
       ...(vacancy_id != null ? { vacancy_id } : {}),
       ...(candidate_id != null ? { candidate_id } : {}),
     };
@@ -125,9 +134,10 @@
   }
 
   function resetFilters() {
-    pendingAssignee.value = '';
-    pendingVacancyId.value = '';
-    pendingCandidateId.value = '';
+    pendingAssigneeIds.value = [];
+    appliedAssigneeIds.value = [];
+    pendingVacancyId.value = null;
+    pendingCandidateId.value = null;
     appliedFilters.value = {};
     showFilterPanel.value = false;
     loadTasks(1);
@@ -136,20 +146,10 @@
   const hasActiveFilters = computed(() => {
     const f = appliedFilters.value;
     return !!(
-      f.assignee?.trim()
+      appliedAssigneeIds.value.length
       || (f.vacancy_id != null && f.vacancy_id > 0)
       || (f.candidate_id != null && f.candidate_id > 0)
     );
-  });
-
-  /** Подсказки для GeoInput: исполнители с API + текущий пользователь, если его нет в списке (не исключаем себя) */
-  const assigneeNameSuggestions = computed(() => {
-    const names = executorsOptions.value.map((e) => e.name).filter(Boolean);
-    const self = userStore.name?.trim();
-    if (!self) return names;
-    const hasSelf = names.some((n) => n.toLowerCase() === self.toLowerCase());
-    if (hasSelf) return names;
-    return [self, ...names];
   });
 
   onMounted(() => {
@@ -388,7 +388,7 @@
       <!-- Filter Tabs: без закругления снизу, если ниже открыта панель сортировки/фильтров -->
       <div
         class="flex items-center gap-[10px] bg-catskill px-[25px] py-[15px] transition-[border-bottom-left-radius,border-bottom-right-radius] duration-300 ease-out"
-        :class="!showSortPanel && !showFilterPanel ? 'rounded-b-[15px]' : 'rounded-b-none'"
+        :class="!showFilterPanel ? 'rounded-b-[15px]' : 'rounded-b-none'"
       >
         <div class="flex flex-1 items-center gap-[10px]">
           <button
@@ -411,30 +411,53 @@
             </span>
           </button>
 
-          <!-- More (...) -->
-          <button class="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-[10px] transition-colors hover:bg-athens-gray">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="5" viewBox="0 0 18 5" fill="#2F353D">
-              <circle cx="2.5" cy="2.5" r="2" />
-              <circle cx="9" cy="2.5" r="2" />
-              <circle cx="15.5" cy="2.5" r="2" />
-            </svg>
-          </button>
         </div>
 
         <!-- Sort button -->
-        <button
-          class="rounded-ten border p-2.5 transition-colors"
-          :class="
-            isHoveredSort || showSortPanel || activeSort !== 'newest'
-              ? 'border-zumthor bg-zumthor text-dodger'
-              : 'border-athens bg-white text-slate-custom'
-          "
-          @mouseover="isHoveredSort = true"
-          @mouseleave="isHoveredSort = false"
-          @click="toggleSortPanel"
-        >
-          <svg-icon name="sort-list" width="20" height="20" />
-        </button>
+        <div class="relative">
+          <button
+            class="rounded-ten border p-2.5 transition-colors"
+            :class="
+              isHoveredSort || showSortPanel || activeSort !== 'newest'
+                ? 'border-zumthor bg-zumthor text-dodger'
+                : 'border-athens bg-white text-slate-custom'
+            "
+            @mouseover="isHoveredSort = true"
+            @mouseleave="isHoveredSort = false"
+            @click="toggleSortPanel"
+          >
+            <svg-icon name="sort-list" width="20" height="20" />
+          </button>
+          <Transition name="slide-fade">
+            <div
+              v-if="showSortPanel"
+              class="sort-dropdown absolute right-0 top-[50px] z-20 w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-ten bg-white py-2 shadow-xl"
+            >
+              <p class="px-25px pb-15px pt-2 text-base font-semibold leading-normal text-space">
+                Сортировка
+              </p>
+              <div class="sort-dropdown__group">
+                <button
+                  v-for="opt in sortOptions"
+                  :key="opt.key"
+                  type="button"
+                  class="sort-dropdown__item flex w-full items-center justify-between gap-x-3 px-25px py-10px text-left text-sm font-normal text-space transition-colors hover:bg-athens-gray"
+                  :class="{ 'bg-athens-gray/60': activeSort === opt.key }"
+                  @click="applySort(opt.key)"
+                >
+                  <span class="whitespace-nowrap">{{ opt.label }}</span>
+                  <svg-icon
+                    v-if="activeSort === opt.key"
+                    name="arrow-min-dropdown"
+                    width="16"
+                    height="16"
+                    class="shrink-0 text-dodger"
+                  />
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
 
         <!-- Filter button -->
         <button
@@ -452,35 +475,6 @@
         </button>
       </div>
 
-      <!-- Sort Panel -->
-      <div
-        v-if="showSortPanel"
-        class="rounded-b-[15px] border-t border-athens bg-white px-[25px] py-[20px]"
-      >
-        <h3 class="mb-[15px] text-[15px] font-medium leading-[1.5] text-space">Сортировать</h3>
-        <div class="flex flex-wrap items-center gap-[10px]">
-          <button
-            v-for="opt in sortOptions"
-            :key="opt.key"
-            class="rounded-[10px] px-[15px] py-[8px] text-[14px] font-medium leading-[1.3] transition-colors"
-            :class="
-              pendingSort === opt.key
-                ? 'bg-space text-white'
-                : 'bg-athens-gray text-space hover:bg-athens'
-            "
-            @click="pendingSort = opt.key"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-        <button
-          class="mt-[20px] rounded-[10px] bg-dodger px-[20px] py-[10px] text-[14px] font-semibold text-white transition-colors hover:bg-dodger/90"
-          @click="applySort"
-        >
-          Применить
-        </button>
-      </div>
-
       <!-- Filter Panel -->
       <div
         v-if="showFilterPanel"
@@ -489,55 +483,49 @@
         <h3 class="mb-[15px] text-[15px] font-medium leading-[1.5] text-space">Фильтры</h3>
 
         <div class="mb-[20px] grid grid-cols-1 gap-[15px] md:grid-cols-3">
-          <!-- filters[assignee]: тот же UX, что «Город публикации» в форме вакансии (GeoInput) -->
+          <!-- filters[assignees]: мультиселект участников как в отчетах -->
           <div>
-            <p class="mb-3.5 text-sm font-medium text-space">Ответственный задачи</p>
-            <ClientOnly>
-              <GeoInput
-                v-model="pendingAssignee"
-                class="mb-2.5"
-                :suggestions="assigneeNameSuggestions"
-                no-match-text="Нет совпадений"
-                placeholder="Например, Иван Петров"
-              />
-              <template #fallback>
-                <div class="h-11 w-full animate-pulse rounded-ten border border-athens bg-athens-gray" />
-              </template>
-            </ClientOnly>
+            <p class="mb-3.5 text-sm font-medium text-space">Участники</p>
+            <MultiSelect
+              v-model="pendingAssigneeIds"
+              :options="executorsOptions"
+              default-value="Участники"
+              searchable
+              search-placeholder="Поиск участников"
+              class="w-full"
+            />
           </div>
 
           <!-- filters[vacancy_id] -->
           <div>
-            <label class="mb-3.5 block text-sm font-medium text-space" for="tasks-filter-vacancy">
+            <label class="mb-3.5 block text-sm font-medium text-space">
               Вакансия
             </label>
-            <select
-              id="tasks-filter-vacancy"
+            <MyDropdown
               v-model="pendingVacancyId"
-              class="w-full rounded-[10px] border border-athens bg-athens-gray px-3 py-2.5 text-[14px] text-space focus:border-dodger focus:outline-none"
-            >
-              <option value="">Все вакансии</option>
-              <option v-for="v in vacanciesOptions" :key="v.value" :value="v.value">
-                {{ v.name }}
-              </option>
-            </select>
+              :options="vacanciesOptions"
+              placeholder="Все вакансии"
+              searchable
+              search-placeholder="Поиск вакансий"
+              clearable
+              class="tasks-filter-dropdown w-full"
+            />
           </div>
 
           <!-- filters[candidate_id] -->
           <div>
-            <label class="mb-3.5 block text-sm font-medium text-space" for="tasks-filter-candidate">
+            <label class="mb-3.5 block text-sm font-medium text-space">
               Кандидат
             </label>
-            <select
-              id="tasks-filter-candidate"
+            <MyDropdown
               v-model="pendingCandidateId"
-              class="w-full rounded-[10px] border border-athens bg-athens-gray px-3 py-2.5 text-[14px] text-space focus:border-dodger focus:outline-none"
-            >
-              <option value="">Все кандидаты</option>
-              <option v-for="c in candidatesOptions" :key="c.value" :value="c.value">
-                {{ c.name }}
-              </option>
-            </select>
+              :options="candidatesOptions"
+              placeholder="Все кандидаты"
+              searchable
+              search-placeholder="Поиск кандидатов"
+              clearable
+              class="tasks-filter-dropdown w-full"
+            />
           </div>
         </div>
 
@@ -825,5 +813,9 @@
   .slide-fade-leave-to {
     opacity: 0;
     transform: translateY(-4px);
+  }
+
+  :deep(.tasks-filter-dropdown .my-dropdown-list) {
+    max-height: 22rem;
   }
 </style>
