@@ -320,7 +320,7 @@
             :noScrollbarGutter="true"
             maxHeight
         >
-            <div class="max-h-[90vh] overflow-y-auto">
+            <div class="max-h-[80vh] overflow-y-auto">
                 <div class="pr-25px">
                     <div class="flex items-center justify-between mb-15px">
                         <div>
@@ -393,7 +393,7 @@
             maxHeight
             :lgSize="true"
         >
-            <div class="max-h-[90vh] overflow-y-auto">
+            <div class="max-h-[80vh] overflow-y-auto">
                 <div class="pr-25px">
                     <div class="flex items-center justify-between mb-15px">
                         <div>

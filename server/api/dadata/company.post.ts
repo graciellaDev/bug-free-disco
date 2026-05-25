@@ -21,9 +21,9 @@ type DaDataPartySuggestion = {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const token =
-    (config as unknown as { dadataToken?: string }).dadataToken ||
-    (process.env.DADATA_TOKEN as string | undefined)
+  const token = config.dadataToken
+    ? String(config.dadataToken).trim()
+    : ''
 
   if (!token) {
     throw createError({

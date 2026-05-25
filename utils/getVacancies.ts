@@ -158,6 +158,69 @@ export const getVacancy = async (id: String) => {
   }
 };
 
+export type SpecializationByHhResult = {
+  data: Record<string, unknown> | null;
+  error: string | null;
+};
+
+/**
+ * Специализация Jobly по id профессиональной роли hh.ru (GET /api/specializations_by_hh/{hhRoleId}).
+ */
+export const getSpecializationByHhRoleId = async (
+  hhRoleId: number | string,
+): Promise<SpecializationByHhResult> => {
+  const config = useRuntimeConfig();
+  const serverTokenCookie = useCookie('auth_token');
+  const userTokenCookie = useCookie('auth_user');
+  const serverToken = serverTokenCookie.value;
+  const userToken = userTokenCookie.value;
+
+  if (!serverToken || !userToken) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+
+  const id = encodeURIComponent(String(hhRoleId).trim());
+  if (!id) {
+    return { data: null, error: 'Не указан id роли hh.ru' };
+  }
+
+  try {
+    const response = await $fetch<{ message?: string; data?: Record<string, unknown> }>(
+      `/specializations_by_hh/${id}`,
+      {
+        method: 'GET',
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+      },
+    );
+
+    const row = response?.data ?? null;
+    if (row && typeof row === 'object') {
+      return { data: row, error: null };
+    }
+    return { data: null, error: 'Специализация не найдена' };
+  } catch (err: unknown) {
+    const e = err as { response?: { status?: number; _data?: { message?: string } } };
+    if (e.response?.status === 401) {
+      const userStore = useUserStore();
+      userStore.clearUserData();
+      serverTokenCookie.value = null;
+      userTokenCookie.value = null;
+      alert('Срок сессии истек. Пожалуйста, авторизуйтесь снова.');
+      navigateTo('/auth');
+    }
+    const message =
+      e.response?._data?.message ||
+      (err instanceof Error ? err.message : 'Ошибка при получении специализации по роли hh.ru');
+    console.warn('getSpecializationByHhRoleId:', message, { hhRoleId });
+    return { data: null, error: message };
+  }
+};
+
 /**
  * Карта полей Jobly → hh.ru и флаги «подключено» (как /admin/job-sites/vacancy-export).
  */

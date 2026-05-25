@@ -1,3 +1,5 @@
+import { fetchDadataPartyDirect } from '@/utils/dadataPartySuggest'
+
 type DaDataPartySuggestion = {
   value?: string
   unrestricted_value?: string
@@ -21,11 +23,8 @@ type DaDataPartySuggestion = {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
-  const token =
-    (config as unknown as { dadataToken?: string }).dadataToken ||
-    (process.env.DADATA_TOKEN as string | undefined)
-
+  const config = useRuntimeConfig(event)
+  const token = String(config.dadataToken ?? '').trim()
   if (!token) {
     throw createError({
       statusCode: 501,
@@ -41,29 +40,16 @@ export default defineEventHandler(async (event) => {
     return { suggestions: [] }
   }
 
-  const res = await $fetch<{
-    suggestions?: DaDataPartySuggestion[]
-  }>('https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Token ${token}`,
-    },
-    body: {
-      query,
-      count: 10,
-    },
-  }).catch((err: unknown) => {
-    const e = err as { statusCode?: number; statusMessage?: string; data?: any }
+  try {
+    const { suggestions } = await fetchDadataPartyDirect(query, event)
+    return { suggestions }
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; statusMessage?: string; data?: unknown }
     throw createError({
       statusCode: e?.statusCode || 502,
       statusMessage: e?.statusMessage || 'DaData Error',
       data: e?.data,
     })
-  })
-
-  // Возвращаем "сырые" suggestions от DaData (как у вас в примере)
-  return { suggestions: res?.suggestions ?? [] }
+  }
 })
 

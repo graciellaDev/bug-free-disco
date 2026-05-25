@@ -74,6 +74,26 @@
           </ClientOnly>
           <p v-if="validFields.professional_roles.status === false" class="text-xs text-red-500 mt-1">Выберите, чтобы продолжить</p>
         </div>
+        <div v-else-if="currentPlatform === 'rabota'" id="professional_roles" class="w-full mb-6 anchor">
+          <p class="text-sm font-medium mb-4 leading-normal"
+            :class="validFields.professional_roles.status === false ? 'text-red-custom' : 'text-space'">
+            <span class="text-red-custom">*</span>
+            Профессиональные сферы
+          </p>
+          <ClientOnly>
+            <RabotaProfessionsSelector
+              :model-value="rabotaSelectedProfessions"
+              :error="validFields.professional_roles.status === false"
+              @update:model-value="handleRabotaProfessionsUpdate"
+            />
+            <template #fallback>
+              <div class="w-full h-10 rounded-ten border border-athens bg-athens-gray animate-pulse" />
+            </template>
+          </ClientOnly>
+          <p v-if="validFields.professional_roles.status === false" class="text-xs text-red-500 mt-1">
+            Выберите хотя бы одну сферу
+          </p>
+        </div>
         <div v-else class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
@@ -119,9 +139,26 @@
                 </button>
               </div>
             </template>
-            <DropDownTypes v-else :options=experienceOptions
-              :selected="findValue(experienceOptions, globCurrentVacancy?.experience)" v-model="data.experience"
-              @update:model-value="($event) => handleIdUpdate('experience', $event)"></DropDownTypes>
+            <DropDownTypes
+              v-else
+              :options="experienceOptions"
+              :selected="currentPlatform === 'rabota' ? rabotaExperienceSelectedOption : findValue(experienceOptions, globCurrentVacancy?.experience)"
+              v-model="data.experience"
+              @update:model-value="($event) => handleIdUpdate('experience', $event)"
+            />
+          </div>
+          <div v-if="currentPlatform === 'rabota'" id="education_level" class="w-full anchor">
+            <p class="text-sm font-medium mb-4 leading-normal text-space">
+              Образование
+            </p>
+            <DropDownTypes
+              :options="educationOptions"
+              :selected="rabotaEducationSelectedOption"
+              v-model="data.education_level"
+              placeholder="Выберите образование"
+              use-portal
+              @update:model-value="($event) => handleIdUpdate('education_level', $event)"
+            />
           </div>
         </div>
         <div class="mb-25px mt-25px border-t"></div>
@@ -230,8 +267,22 @@
                 <p class="text-sm font-medium mb-4 leading-normal text-space">
                   Формат работы
                 </p>
-                <MultiSelect :options="workFormatOptions" v-model="data.work_format" defaultValue="Выберите формат работы"
-                  :withId="true" />
+                <DropDownTypes
+                  v-if="currentPlatform === 'rabota'"
+                  :options="workFormatOptions"
+                  :selected="rabotaWorkFormatSelectedOption"
+                  v-model="data.work_format"
+                  placeholder="Выберите формат работы"
+                  use-portal
+                  @update:model-value="handleRabotaWorkFormatUpdate"
+                />
+                <MultiSelect
+                  v-else
+                  :options="workFormatOptions"
+                  v-model="data.work_format"
+                  defaultValue="Выберите формат работы"
+                  :withId="true"
+                />
               </div>
             </div>
           </template>
@@ -283,6 +334,25 @@
               </div>
             </div>
           </template>
+          <template v-else-if="currentPlatform === 'rabota'">
+            <div class="w-full mb-6 overflow-visible">
+              <div id="work_schedule_by_days" class="w-full anchor overflow-visible">
+                <p class="text-sm font-medium mb-4 leading-normal"
+                  :class="validFields.work_schedule_by_days.status === false ? 'text-red-custom' : 'text-space'">
+                  <span class="text-red-custom">*</span>
+                  График работы
+                </p>
+                <DropDownTypes
+                  :options="rabotaScheduleDropdownOptions"
+                  :selected="rabotaScheduleSelectedOption"
+                  v-model="data.work_schedule_by_days"
+                  placeholder="Выберите график работы"
+                  use-portal
+                  @update:model-value="($event) => handleRabotaScheduleUpdate($event)"
+                />
+              </div>
+            </div>
+          </template>
           <template v-else>
             <div class="w-full justify-between flex gap-25px mb-6">
               <div id="work_schedule_by_days" class="w-full anchor">
@@ -314,7 +384,8 @@
           <div class="mb-25px mt-25px border-t"></div>
         </template>
         <p class="text-space text-xl font-semibold mb-8">
-          Город публикации и адрес работы
+          <template v-if="currentPlatform === 'rabota'">Регион размещения и адрес работы</template>
+          <template v-else>Город публикации и адрес работы</template>
         </p>
         <template v-if="currentPlatform === 'hh'">
           <div class="w-full mb-6" data-error-field="area">
@@ -364,6 +435,55 @@
             </p>
           </div>
         </template>
+        <template v-else-if="currentPlatform === 'rabota'">
+          <div class="w-full justify-between flex gap-25px mb-6">
+            <div id="areas" class="w-full anchor" data-error-field="area">
+              <div class="flex items-start justify-between gap-3 mb-4">
+                <p class="text-sm font-medium leading-normal"
+                  :class="validFields.area.status === false ? 'text-red-custom' : 'text-space'">
+                  <span class="text-red-custom">*</span>
+                  Регион размещения
+                </p>
+                <button
+                  type="button"
+                  class="shrink-0 text-sm text-dodger hover:text-dodger/80 font-medium whitespace-nowrap"
+                  @click="rabotaRegionsCitiesModalOpen = true"
+                >
+                  Список городов
+                </button>
+              </div>
+              <RabotaRegionSelector
+                :model-value="data.area?.id != null || data.area?.name ? data.area : null"
+                :error="validFields.area.status === false"
+                placeholder="Выберите регион"
+                @update:model-value="handleRabotaRegionUpdate"
+              />
+              <p v-if="validFields.area.status === false" class="text-xs text-red-500 mt-1">
+                Выберите регион размещения
+              </p>
+              <RabotaRegionsCitiesModal
+                :open="rabotaRegionsCitiesModalOpen"
+                :model-value="data.area?.id != null || data.area?.name ? data.area : null"
+                @close="rabotaRegionsCitiesModalOpen = false"
+                @confirm="onRabotaRegionFromModal"
+              />
+            </div>
+            <div id="address" class="w-full anchor">
+              <p class="text-sm font-medium mb-4 leading-normal"
+                :class="validFields.address.status === false ? 'text-red-custom' : 'text-space'">
+                <span class="text-red-custom">*</span>
+                Адрес работы
+              </p>
+              <RabotaWorkplaceSelector
+                :model-value="data.address?.id != null ? data.address : null"
+                :region-id="data.area?.id ?? null"
+                :error="validFields.address.status === false"
+                placeholder="Введите адрес, метро или название компании"
+                @update:model-value="handleRabotaWorkplaceUpdate"
+              />
+            </div>
+          </div>
+        </template>
         <template v-else>
           <div class="w-full justify-between flex gap-25px mb-6">
             <div id="areas" class="w-full anchor">
@@ -382,19 +502,23 @@
                 <span class="text-red-custom">*</span>
                 Город размещения
               </p>
-              <CityAutocomplete :options="addresses" :isOpen="true" :model-value="data.address"
+              <CityAutocomplete
+                :options="addresses"
+                :isOpen="true"
+                :model-value="data.address?.id || null"
                 @update:model-value="($event) => handleIdUpdate('address', $event)"
-                placeholder="Например, Санкт-Петербург" />
-            </div>
-          </div>
-          <div class="w-full justify-between flex gap-25px mb-6">
-            <div class="w-full">
-              <MyCheckbox :id="'show_metro_only'" :label="'Показывать только станцию метро в вакансии'"
-                :model-value="data.address?.show_metro_only ?? false"
-                @update:model-value="(v) => (data.address = { ...(data.address || {}), show_metro_only: v })" />
+                placeholder="Например, Санкт-Петербург"
+              />
             </div>
           </div>
         </template>
+        <div v-if="currentPlatform !== 'hh'" class="w-full justify-between flex gap-25px mb-6">
+          <div class="w-full">
+            <MyCheckbox :id="'show_metro_only'" :label="'Показывать только станцию метро в вакансии'"
+              :model-value="data.address?.show_metro_only ?? false"
+              @update:model-value="(v) => (data.address = { ...(data.address || {}), show_metro_only: v })" />
+          </div>
+        </div>
         <div class="mb-25px mt-25px border-t"></div>
         <p class="text-space text-xl font-semibold mb-8">
           Оплата работы
@@ -489,13 +613,31 @@
           </div>
           <div class="flex gap-25px">
             <div class="w-full">
-              <p class="text-sm font-medium text-space mb-13px">
-                <template v-if="currentPlatform === 'hh'">Ключевые навыки</template>
+              <p class="text-sm font-medium text-space mb-13px"
+                :class="currentPlatform === 'rabota' && validFields.key_skills?.status === false ? 'text-red-custom' : 'text-space'">
+                <span v-if="currentPlatform === 'rabota'" class="text-red-custom">*</span>
+                <template v-if="currentPlatform === 'hh' || currentPlatform === 'rabota'">Ключевые навыки</template>
                 <template v-else>Навыки</template>
               </p>
-              <TagSelect :options="[]" :model-value="data.key_skills ? data.key_skills : []" :is-new="true"
-                :placeholder="'Например, Активный'" @enter="$event => updateSkills($event)"
-                @delete="$event => updateSkills($event)" />
+              <RabotaSkillsSelector
+                v-if="currentPlatform === 'rabota'"
+                :model-value="data.key_skills ?? []"
+                :error="validFields.key_skills?.status === false"
+                placeholder="Например, Активный"
+                @update:model-value="handleRabotaKeySkillsUpdate"
+              />
+              <TagSelect
+                v-else
+                :options="[]"
+                :model-value="data.key_skills ? data.key_skills : []"
+                :is-new="true"
+                :placeholder="'Например, Активный'"
+                @enter="$event => updateSkills($event)"
+                @delete="$event => updateSkills($event)"
+              />
+              <p v-if="currentPlatform === 'rabota' && validFields.key_skills?.status === false" class="text-xs text-red-500 mt-1">
+                Добавьте хотя бы один навык
+              </p>
             </div>
             <div class="w-full">
               <p class="text-sm font-medium text-space mb-13px">
@@ -511,7 +653,8 @@
           </p>
           <div class="w-full mb-6">
             <p class="text-sm font-medium mb-4 leading-normal text-space">
-              Кто и как может откликаться
+              <template v-if="currentPlatform === 'rabota'">Вакансия подходит для</template>
+              <template v-else>Кто и как может откликаться</template>
             </p>
             <!-- SuperJob: чекбоксы «Готовы рассмотреть» (как на платформе SuperJob) -->
             <template v-if="isSuperjobPlatform">
@@ -526,6 +669,19 @@
               </div>
               <p class="text-xs text-gray-500 mt-2">На платформе SuperJob отображается как «Готовы рассмотреть» (+15% к
                 откликам)</p>
+            </template>
+            <!-- rabota.ru: категории соискателей из справочника work-categories -->
+            <template v-else-if="currentPlatform === 'rabota'">
+              <div v-if="rabotaWorkCategories.length" class="flex flex-col gap-4">
+                <label v-for="cat in rabotaWorkCategories" :key="cat.id"
+                  class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" :checked="isRabotaWorkCategorySelected(cat.id)"
+                    @change="toggleRabotaWorkCategory(cat.id, $event.target.checked)"
+                    class="rounded border-gray-300" />
+                  <span class="text-space">{{ cat.name }}</span>
+                </label>
+              </div>
+              <p v-else class="text-xs text-gray-500">Загрузка категорий…</p>
             </template>
             <MultiSelect v-else :options="additionalConditionsOptions" defaultValue="Сделайте выбор" :withId="true"
               v-model="data.additional_conditions" />
@@ -646,6 +802,11 @@ import CityAutocomplete from '~/components/custom/CityAutocomplete.vue'
 import GeoInput from '~/components/custom/GeoInput.vue'
 import AddressMapInput from '~/components/custom/AddressMapInput.vue'
 import SpecializationSelector from '~/components/custom/SpecializationSelector.vue'
+import RabotaProfessionsSelector from '~/components/platforms/RabotaProfessionsSelector.vue'
+import RabotaSkillsSelector from '~/components/platforms/RabotaSkillsSelector.vue'
+import RabotaWorkplaceSelector from '~/components/platforms/RabotaWorkplaceSelector.vue'
+import RabotaRegionSelector from '~/components/platforms/RabotaRegionSelector.vue'
+import RabotaRegionsCitiesModal from '~/components/platforms/RabotaRegionsCitiesModal.vue'
 import MyTooltip from '~/components/custom/MyTooltip.vue'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -702,23 +863,38 @@ import {
   getRabotaProfile as profileRabota,
   addRabotaDraft as addDraftRabota,
   publishRabotaVacancy as publishVacancyToRabota,
-  getRabotaPublication,
-  getRabotaProfessions as getProfessionsRabota,
-  getRegions as getRegionsRabota,
+  getRabotaProfessionsHierarchy,
+  getRabotaProfessionsByProfessionalRole,
+  searchRabotaRegions,
   getEmploymentTypes as getEmploymentTypesRabota,
-  getWorkSchedules as getWorkSchedulesRabota,
   getExperienceLevels as getExperienceLevelsRabota,
-  getEducationLevels as getEducationLevelsRabota
+  getEducations as getEducationsRabota,
+  getWorkCategories as getWorkCategoriesRabota,
+  getWorkSchedules as getWorkSchedulesRabota,
+  getWorkingHours as getWorkingHoursRabota,
 } from '@/utils/rabotaAccount'
 import { updateSuperjobPublication as updatePublicationSuperjob, getSuperjobVacancy, getCatalogues as getSuperjobCatalogues, getTowns as getSuperjobTowns, publishSuperjobVacancy as publishVacancyToSuperjob } from '@/utils/superjobAccount'
 import { mapVacancyToSuperjobPayload } from '@/utils/mapVacancyToSuperjob'
-import { getVacancy as getVacancyById, resolveDriverNamesToDbIds, getVacancyFields, buildDriverDbIdToNameMap } from '@/utils/getVacancies';
+import {
+  getVacancy as getVacancyById,
+  resolveDriverNamesToDbIds,
+  getVacancyFields,
+  buildDriverDbIdToNameMap,
+  getSpecializationByHhRoleId,
+} from '@/utils/getVacancies';
 import { useRoute } from 'vue-router'
 import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
 import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
 import { getRabotaVacancyExportMap } from '@/utils/getVacancies'
+import {
+  flattenSelectableProfessions,
+  findProfessionByNameLoose,
+  resolveProfessionalRoleIdFromVacancy,
+  resolveProfessionalRoleIdForRabotaFromSpecializationByHh,
+  mapRabotaProfessionByRoleItem,
+} from '@/utils/rabotaProfessionsHierarchy'
 
 /** Возможные сетевые запросы при инициализации — перечень: `utils/addPublicationRemoteLoads.ts` (`ADD_PUBLICATION_REMOTE_LOADS`). */
 
@@ -776,21 +952,49 @@ const tariffsHh = ref([])
 
 // Справочники для rabota.ru
 const rabotaProfessions = ref([])
+const rabotaProfessionsHierarchy = ref([])
 const rabotaRegions = ref([])
 const rabotaEmploymentTypes = ref([])
-const rabotaWorkSchedules = ref([])
+const rabotaScheduleDropdownOptions = ref([])
+const rabotaScheduleSelectedOption = ref(null)
 const rabotaExperienceLevels = ref([])
 const rabotaEducationLevels = ref([])
+const rabotaWorkCategories = ref([])
+/** Опции «Формат работы» для rabota.ru (GET /rabota/dictionaries/working-hours) */
+const rabotaWorkFormatOptions = ref([])
+const rabotaWorkFormatSelectedOption = ref(null)
 const rabotaExportMapRows = ref([])
-const rabotaActivePublication = ref(null)
 const rabotaActivePublicationApplied = ref(false)
+const rabotaRegionsCitiesModalOpen = ref(false)
 const joblyVacancyPrefillApplied = ref(false)
+/** Каталог hh.ru professional_roles — только для маппинга specializations → rabota.ru */
+const hhRolesCatalogForRabota = ref(null)
+const ArrayCurrency = ref(currency)
 
 function normText(s) {
   return String(s ?? '')
     .replace(/\u00a0/g, ' ')
     .trim()
     .toLowerCase()
+}
+
+/** id вакансии Jobly из query/params или из строки редактирования в таблице публикаций */
+function resolveVacancyIdFromRoute() {
+  const qId = route.query?.id
+  const pId = route.params?.id
+  const vid = route.query?._vid
+  const fromRoute =
+    qId != null && String(qId).trim() !== ''
+      ? String(qId).trim()
+      : pId != null && String(pId).trim() !== ''
+        ? String(pId).trim()
+        : vid != null && String(vid).trim() !== ''
+          ? String(vid).trim()
+          : null
+  if (props.editingVacancy?.id != null) {
+    return String(props.editingVacancy.id)
+  }
+  return fromRoute
 }
 
 function findByNameLoose(arr, value) {
@@ -804,8 +1008,187 @@ function findByNameLoose(arr, value) {
   )
 }
 
-function applyJoblyVacancyToRabotaForm(vacancy) {
+async function ensureHhRolesCatalogForRabotaMapping() {
+  if (Array.isArray(hhRolesCatalogForRabota.value) && hhRolesCatalogForRabota.value.length > 0) {
+    return hhRolesCatalogForRabota.value
+  }
+  const { roles, errorRoles } = await getRolesHh()
+  if (!errorRoles && roles?.categories?.length) {
+    hhRolesCatalogForRabota.value = roles.categories
+    return hhRolesCatalogForRabota.value
+  }
+  try {
+    const config = useRuntimeConfig()
+    const baseURL = String(config.public.apiBase || '/api')
+    const res = await $fetch('/specializations', { baseURL })
+    const categories = res?.data?.categories
+    if (Array.isArray(categories) && categories.length > 0) {
+      hhRolesCatalogForRabota.value = categories
+      return hhRolesCatalogForRabota.value
+    }
+  } catch (e) {
+    console.warn('ensureHhRolesCatalogForRabotaMapping:', e)
+  }
+  return null
+}
+
+async function applyRabotaProfessionSphereFromVacancy(vacancy) {
+  if (!vacancy || currentPlatform.value !== 'rabota') return false
+
+  const hhCategories = await ensureHhRolesCatalogForRabotaMapping()
+  const hhRoleId = resolveProfessionalRoleIdFromVacancy(vacancy, hhCategories)
+  if (hhRoleId == null) return false
+
+  const specByHh = await getSpecializationByHhRoleId(hhRoleId)
+  if (specByHh.error || !specByHh.data) {
+    console.warn('specializations_by_hh:', specByHh.error, { hhRoleId })
+    return false
+  }
+
+  const roleId = resolveProfessionalRoleIdForRabotaFromSpecializationByHh(specByHh.data)
+  if (roleId == null) {
+    console.warn('specializations_by_hh: в ответе нет id специализации', { hhRoleId, data: specByHh.data })
+    return false
+  }
+
+  const result = await getRabotaProfessionsByProfessionalRole(roleId)
+  if (result?.error) {
+    console.warn('rabota-professions-by-professional-role:', result.error, { hhRoleId, roleId })
+    return false
+  }
+  const list = Array.isArray(result?.data) ? result.data : []
+  const mapped = mapRabotaProfessionByRoleItem(list[0])
+  if (!mapped) return false
+
+  data.value.professional_roles = [mapped]
+  validFields.value.professional_roles.status = true
+  return true
+}
+
+async function applyRabotaProfessionalSphereFields(vacancy) {
   if (!vacancy || currentPlatform.value !== 'rabota') return
+
+  const sphereApplied = await applyRabotaProfessionSphereFromVacancy(vacancy)
+  if (!sphereApplied && vacancy.specializations) {
+    const specLabel =
+      typeof vacancy.specializations === 'object' && vacancy.specializations != null
+        ? vacancy.specializations.name ?? vacancy.specializations.title
+        : vacancy.specializations
+    const match =
+      findProfessionByNameLoose(rabotaProfessionsHierarchy.value, specLabel) ||
+      findByNameLoose(rabotaProfessions.value, specLabel)
+    if (match) {
+      const id = match.id ?? match.profession_id
+      const name = match.name ?? match.title
+      data.value.professional_roles = [{ id, name }]
+      validFields.value.professional_roles.status = true
+    }
+  }
+}
+
+function resolveCurrentJoblyVacancy() {
+  return (
+    globCurrentVacancy.value ??
+    (vacancyData?.value && typeof vacancyData.value === 'object' ? vacancyData.value : null)
+  )
+}
+
+function applyRabotaVacancyNameToForm(vacancy) {
+  if (!vacancy) return
+  const title = vacancy.name ?? vacancy.title
+  const name = typeof title === 'string' ? title.trim() : String(title ?? '').trim()
+  if (!name) return
+  data.value.name = name
+  if (validFields.value?.name) {
+    validFields.value.name.status = true
+  }
+}
+
+function ensureSalaryRangeObject() {
+  if (!data.value.salary_range || typeof data.value.salary_range !== 'object') {
+    data.value.salary_range = {
+      currency: 'RUR',
+      frequency: { id: HH_SALARY_FREQUENCY[3].id },
+      from: null,
+      to: null,
+      gross: true,
+      mode: { id: HH_SALARY_TYPE[0].id },
+    }
+  }
+}
+
+function applyRabotaSalaryFromVacancy(vacancy) {
+  if (!vacancy || currentPlatform.value !== 'rabota') return
+  ensureSalaryRangeObject()
+
+  if (vacancy.salary_from != null && vacancy.salary_from !== '') {
+    const from = Number(vacancy.salary_from)
+    if (!Number.isNaN(from)) data.value.salary_range.from = from
+  }
+  if (vacancy.salary_to != null && vacancy.salary_to !== '') {
+    const to = Number(vacancy.salary_to)
+    if (!Number.isNaN(to)) data.value.salary_range.to = to
+  }
+
+  const curRaw = vacancy.currency
+  if (curRaw != null && String(curRaw).trim() !== '') {
+    const cur = String(curRaw).trim()
+    const byId = ArrayCurrency.value?.find(
+      (c) => String(c.id).toUpperCase() === cur.toUpperCase(),
+    )
+    const byName = ArrayCurrency.value?.find((c) => normText(c.name) === normText(curRaw))
+    const byRubAlias =
+      cur.toUpperCase() === 'RUB' || cur.includes('руб')
+        ? ArrayCurrency.value?.find((c) => String(c.id).toUpperCase() === 'RUR')
+        : null
+    const hit = byId || byName || byRubAlias
+    if (hit) data.value.salary_range.currency = hit.id
+  }
+
+  if (vacancy.salary_gross != null) {
+    data.value.salary_range.gross = !!vacancy.salary_gross
+  } else if (vacancy.gross != null) {
+    data.value.salary_range.gross = !!vacancy.gross
+  }
+}
+
+function applyRabotaExperienceFromVacancy(vacancy) {
+  if (!vacancy || currentPlatform.value !== 'rabota') return
+  if (!rabotaExperienceLevels.value.length) return
+
+  const raw = vacancy.experience
+  if (raw == null || raw === '') return
+
+  if (typeof raw === 'object' && raw.id != null) {
+    const match = rabotaExperienceLevels.value.find(
+      (x) => String(x.id ?? x.experience_id) === String(raw.id),
+    )
+    if (match) {
+      data.value.experience = {
+        id: match.id ?? match.experience_id,
+        name: match.name ?? match.title,
+        value: match.value ?? match.id,
+      }
+      return
+    }
+  }
+
+  const label = typeof raw === 'string' ? raw : raw.name ?? raw.title ?? ''
+  const match = findByNameLoose(rabotaExperienceLevels.value, label)
+  if (match) {
+    data.value.experience = {
+      id: match.id ?? match.experience_id,
+      name: match.name ?? match.title,
+      value: match.value ?? match.id,
+    }
+  }
+}
+
+async function applyJoblyVacancyToRabotaForm(vacancy) {
+  if (!vacancy || currentPlatform.value !== 'rabota') return
+
+  applyRabotaVacancyNameToForm(vacancy)
+  applyRabotaSalaryFromVacancy(vacancy)
 
   // Город публикации/размещения: vacancy.location (строка) -> rabotaRegions
   const loc = vacancy.location ?? vacancy.city ?? vacancy.area?.name
@@ -822,140 +1205,55 @@ function applyJoblyVacancyToRabotaForm(vacancy) {
     }
   }
 
-  // Тип занятости: vacancy.employment (строка) -> rabotaEmploymentTypes
+  // Тип занятости: vacancy.employment (Jobly) → rabota.ru по правилам маппинга
   if (vacancy.employment) {
-    const match = findByNameLoose(rabotaEmploymentTypes.value, vacancy.employment)
-    if (match) {
-      data.value.employment_form = { id: match.id ?? match.employment_type_id, name: match.name ?? match.title }
-    }
+    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
   }
 
-  // График: vacancy.schedule (строка) -> rabotaWorkSchedules
+  // График: vacancy.schedule (Jobly) → rabota.ru по правилам маппинга
   if (vacancy.schedule) {
-    const match = findByNameLoose(rabotaWorkSchedules.value, vacancy.schedule)
-    if (match) {
-      data.value.work_schedule_by_days = { id: match.id ?? match.work_schedule_id, name: match.name ?? match.title }
-    }
+    applyRabotaScheduleFromVacancySchedule(vacancy.schedule)
   }
 
-  // Опыт: vacancy.experience (строка) -> rabotaExperienceLevels
-  if (vacancy.experience) {
-    const match = findByNameLoose(rabotaExperienceLevels.value, vacancy.experience)
-    if (match) {
-      data.value.experience = { id: match.id ?? match.experience_id, name: match.name ?? match.title, value: match.value ?? match.id }
-    }
-  }
+  applyRabotaExperienceFromVacancy(vacancy)
 
-  // Образование: vacancy.education (строка) -> rabotaEducationLevels
+  // Образование: vacancy.education (строка) -> справочник educations
   if (vacancy.education) {
     const match = findByNameLoose(rabotaEducationLevels.value, vacancy.education)
     if (match) {
-      data.value.education_level = { id: match.id ?? match.education_id, name: match.name ?? match.title }
+      data.value.education_level = {
+        id: match.id ?? match.education_id,
+        name: match.name ?? match.title ?? '',
+      }
     }
   }
 
-  // Специализация: vacancy.specializations (строка) -> rabotaProfessions (как best-effort)
-  if (vacancy.specializations) {
-    const match = findByNameLoose(rabotaProfessions.value, vacancy.specializations)
-    if (match) {
-      const id = match.id ?? match.profession_id
-      const name = match.name ?? match.title
-      data.value.professional_roles = [{ id, name }]
-    }
+  // Формат работы: vacancy.place (Jobly) → справочник working-hours rabota.ru
+  if (vacancy.place != null && vacancy.place !== '') {
+    applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
   }
 
-  // Валюта: vacancy.currency может хранить "RUB (рубль)" или "RUR"/"RUB"
-  const curRaw = vacancy.currency
-  if (curRaw && data.value.salary_range) {
-    const byId = ArrayCurrency.value?.find((c) => String(c.id).toUpperCase() === String(curRaw).toUpperCase())
-    const byName = ArrayCurrency.value?.find((c) => normText(c.name) === normText(curRaw))
-    const hit = byId || byName
-    if (hit) data.value.salary_range.currency = hit.id
-  }
+  await applyRabotaProfessionalSphereFields(vacancy)
 }
 
-function applyRabotaActivePublicationToForm() {
-  if (rabotaActivePublicationApplied.value) return
-  const pub = rabotaActivePublication.value
-  if (!pub || currentPlatform.value !== 'rabota') return
+async function applyRabotaActivePublicationToForm() {
+  if (currentPlatform.value !== 'rabota') return
+  if (rabotaActivePublicationApplied.value && rabotaExperienceLevels.value.length > 0) return
 
-  // Заголовок/описание
-  if (pub.title || pub.name) data.value.name = pub.title || pub.name
-  if (pub.description) data.value.description = pub.description
-
-  // Профессия
-  const profId = pub.profession_id ?? pub.professionId ?? pub.profession?.id ?? pub.profession?.key
-  const profName = pub.profession?.name ?? pub.profession?.title
-  if (profId != null || profName) {
-    const match = findValueByIdOrName(rabotaProfessions.value, profId ?? profName)
-    if (match) {
-      data.value.professional_roles = [{ id: match.id ?? match.profession_id, name: match.name ?? match.title }]
-    } else if (profId != null) {
-      data.value.professional_roles = [{ id: profId, name: profName }]
+  let vacancy = globCurrentVacancy.value
+  if (!vacancy) {
+    const vacancyId = resolveVacancyIdFromRoute()
+    if (vacancyId) {
+      vacancy = await getVacancyById(vacancyId)
+      if (vacancy) globCurrentVacancy.value = vacancy
     }
   }
+  if (!vacancy) return
 
-  // Регион/город публикации + город размещения (если в публикации нет отдельного адреса — используем регион)
-  const regionId = pub.region_id ?? pub.regionId ?? pub.region?.id ?? pub.area?.id ?? pub.address?.region_id
-  const regionName = pub.region?.name ?? pub.region?.title ?? pub.area?.name
-  if (regionId != null) {
-    const match = findValueByIdOrName(rabotaRegions.value, regionId)
-    const name = match?.name ?? match?.title ?? regionName
-    data.value.area = { id: regionId, name }
-    // address в форме — это тоже CityAutocomplete; для rabota.ru часто совпадает с городом публикации
-    const showMetroOnly = data.value.address?.show_metro_only ?? false
-    data.value.address = { id: regionId, name, show_metro_only: showMetroOnly }
-  }
+  applyRabotaVacancyNameToForm(vacancy)
+  if (vacancy.description) data.value.description = vacancy.description
 
-  // Классификаторы
-  const empId = pub.employment_type_id ?? pub.employmentTypeId ?? pub.employment_type?.id ?? pub.employment?.id
-  if (empId != null) {
-    const match = findValueByIdOrName(rabotaEmploymentTypes.value, empId)
-    if (match) data.value.employment_form = { id: match.id ?? match.employment_type_id, name: match.name ?? match.title }
-    else data.value.employment_form = { id: empId }
-  }
-
-  const schedId = pub.work_schedule_id ?? pub.workScheduleId ?? pub.work_schedule?.id ?? pub.work_schedule_by_days?.id
-  if (schedId != null) {
-    const match = findValueByIdOrName(rabotaWorkSchedules.value, schedId)
-    if (match) data.value.work_schedule_by_days = { id: match.id ?? match.work_schedule_id, name: match.name ?? match.title }
-    else data.value.work_schedule_by_days = { id: schedId }
-  }
-
-  const expId = pub.experience_id ?? pub.experienceId ?? pub.experience?.id ?? pub.experience_level?.id
-  if (expId != null) {
-    const match = findValueByIdOrName(rabotaExperienceLevels.value, expId)
-    if (match) data.value.experience = { id: match.id ?? match.experience_id, name: match.name ?? match.title, value: match.value ?? match.id }
-    else data.value.experience = { id: expId }
-  }
-
-  const eduId = pub.education_id ?? pub.educationId ?? pub.education?.id ?? pub.education_level?.id
-  if (eduId != null) {
-    const match = findValueByIdOrName(rabotaEducationLevels.value, eduId)
-    if (match) data.value.education_level = { id: match.id ?? match.education_id, name: match.name ?? match.title }
-    else data.value.education_level = { id: eduId }
-  }
-
-  // Зарплата
-  const salary = pub.salary ?? pub.salary_range
-  if (salary && typeof salary === 'object') {
-    data.value.salary_range = {
-      ...(data.value.salary_range || {}),
-      from: salary.from ?? data.value.salary_range?.from,
-      to: salary.to ?? data.value.salary_range?.to,
-      currency: salary.currency ?? data.value.salary_range?.currency,
-      gross: salary.gross ?? data.value.salary_range?.gross,
-    }
-  }
-
-  // Навыки
-  const skills = pub.skills ?? pub.key_skills
-  if (Array.isArray(skills) && skills.length > 0) {
-    data.value.key_skills = skills
-      .map((s) => (typeof s === 'string' ? s.trim() : (s?.name ?? s?.title ?? String(s ?? '')).trim()))
-      .filter(Boolean)
-      .map((name) => ({ name }))
-  }
+  await applyJoblyVacancyToRabotaForm(vacancy)
 
   rabotaActivePublicationApplied.value = true
   void nextTick(() => emit('form-ready'))
@@ -977,7 +1275,7 @@ const validFields = ref({
   },
   professional_roles: {
     status: true,
-    name: 'Профессиональные роли',
+    name: 'Профессиональные сферы',
   },
   experience: {
     status: true,
@@ -993,15 +1291,19 @@ const validFields = ref({
   },
   area: {
     status: true,
-    name: 'Город публикации',
+    name: 'Регион размещения',
   },
   address: {
     status: true,
-    name: 'Город размещения',
+    name: 'Адрес работы',
   },
   working_hours: {
     status: true,
     name: 'Рабочие часы в день',
+  },
+  key_skills: {
+    status: true,
+    name: 'Ключевые навыки',
   },
 });
 
@@ -1059,6 +1361,46 @@ function toggleSuperjobEmploymentCondition(id) {
   data.value.superjob_employment_conditions = arr
 }
 
+function handleRabotaWorkplaceUpdate(workplace) {
+  const showMetroOnly = data.value.address?.show_metro_only ?? false
+  if (workplace?.id != null) {
+    data.value.address = {
+      id: workplace.id,
+      name: workplace.name ?? '',
+      ...(workplace.kladr_id !== undefined ? { kladr_id: workplace.kladr_id } : {}),
+      show_metro_only: showMetroOnly,
+    }
+    if (validFields.value?.address) {
+      validFields.value.address.status = true
+    }
+    return
+  }
+  data.value.address = { show_metro_only: showMetroOnly }
+}
+
+function handleRabotaRegionUpdate(region) {
+  if (region?.id != null || region?.name) {
+    data.value.area = {
+      id: region.id,
+      name: region.name ?? '',
+    }
+    if (validFields.value?.area) {
+      validFields.value.area.status = true
+    }
+  } else {
+    data.value.area = {}
+    if (validFields.value?.area) {
+      validFields.value.area.status = false
+    }
+  }
+  isCitySetFromVacancy.value = false
+}
+
+function onRabotaRegionFromModal(region) {
+  handleRabotaRegionUpdate(region)
+  rabotaRegionsCitiesModalOpen.value = false
+}
+
 const handleIdUpdate = (property, value) => {
   if (property === 'address' || property === 'area') {
     if (value) {
@@ -1111,6 +1453,74 @@ const handleIdUpdate = (property, value) => {
     data.value[property] = value ? { id: value.id } : null
   }
 }
+
+const handleRabotaProfessionsUpdate = (roles) => {
+  const list = Array.isArray(roles) ? roles.filter((r) => r?.id != null) : []
+  data.value.professional_roles = list.length ? list : []
+  validFields.value.professional_roles.status = list.length > 0
+}
+
+function syncRabotaScheduleSelectedOption() {
+  const raw = data.value.work_schedule_by_days
+  if (!raw) {
+    rabotaScheduleSelectedOption.value = null
+    return
+  }
+  const id = Array.isArray(raw) ? raw[0]?.id : raw?.id
+  if (id == null) {
+    rabotaScheduleSelectedOption.value = null
+    return
+  }
+  rabotaScheduleSelectedOption.value =
+    rabotaScheduleDropdownOptions.value.find((o) => String(o.id) === String(id)) ??
+    (Array.isArray(raw) ? raw[0] : raw)
+}
+
+function handleRabotaScheduleUpdate(value) {
+  data.value.work_schedule_by_days = value ? { id: value.id, name: value.name } : null
+  rabotaScheduleSelectedOption.value = value ?? null
+  updateValidField('work_schedule_by_days', !!value?.id)
+}
+
+function syncRabotaWorkFormatSelectedOption() {
+  const raw = data.value.work_format
+  if (!raw) {
+    rabotaWorkFormatSelectedOption.value = null
+    return
+  }
+  const id = Array.isArray(raw) ? raw[0]?.id : raw?.id
+  if (id == null) {
+    rabotaWorkFormatSelectedOption.value = null
+    return
+  }
+  rabotaWorkFormatSelectedOption.value =
+    rabotaWorkFormatOptions.value.find((o) => String(o.id) === String(id)) ??
+    (Array.isArray(raw) ? raw[0] : raw)
+}
+
+function handleRabotaWorkFormatUpdate(value) {
+  data.value.work_format = value ? { id: value.id, name: value.name } : null
+  rabotaWorkFormatSelectedOption.value = value ?? null
+}
+
+const rabotaEducationSelectedOption = computed(() => {
+  const level = data.value.education_level
+  if (!level) return null
+  const id = level.id ?? level
+  if (id == null) return null
+  return educationOptions.value.find((o) => String(o.id) === String(id)) ?? level
+})
+
+const rabotaExperienceSelectedOption = computed(() => {
+  const exp = data.value.experience
+  if (!exp) return null
+  const id = exp.id ?? exp.value ?? exp
+  if (id == null || id === '') return null
+  return (
+    experienceOptions.value.find((o) => String(o.id) === String(id)) ??
+    (exp.name ? exp : null)
+  )
+})
 
 // hh.ru: выбор специализации (как на нашей платформе — единое поле SpecializationSelector)
 function handleHhSpecializationUpdate(value) {
@@ -1301,6 +1711,7 @@ data.value.salary_range = {
 data.value.salary_type = HH_SALARY_TYPE[0]
 data.value.key_skills = []
 data.value.additional_conditions = []
+data.value.rabota_work_categories = []
 data.value.superjob_employment_conditions = []
 data.value.response_letter_required = false
 data.value.billing_types = HH_BILLING_TYPES[0]
@@ -1346,6 +1757,10 @@ const hideScheduleBlockForSuperjob = computed(() => {
 // Каталог SuperJob для SpecializationSelector: computed из currectRole, чтобы при loadDictionaries('superjob') данные сразу отображались
 const superjobCatalogForSelector = computed(() =>
   isSuperjobPlatform.value && Array.isArray(currectRole.value) ? currectRole.value : []
+);
+
+const rabotaSelectedProfessions = computed(() =>
+  (data.value.professional_roles ?? []).filter((role) => role && role.id != null),
 );
 
 const professionsOptions = computed(() => {
@@ -1629,10 +2044,25 @@ const employmentTypesOptions = computed(() => {
 const employmentSelectedOption = computed(() => {
   const opts = employmentTypesOptions.value
   if (!Array.isArray(opts) || opts.length === 0) return null
-  const raw = globCurrentVacancy.value?.employment
   if (currentPlatform.value === 'rabota') {
-    return findValueByIdOrName(opts, raw) || opts[0]
+    const form = data.value.employment_form
+    if (form?.id != null) {
+      return opts.find((o) => String(o.id) === String(form.id)) ?? form
+    }
+    const raw = globCurrentVacancy.value?.employment
+    if (raw) {
+      const mappedName = mapJoblyEmploymentToRabotaOptionName(raw)
+      const match = findByNameLoose(rabotaEmploymentTypes.value, mappedName)
+      if (match) {
+        return opts.find((o) => String(o.id) === String(match.id ?? match.employment_type_id)) ?? {
+          id: match.id ?? match.employment_type_id,
+          name: match.name ?? match.title,
+        }
+      }
+    }
+    return null
   }
+  const raw = globCurrentVacancy.value?.employment
   return findValue(opts, raw) || opts[0]
 })
 
@@ -1752,14 +2182,132 @@ function onHhWorkAddressUpdate(addr) {
 }
 
 const workSchedulesOptions = computed(() => {
-  if (currentPlatform.value === 'rabota' && rabotaWorkSchedules.value.length > 0) {
-    return rabotaWorkSchedules.value.map(schedule => ({
-      id: schedule.id || schedule.work_schedule_id,
-      name: schedule.name || schedule.title
-    }))
+  if (currentPlatform.value === 'rabota' && rabotaScheduleDropdownOptions.value.length > 0) {
+    return rabotaScheduleDropdownOptions.value
   }
   return HH_WORK_SCHEDULE_BY_DAYS
 })
+
+function normalizeRabotaWorkFormatOptions(list) {
+  const arr = Array.isArray(list) ? list : []
+  return arr
+    .map((item) => ({
+      id: item.id ?? item.working_hours_id,
+      name: String(item.name ?? item.title ?? item.label ?? '').trim(),
+      value: item.id ?? item.working_hours_id,
+    }))
+    .filter((item) => item.name)
+}
+
+function normalizeRabotaScheduleOptions(list) {
+  const arr = Array.isArray(list) ? list : []
+  return arr
+    .map((schedule) => ({
+      id: schedule.id ?? schedule.work_schedule_id,
+      name: String(schedule.name ?? schedule.title ?? schedule.label ?? '').trim(),
+    }))
+    .filter((item) => item.name)
+}
+
+/** Маппинг графика вакансии Jobly → пункт справочника rabota.ru */
+function mapJoblyScheduleToRabotaOptionName(schedule) {
+  const key = normText(schedule)
+  if (key === normText('Свободный')) return 'Сменный график'
+  if (key === normText('Другое')) return 'Свободный график'
+  return 'Сменный график'
+}
+
+function applyRabotaScheduleFromVacancySchedule(schedule) {
+  if (schedule == null || schedule === '') return
+  if (!rabotaScheduleDropdownOptions.value.length) return
+  const rabotaName = mapJoblyScheduleToRabotaOptionName(schedule)
+  const match = findByNameLoose(rabotaScheduleDropdownOptions.value, rabotaName)
+  if (match) {
+    data.value.work_schedule_by_days = {
+      id: match.id ?? match.work_schedule_id,
+      name: match.name ?? match.title ?? rabotaName,
+    }
+    syncRabotaScheduleSelectedOption()
+  }
+}
+
+/** Маппинг типа занятости вакансии Jobly → пункт справочника rabota.ru */
+function mapJoblyEmploymentToRabotaOptionName(employment) {
+  if (normText(employment) === normText('Вахта')) return 'Полная занятость'
+  return String(employment ?? '').trim()
+}
+
+function applyRabotaEmploymentFromVacancyEmployment(employment) {
+  if (employment == null || employment === '') return
+  if (!rabotaEmploymentTypes.value.length) return
+  const rabotaName = mapJoblyEmploymentToRabotaOptionName(employment)
+  const match = findByNameLoose(rabotaEmploymentTypes.value, rabotaName)
+  if (match) {
+    data.value.employment_form = {
+      id: match.id ?? match.employment_type_id,
+      name: match.name ?? match.title ?? rabotaName,
+    }
+  }
+}
+
+/** Ключевые слова для поиска пункта справочника rabota.ru по значению place вакансии Jobly */
+function mapJoblyPlaceItemToRabotaSearchTerms(placeItem) {
+  const key = String(
+    typeof placeItem === 'object' && placeItem != null
+      ? (placeItem.name ?? placeItem.value ?? placeItem.id ?? '')
+      : placeItem,
+  ).trim()
+  const n = normText(key)
+  if (!n) return []
+
+  if (n.includes('разъезд')) return ['разъезд']
+  if (n.includes('гибрид')) return ['гибрид']
+  if (n.includes('удален') || n.includes('удалён') || n.includes('дистанц')) return ['удален', 'удалён', 'дистанц']
+  if (n.includes('офис') || (n.includes('мест') && n.includes('работод'))) {
+    return ['офис', 'на месте', 'работодател']
+  }
+
+  // InfoTab: 1 — на месте, 2 — удалённо, 3 — гибрид, 4 — разъездной
+  if (n === '1') return ['офис', 'на месте', 'работодател']
+  if (n === '2') return ['удален', 'удалён', 'дистанц']
+  if (n === '3') return ['гибрид']
+  if (n === '4') return ['разъезд']
+
+  return [n]
+}
+
+function findRabotaWorkFormatOptionByTerms(terms) {
+  for (const term of terms) {
+    const t = normText(term)
+    if (!t) continue
+    const match =
+      rabotaWorkFormatOptions.value.find((o) => normText(o.name).includes(t)) ||
+      findByNameLoose(rabotaWorkFormatOptions.value, term)
+    if (match) return match
+  }
+  return null
+}
+
+function applyRabotaWorkFormatFromVacancyPlace(placeVal) {
+  if (placeVal == null || placeVal === '') return
+  if (!rabotaWorkFormatOptions.value.length) return
+
+  const items = Array.isArray(placeVal) ? placeVal : [placeVal]
+
+  for (const item of items) {
+    const terms = mapJoblyPlaceItemToRabotaSearchTerms(item)
+    const match = findRabotaWorkFormatOptionByTerms(terms)
+    if (!match) continue
+    const id = match.id ?? match.working_hours_id
+    if (id == null) continue
+    data.value.work_format = {
+      id,
+      name: match.name ?? match.title ?? '',
+    }
+    syncRabotaWorkFormatSelectedOption()
+    return
+  }
+}
 
 // Опции опыта работы для Avito
 const AVITO_EXPERIENCE_OPTIONS = [
@@ -1785,9 +2333,9 @@ const experienceOptions = computed(() => {
 
 const educationOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaEducationLevels.value.length > 0) {
-    return rabotaEducationLevels.value.map(edu => ({
-      id: edu.id || edu.education_id,
-      name: edu.name || edu.title
+    return rabotaEducationLevels.value.map((edu) => ({
+      id: edu.id ?? edu.education_id,
+      name: edu.name ?? edu.title ?? '',
     }))
   }
   return HH_EDUCATION_LAVEL
@@ -1796,18 +2344,25 @@ const educationOptions = computed(() => {
 // Функция для загрузки справочников в зависимости от платформы
 const loadDictionaries = async (platform) => {
   if (platform === 'rabota') {
+    rabotaActivePublicationApplied.value = false
     // Загружаем справочники rabota.ru
-    const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult] = await Promise.all([
-      getProfessionsRabota(),
-      getRegionsRabota(),
+    const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult, workCategoriesResult, workingHoursResult] = await Promise.all([
+      getRabotaProfessionsHierarchy({ per_page: 50 }),
+      searchRabotaRegions({ limit: 100 }),
       getEmploymentTypesRabota(),
       getWorkSchedulesRabota(),
       getExperienceLevelsRabota(),
-      getEducationLevelsRabota()
+      getEducationsRabota(),
+      getWorkCategoriesRabota(),
+      getWorkingHoursRabota(),
     ])
 
     if (professionsResult?.data) {
-      rabotaProfessions.value = Array.isArray(professionsResult.data) ? professionsResult.data : (professionsResult.data.items || [])
+      const hierarchy = Array.isArray(professionsResult.data)
+        ? professionsResult.data
+        : (professionsResult.data.items || [])
+      rabotaProfessionsHierarchy.value = hierarchy
+      rabotaProfessions.value = flattenSelectableProfessions(hierarchy)
     }
     if (regionsResult?.data) {
       rabotaRegions.value = Array.isArray(regionsResult.data) ? regionsResult.data : (regionsResult.data.items || [])
@@ -1818,24 +2373,74 @@ const loadDictionaries = async (platform) => {
       }))
     }
     if (employmentResult?.data) {
-      rabotaEmploymentTypes.value = Array.isArray(employmentResult.data) ? employmentResult.data : (employmentResult.data.items || [])
+      rabotaEmploymentTypes.value = Array.isArray(employmentResult.data)
+        ? employmentResult.data
+        : (employmentResult.data.items || [])
+      const vacancy = globCurrentVacancy.value
+      if (vacancy?.employment) {
+        applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
+      }
     }
     if (schedulesResult?.data) {
-      rabotaWorkSchedules.value = Array.isArray(schedulesResult.data) ? schedulesResult.data : (schedulesResult.data.items || [])
+      const raw = Array.isArray(schedulesResult.data)
+        ? schedulesResult.data
+        : (schedulesResult.data.items || [])
+      rabotaScheduleDropdownOptions.value = normalizeRabotaScheduleOptions(raw)
+      syncRabotaScheduleSelectedOption()
+    } else {
+      rabotaScheduleDropdownOptions.value = []
+      rabotaScheduleSelectedOption.value = null
+      if (schedulesResult?.error) {
+        console.warn('getWorkSchedules:', schedulesResult.error)
+      }
     }
     if (experienceResult?.data) {
       rabotaExperienceLevels.value = Array.isArray(experienceResult.data) ? experienceResult.data : (experienceResult.data.items || [])
     }
     if (educationResult?.data) {
-      rabotaEducationLevels.value = Array.isArray(educationResult.data) ? educationResult.data : (educationResult.data.items || [])
+      rabotaEducationLevels.value = Array.isArray(educationResult.data)
+        ? educationResult.data
+        : (educationResult.data.items || [])
+    } else {
+      rabotaEducationLevels.value = []
+      if (educationResult?.error) {
+        console.warn('getEducations:', educationResult.error)
+      }
+    }
+    if (workCategoriesResult?.data) {
+      rabotaWorkCategories.value = Array.isArray(workCategoriesResult.data)
+        ? workCategoriesResult.data
+        : (workCategoriesResult.data.items || [])
+    } else {
+      rabotaWorkCategories.value = []
+      if (workCategoriesResult?.error) {
+        console.warn('getWorkCategories:', workCategoriesResult.error)
+      }
+    }
+    if (workingHoursResult?.data) {
+      const raw = Array.isArray(workingHoursResult.data)
+        ? workingHoursResult.data
+        : (workingHoursResult.data.items || [])
+      rabotaWorkFormatOptions.value = normalizeRabotaWorkFormatOptions(raw)
+      const vacancy = globCurrentVacancy.value
+      if (vacancy?.place != null && vacancy.place !== '') {
+        applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
+      }
+    } else {
+      rabotaWorkFormatOptions.value = []
+      if (workingHoursResult?.error) {
+        console.warn('getWorkingHours:', workingHoursResult.error)
+      }
     }
 
-    // Если открыли модалку редактирования активной публикации rabota.ru — применяем данные публикации после загрузки справочников
-    applyRabotaActivePublicationToForm()
-
-    // Если это модалка «Опубликовать» (новая публикация с карточки) — после загрузки справочников сматчим строковые поля вакансии в id справочников rabota.ru
-    if (isNewPublicationFromCard && currentPlatform.value === 'rabota' && globCurrentVacancy.value) {
-      applyJoblyVacancyToRabotaForm(globCurrentVacancy.value)
+    // Префилл из вакансии Jobly (GET /vacancies/{id} по query или editingVacancy.id), не из публикации rabota.ru
+    await applyRabotaActivePublicationToForm()
+    const vacancyAfterPrefill = resolveCurrentJoblyVacancy()
+    if (vacancyAfterPrefill) {
+      applyRabotaVacancyNameToForm(vacancyAfterPrefill)
+      if (!data.value.professional_roles?.[0]?.id) {
+        await applyRabotaProfessionalSphereFields(vacancyAfterPrefill)
+      }
     }
   } else if (platform === 'avito') {
     // Загружаем профессии для Avito
@@ -2038,8 +2643,21 @@ async function fillFormFromCurrentVacancy() {
   if (currentPlatform.value === 'hh') {
     applyJoblyVacancyToHhPublicationFormData(data.value, vacancy)
   }
-  if (vacancy.salary_from != null) data.value.salary_range.from = vacancy.salary_from
-  if (vacancy.salary_to != null) data.value.salary_range.to = vacancy.salary_to
+  if (currentPlatform.value === 'rabota') {
+    applyRabotaVacancyNameToForm(vacancy)
+    applyRabotaSalaryFromVacancy(vacancy)
+    applyRabotaExperienceFromVacancy(vacancy)
+  }
+  if (currentPlatform.value === 'rabota' && vacancy.employment) {
+    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
+  }
+  if (currentPlatform.value === 'rabota' && vacancy.place != null && vacancy.place !== '') {
+    applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
+  }
+  if (currentPlatform.value !== 'rabota') {
+    if (vacancy.salary_from != null) data.value.salary_range.from = vacancy.salary_from
+    if (vacancy.salary_to != null) data.value.salary_range.to = vacancy.salary_to
+  }
   if (vacancy.education) {
     data.value.education_level = HH_EDUCATION_LAVEL.find((item) => item.name == vacancy.education)
   }
@@ -2126,17 +2744,21 @@ async function fillFormFromCurrentVacancy() {
   // График работы: API может вернуть один id/name или несколько через запятую (например "FOUR_ON_FOUR_OFF, FOUR_ON_THREE_OFF")
   const scheduleVal = vacancy.schedule ?? vacancy.work_schedule
   if (scheduleVal != null && scheduleVal !== '') {
-    const scheduleOpts = workSchedulesOptions.value || []
-    const parts = typeof scheduleVal === 'string' ? scheduleVal.split(',').map(s => s.trim()).filter(Boolean) : [scheduleVal]
-    const ids = []
-    for (const part of parts) {
-      const scheduleObj = findValueByIdOrName(scheduleOpts, part) || findValue(scheduleOpts, part) || findValueByNameOrSiteName(scheduleOpts, part)
-      if (scheduleObj) {
-        const id = scheduleObj.id != null ? String(scheduleObj.id) : scheduleObj.id
-        if (id && !ids.some(item => item.id === id)) ids.push({ id })
+    if (currentPlatform.value === 'rabota') {
+      applyRabotaScheduleFromVacancySchedule(scheduleVal)
+    } else {
+      const scheduleOpts = workSchedulesOptions.value || []
+      const parts = typeof scheduleVal === 'string' ? scheduleVal.split(',').map(s => s.trim()).filter(Boolean) : [scheduleVal]
+      const ids = []
+      for (const part of parts) {
+        const scheduleObj = findValueByIdOrName(scheduleOpts, part) || findValue(scheduleOpts, part) || findValueByNameOrSiteName(scheduleOpts, part)
+        if (scheduleObj) {
+          const id = scheduleObj.id != null ? String(scheduleObj.id) : scheduleObj.id
+          if (id && !ids.some(item => item.id === id)) ids.push({ id })
+        }
       }
+      data.value.work_schedule_by_days = ids
     }
-    data.value.work_schedule_by_days = ids
   }
   // Рабочие часы в день: API может вернуть один id/name или несколько через запятую (например "HOURS_3, HOURS_5")
   const hoursFromApi = vacancy.work_hours_per_day ?? vacancy.workHoursPerDay ?? vacancy.working_hours
@@ -2152,11 +2774,15 @@ async function fillFormFromCurrentVacancy() {
     }
     data.value.working_hours = ids
   }
-  const wf = mapJoblyPlaceToHhWorkFormat(vacancy.place);
-  if (wf.length > 0) {
-    data.value.work_format = wf;
-  } else if (vacancy.place != null && vacancy.place !== '') {
-    data.value.workSpace = String(vacancy.place);
+  if (currentPlatform.value === 'rabota') {
+    applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
+  } else {
+    const wf = mapJoblyPlaceToHhWorkFormat(vacancy.place)
+    if (wf.length > 0) {
+      data.value.work_format = wf
+    } else if (vacancy.place != null && vacancy.place !== '') {
+      data.value.workSpace = String(vacancy.place)
+    }
   }
 
   const rawOf = vacancy.oformlenie;
@@ -2179,11 +2805,15 @@ async function fillFormFromCurrentVacancy() {
     data.value.has_evening_night_shifts = Boolean(night);
   }
 
-  const curStr = vacancy.currency;
-  if (typeof curStr === 'string' && curStr.trim() !== '') {
-    const hit = ArrayCurrency.value.find((c) => c.name === curStr.trim());
-    if (hit) {
-      data.value.salary_range.currency = hit.id;
+  if (currentPlatform.value === 'rabota') {
+    applyRabotaSalaryFromVacancy(vacancy)
+  } else {
+    const curStr = vacancy.currency
+    if (typeof curStr === 'string' && curStr.trim() !== '') {
+      const hit = ArrayCurrency.value?.find((c) => c.name === curStr.trim())
+      if (hit) {
+        data.value.salary_range.currency = hit.id
+      }
     }
   }
   const salFreq = vacancy.salary_frequency;
@@ -2222,20 +2852,9 @@ const vacancyIdFields = ['experience', 'employment_form']
 async function loadInitialFormData() {
   const platformIdToName = { 1: 'hh', 2: 'avito', 3: 'rabota', 4: 'superjob' };
 
-  const qId = route.query?.id;
-  const pId = route.params?.id;
-  const vid = route.query?._vid;
-  let vacancyId =
-    qId != null && String(qId).trim() !== ''
-      ? String(qId).trim()
-      : pId != null && String(pId).trim() !== ''
-        ? String(pId).trim()
-        : vid != null && String(vid).trim() !== ''
-          ? String(vid).trim()
-          : null;
+  let vacancyId = resolveVacancyIdFromRoute();
 
   if (props.editingVacancy?.id) {
-    vacancyId = String(props.editingVacancy.id);
     const platformData = props.editingVacancy.platforms_data?.[0];
     if (platformData) {
       const platformName = platformIdToName[platformData.id];
@@ -2245,23 +2864,6 @@ async function loadInitialFormData() {
       ) ?? platforms.value?.[0];
       if (platformKey) {
         data.value.platform = platformKey;
-      }console.log('данные rabota.ru', platformData);
-      // Rabota.ru: при редактировании активной публикации подгружаем публикацию по platform_id и позже маппим в форму
-      if (
-        platformData.id === 3 &&
-        platformData.platform_id != null &&
-        String(platformData.platform_id).trim() !== ''
-      ) {
-        try {
-          const pubRes = await getRabotaPublication(String(platformData.platform_id)) 
-          if (!pubRes?.error && pubRes?.data) {    
-            rabotaActivePublication.value = pubRes.data
-            // Если справочники уже загружены (например, при повторном открытии модалки), можем применить сразу
-            applyRabotaActivePublicationToForm()
-          }
-        } catch (e) {
-          console.warn('Не удалось загрузить публикацию rabota.ru для префилла формы:', e)
-        }
       }
       // Для SuperJob: загружаем каталог и подставляем профессиональную сферу из текущей вакансии на платформе
       if (platformData.id === 4) {
@@ -2405,9 +3007,13 @@ watch(
     if (!v || joblyVacancyPrefillApplied.value) return
     globCurrentVacancy.value = v
     try {
-      await fillFormFromCurrentVacancy()
       if (currentPlatform.value === 'rabota') {
-        applyJoblyVacancyToRabotaForm(v)
+        if (rabotaExperienceLevels.value.length > 0) {
+          rabotaActivePublicationApplied.value = false
+          await applyRabotaActivePublicationToForm()
+        }
+      } else {
+        await fillFormFromCurrentVacancy()
       }
     } finally {
       joblyVacancyPrefillApplied.value = true
@@ -2430,6 +3036,20 @@ if (isNewPublicationFromCard) {
 // Дефолты для experience/employment_form, если вакансия не загружалась (форма «добавить»)
 vacancyIdFields.forEach((field) => {
   if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
+  if (
+    field === 'experience' &&
+    (currentPlatform.value === 'rabota' ||
+      (isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'rabota'))
+  ) {
+    return
+  }
+  if (
+    field === 'employment_form' &&
+    isNewPublicationFromCard &&
+    normalizePlatformName(props.selectedPlatform) === 'rabota'
+  ) {
+    return
+  }
   const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
   const values = mappingFieldsHH[field].values
   const found = field === 'employment_form'
@@ -2526,7 +3146,11 @@ function applyConnectedExportMapToForm(rowKeys, platform) {
   if (!has('description')) data.value.description = ''
 
   // Специализация (в нашей форме: industry + professional_roles[0])
-  if (!has('specializations')) {
+  const professionConnected =
+    has('specializations') ||
+    (platform === 'rabota' &&
+      (has('professional_roles') || has('profession_id') || has('profession')))
+  if (!professionConnected) {
     data.value.industry = null
     data.value.professional_roles = [null]
   }
@@ -2578,6 +3202,11 @@ if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
   )
   if (connectedKeys.size > 0) {
     applyConnectedExportMapToForm(connectedKeys, 'rabota')
+  }
+  const vacancyForRabota = resolveCurrentJoblyVacancy()
+  if (vacancyForRabota) {
+    rabotaActivePublicationApplied.value = false
+    await applyRabotaActivePublicationToForm()
   }
 }
 
@@ -2684,19 +3313,22 @@ if (isNewHhPublicationFromCard) {
   void nextTick(() => emit('form-ready'))
 }
 
-const ArrayCurrency = ref(currency)
-
 // Преобразование HH_EXPERIENCE_DAYS для MultiSelect (id -> value)
 const experienceDaysOptions = HH_EXPERIENCE_DAYS.map(day => ({
   ...day,
   value: day.id
 }))
 
-// Преобразование HH_WORK_FORMAT для MultiSelect (id -> value)
-const workFormatOptions = HH_WORK_FORMAT.map(format => ({
-  ...format,
-  value: format.id
-}))
+// Формат работы: для rabota.ru — справочник working-hours, иначе HH
+const workFormatOptions = computed(() => {
+  if (currentPlatform.value === 'rabota' && rabotaWorkFormatOptions.value.length > 0) {
+    return rabotaWorkFormatOptions.value
+  }
+  return HH_WORK_FORMAT.map((format) => ({
+    ...format,
+    value: format.id,
+  }))
+})
 
 // Преобразование графика работы для MultiSelect (id -> value)
 const workScheduleOptions = computed(() => {
@@ -2726,6 +3358,19 @@ function toggleSuperjobReadyConsider(id, checked) {
   if (checked && idx === -1) arr.push(id)
   else if (!checked && idx !== -1) arr.splice(idx, 1)
   data.value.superjob_ready_to_consider = arr
+}
+
+function isRabotaWorkCategorySelected(id) {
+  const selected = data.value.rabota_work_categories || []
+  return selected.some((item) => String(item) === String(id))
+}
+
+function toggleRabotaWorkCategory(id, checked) {
+  const arr = [...(data.value.rabota_work_categories || [])]
+  const idx = arr.findIndex((item) => String(item) === String(id))
+  if (checked && idx === -1) arr.push(id)
+  else if (!checked && idx !== -1) arr.splice(idx, 1)
+  data.value.rabota_work_categories = arr
 }
 
 // Категории водительских прав для SuperJob (на платформе только A–E). Используется в выпадающем списке при редактировании вакансии SuperJob.
@@ -2787,6 +3432,21 @@ const validateFields = () => {
       validFields.value[key].status = true;
       continue;
     }
+    if (currentPlatform.value === 'rabota' && key === 'working_hours') {
+      validFields.value[key].status = true;
+      continue;
+    }
+    if (currentPlatform.value === 'rabota' && key === 'work_schedule_by_days') {
+      const schedule = data.value.work_schedule_by_days
+      const id = Array.isArray(schedule) ? schedule[0]?.id : schedule?.id
+      if (id == null) {
+        isValid = false
+        validFields.value.work_schedule_by_days.status = false
+      } else {
+        validFields.value.work_schedule_by_days.status = true
+      }
+      continue
+    }
     // Для SuperJob вместо «Тип занятости» показываем «Условия занятости» (множественный выбор) — не требуем employment_form
     if (hideScheduleBlockForSuperjob.value && key === 'employment_form') {
       validFields.value[key].status = true;
@@ -2804,6 +3464,39 @@ const validateFields = () => {
         validFields.value[key].error = null;
       }
       continue;
+    }
+
+    if (key === 'professional_roles') {
+      const roles = Array.isArray(data.value.professional_roles)
+        ? data.value.professional_roles.filter((r) => r && r.id != null)
+        : []
+      if (!roles.length) {
+        isValid = false
+        validFields.value.professional_roles.status = false
+      } else {
+        validFields.value.professional_roles.status = true
+      }
+      continue
+    }
+
+    if (key === 'key_skills') {
+      if (currentPlatform.value !== 'rabota') {
+        validFields.value.key_skills.status = true
+        continue
+      }
+      const skills = Array.isArray(data.value.key_skills)
+        ? data.value.key_skills.filter((s) => {
+            const name = typeof s === 'object' && s != null ? s.name : s
+            return name != null && String(name).trim() !== ''
+          })
+        : []
+      if (!skills.length) {
+        isValid = false
+        validFields.value.key_skills.status = false
+      } else {
+        validFields.value.key_skills.status = true
+      }
+      continue
     }
 
     if (data.value[key] == null
@@ -2856,7 +3549,13 @@ const savePublication = async () => {
   const currentPlatform = data.value.platform?.platform || 'hh'
 
   // Обработка дополнительных условий (актуально для hh.ru)
-  if (data.value.additional_conditions && data.value.additional_conditions.length > 0) {
+  if (
+    currentPlatform !== 'rabota' &&
+    currentPlatform !== 'superjob' &&
+    currentPlatform !== 'superjob.ru' &&
+    data.value.additional_conditions &&
+    data.value.additional_conditions.length > 0
+  ) {
     const boolConditions = [
       'accept_handicapped',
       'accept_incomplete_resumes',
@@ -3028,6 +3727,23 @@ const savePublication = async () => {
   }
 }
 
+function hasRabotaKeySkills(skills) {
+  return (
+    Array.isArray(skills) &&
+    skills.some((s) => {
+      const name = typeof s === 'object' && s != null ? s.name : s
+      return name != null && String(name).trim() !== ''
+    })
+  )
+}
+
+function handleRabotaKeySkillsUpdate(skills) {
+  data.value.key_skills = Array.isArray(skills) ? skills : []
+  if (validFields.value?.key_skills) {
+    validFields.value.key_skills.status = hasRabotaKeySkills(data.value.key_skills)
+  }
+}
+
 const updateSkills = (el) => {
   if (el.length > 0) {
     const phrases = []
@@ -3071,6 +3787,12 @@ watch(() => data.value.platform?.platform, async (newPlatform) => {
     await loadDictionaries(newPlatform)
   }
 })
+
+watch(currentPlatform, (platform) => {
+  if (validFields.value?.address) {
+    validFields.value.address.name = platform === 'rabota' ? 'Адрес работы' : 'Город размещения'
+  }
+}, { immediate: true })
 
 // Автоматическая валидация description при изменении
 watch(() => data.value.description, (newValue) => {

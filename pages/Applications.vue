@@ -1432,16 +1432,6 @@
 
   const handleClickOutside = event => {
     const elTarget = event.target;
-    //console.log('event', event.target);
-    //обработчик события клика вне календаря
-    // if ((!elTarget || !elTarget.classList.contains('.shadow-shadow-droplist')) || !elTarget.closest('.calendar-wrapper')) {
-    console.log('close');
-    // if (isOpenDateFrom.value)
-    //     isOpenDateFrom.value = false
-    // if (isOpenDateTo.value)
-    //     isOpenDateTo.value = false
-    //   console.log('isOpen', isOpenDateFrom.value);
-    // }
 
     if (!isNewAppPopupAdmin.value && newApplication.value) {
       newApplication.value = {};

@@ -84,7 +84,11 @@ export default defineNuxtConfig({
         pageTransition: { name: 'page', mode: 'out-in' },
     },
     runtimeConfig: {
+        /** DaData API: .env DADATA_TOKEN или NUXT_DADATA_TOKEN (только сервер, см. useRuntimeConfig(event)) */
+        dadataToken: process.env.NUXT_DADATA_TOKEN || process.env.DADATA_TOKEN || '',
         public: {
+            /** Только для клиента: NUXT_PUBLIC_DADATA_TOKEN из .env */
+            dadataToken: process.env.NUXT_PUBLIC_DADATA_TOKEN || '',
             apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
             /** Origin Laravel без /api (тот же хост, что NUXT_PUBLIC_API_BACKEND у прокси). Нужен браузеру для OAuth /api/code-* в обход прокси. */
             apiBackend: process.env.NUXT_PUBLIC_API_BACKEND || '',
@@ -113,6 +117,8 @@ export default defineNuxtConfig({
         '/reports/**': { ssr: false },
         '/settings/**': { ssr: false },
         '/activity/**': { ssr: false },
+        // Nitro server/api/dadata/* — не проксировать на Laravel
+        '/api/dadata/**': {},
         // Проксирование /api/* на Laravel
         '/api/**': {
             proxy: (process.env.NUXT_PUBLIC_API_BACKEND || 'http://127.0.0.1:8000') + '/api/**',
