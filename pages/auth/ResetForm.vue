@@ -1,10 +1,10 @@
 <template>
   <div class="reset form">
-    <div v-if="step === 1" class="reset__first">
+    <div v-if="step === 1" class="reset__first active form">
       <button
         class="reset__to-reg btn-reset"
         id="from-reset-to-reg"
-        @click="$emit('changeForm', 'enter')"
+        @click="$emit('changeForm', 'enter', email)"
       >
         <svg
           width="20"
@@ -20,14 +20,14 @@
         </svg>
       </button>
       <p class="reset__title f25w700">Восстановление доступа</p>
-      <p class="reset__descr f14w500 c-bali">
+      <p class="reset__descr f14w400 c-bali">
         Отправим ссылку на электронную почту
       </p>
       <div class="reset__email">
-        <p class="reset__email-title f14w500">Email</p>
+        <p class="auth-field-label">Email</p>
         <label class="reset__email-label">
           <input
-            type="text"
+            type="email"
             class="reset__email-input e-input f14w400"
             placeholder="Введите email для восстановления пароля"
             id="reset-email-input"
@@ -101,13 +101,29 @@
 </template>
 
 <script setup>
-  import { ref } from 'vue'
+  import { ref, watch } from 'vue'
   import { VideoPlayer } from '@videojs-player/vue'
   import { resetUser } from '~/utils/resetUser'
   import 'video.js/dist/video-js.css'
 
+  const props = defineProps({
+    initialEmail: {
+      type: String,
+      default: '',
+    },
+  })
+
   const step = ref(1)
-  const email = ref('')
+  const email = ref(props.initialEmail || '')
+
+  watch(
+    () => props.initialEmail,
+    value => {
+      if (value) {
+        email.value = value
+      }
+    },
+  )
   const emailError = ref(null)
 
   function toFirstStep() {
@@ -164,16 +180,15 @@
 
 <style scoped>
   .reset {
-    display: flex;
-    justify-content: center;
+    width: 100%;
   }
 
   .reset__first {
-    max-width: 500px;
-    width: 100%;
-    background-color: #ffffff;
-    border-radius: 15px;
-    padding: 50px;
+    box-sizing: border-box;
+    width: 440px;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 40px 48px 44px;
   }
 
   .reset__to-reg,
@@ -183,37 +198,37 @@
     background-color: #f4f6f8;
     padding: 8.5px 9px;
     display: flex;
-    margin-bottom: 25px;
-  }
-
-  .reset__email-input {
-    padding: 10.5px 15px 10.5px 15px;
+    margin-bottom: 20px;
   }
 
   .reset__send {
-    padding: 9.5px 10px;
-    border-radius: 10px;
-    background-color: #2f353d;
     width: 100%;
+    border: none;
+    background-color: #5898ff;
+    cursor: pointer;
   }
 
   .reset__title {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
+    color: #2f353d;
     text-align: center;
-    line-height: normal;
+    line-height: 1.2;
   }
 
   .reset__descr {
+    margin-bottom: 32px;
     text-align: center;
-    margin-bottom: 35px;
+    line-height: 1.4;
+    font-weight: 300;
   }
 
-  .reset__email-title {
-    margin-bottom: 15px;
+  .reset__email {
+    margin-bottom: 24px;
   }
 
   .reset__email-input {
-    margin-bottom: 25px;
+    display: block;
+    width: 100%;
   }
 
   .second-wrapper {
@@ -223,8 +238,8 @@
 
   .reset__second {
     background-color: #ffffff;
-    border-radius: 15px;
-    padding: 50px;
+    border-radius: 24px;
+    padding: 48px 50px;
     padding-bottom: 96px;
     max-width: 442.5px;
   }
@@ -246,13 +261,11 @@
     display: flex;
   }
 
-  #from-reset-to-reg {
-    margin-bottom: 35px;
-  }
-
   .reset__email-input + .error-message {
     display: inline-block;
-    margin-bottom: 23px;
+    margin-top: 8px;
+    margin-bottom: 0;
+    font-size: 13px;
   }
 
   :deep(.video-js .vjs-control-bar) {

@@ -50,7 +50,7 @@
     try {
       const res = await getRejectionReasons();
       const payload = res.data;
-      useRejectionReasons.value = payload?.use_rejection_reasons ?? false;
+      useRejectionReasons.value = payload?.use_rejection_reasons ?? true;
       reasonRows.value = Array.isArray(payload?.reasons) ? payload.reasons : [];
     } catch {
       useRejectionReasons.value = false;
@@ -127,10 +127,10 @@
       <div class="transfer-vacancy-popup flex flex-col gap-y-6 text-sm">
         <div class="flex flex-col gap-y-2">
           <h2 class="text-xl font-semibold text-space">
-            Отказ кандидата
+            Отказ кандидату
           </h2>
           <p class="text-sm text-slate-custom">
-            Укажите причину и при необходимости внутренний комментарий для команды.
+            Укажите причину отказа и при необходимости внутренний комментарий для команды.
           </p>
         </div>
 

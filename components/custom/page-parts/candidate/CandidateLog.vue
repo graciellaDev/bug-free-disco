@@ -271,7 +271,7 @@
         t: +new Date(event.occurred_at),
       });
     }
-    if (platformMessagesEnabled.value) {
+    if (platformMessagesEnabled.value && chatPlatform.value !== 'avito') {
       for (const message of platformMessages.value) {
         rows.push({
           kind: 'platform_message',
@@ -283,6 +283,39 @@
     }
     return rows.sort((a, b) => a.t - b.t);
   });
+
+  function isAvitoChatEvent(event: CandidateEvent): boolean {
+    if (event.type !== 'chat') return false;
+    const ch = String(event.channel ?? '').toLowerCase();
+    if (ch === 'avito' || ch.includes('avito')) return true;
+    const payload = event.payload as { provider?: string } | undefined;
+    return String(payload?.provider ?? '').toLowerCase() === 'avito';
+  }
+
+  function chatEventText(event: CandidateEvent): string {
+    const payload = event.payload as { content?: string } | undefined;
+    return String(payload?.content ?? '').trim();
+  }
+
+  function isChatEventIncoming(event: CandidateEvent): boolean {
+    const d = String(event.direction ?? (event.payload as { direction?: string })?.direction ?? '').toLowerCase();
+    if (d === 'incoming' || d === 'in') return true;
+    if (d === 'outgoing' || d === 'out') return false;
+    return true;
+  }
+
+  /** Карточка сообщения чата: входящие — светлый фон, исходящие (наши) — голубая заливка. */
+  function platformChatCardClass(incoming: boolean): string {
+    return incoming
+      ? 'group relative flex w-full items-stretch overflow-hidden rounded-lg border border-athens-gray bg-[#FBFCFD]'
+      : 'group relative flex w-full items-stretch overflow-hidden rounded-lg bg-[#E3F2FD]';
+  }
+
+  function platformChatIconClass(incoming: boolean): string {
+    return incoming
+      ? 'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#E3F2FD] p-1.5'
+      : 'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90 p-1.5';
+  }
 
   function platformMessageText(m: CandidatePlatformMessage): string {
     return (m.body ?? m.content ?? m.text ?? '').trim();
@@ -307,7 +340,7 @@
         <!-- Сообщение чата hh.ru / SuperJob -->
         <div
           v-if="row.kind === 'platform_message'"
-          class="group relative flex w-full items-stretch overflow-hidden rounded-lg border border-athens-gray bg-[#FBFCFD]"
+          :class="platformChatCardClass(isPlatformIncoming(row.message))"
         >
           <div class="flex min-w-0 flex-1 gap-3 rounded-l-lg p-3">
             <div class="relative flex shrink-0 items-start pt-0.5">
@@ -355,7 +388,7 @@
         <div
           v-else
           :class="
-            row.event.type === 'comment' || row.event.type === 'task' || row.event.type === 'email'
+            row.event.type === 'comment' || row.event.type === 'task' || row.event.type === 'email' || (row.event.type === 'chat' && isAvitoChatEvent(row.event))
               ? ''
               : 'flex flex-wrap items-baseline gap-x-2 py-1.5 text-xs font-light leading-150 text-[#8a94a6]'
           "
@@ -522,6 +555,36 @@
             </div>
           </div>
         </div>
+        <!-- Сообщение Avito из ленты событий (sync-messenger) -->
+        <div
+          v-else-if="row.event.type === 'chat' && isAvitoChatEvent(row.event)"
+          :class="platformChatCardClass(isChatEventIncoming(row.event))"
+        >
+          <div class="flex min-w-0 flex-1 gap-3 rounded-l-lg p-3">
+            <div :class="platformChatIconClass(isChatEventIncoming(row.event))">
+              <svg-icon name="avito" width="20" height="20" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-light leading-150 text-[#92989B]">
+                {{ formatTimestampComment(row.event.occurred_at) }}
+                <template v-if="isChatEventIncoming(row.event)">
+                  сообщение от кандидата (Авито)
+                  <template v-if="row.event.author_name"> · {{ row.event.author_name }}</template>
+                </template>
+                <template v-else>
+                  исходящее сообщение (Авито)
+                  <template v-if="row.event.author_name"> · {{ row.event.author_name }}</template>
+                </template>
+              </div>
+              <p
+                v-if="chatEventText(row.event)"
+                class="mt-2 text-sm font-normal leading-150 text-[#363B44] whitespace-pre-wrap break-words"
+              >
+                <TextWithLinks :text="chatEventText(row.event)" />
+              </p>
+            </div>
+          </div>
+        </div>
         <!-- Карточка комментария (заметки): синяя иконка на голубом фоне, как у почты -->
         <div
           v-else-if="row.event.type === 'comment'"
@@ -592,7 +655,7 @@
           </div>
         </div>
         <!-- Обычная строка лога (система, чат и т.д.) -->
-        <template v-else-if="row.event.type !== 'comment' && row.event.type !== 'task' && row.event.type !== 'email'">
+        <template v-else-if="row.event.type !== 'comment' && row.event.type !== 'task' && row.event.type !== 'email' && !(row.event.type === 'chat' && isAvitoChatEvent(row.event))">
           <span class="shrink-0 text-xs font-light leading-150 text-[#8a94a6]">{{ formatTimestamp(row.event.occurred_at) }}</span>
           <span class="text-xs font-light leading-150 text-[#8a94a6]">{{ eventDescription(row.event) }}</span>
         </template>

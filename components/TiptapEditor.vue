@@ -124,7 +124,7 @@
       editorProps: {
         attributes: {
           class:
-            'border border-athens py-15px px-3.5 min-h-[460px] max-h-[460px] overflow-y-auto outline-none prose max-w-none rounded-b-fifteen bg-athens-gray',
+            'popup-scroll border border-athens py-15px px-3.5 min-h-[460px] max-h-[460px] overflow-y-auto outline-none prose max-w-none rounded-b-fifteen bg-athens-gray',
         },
         handleDOMEvents: {
           blur: () => {

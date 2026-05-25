@@ -14,6 +14,7 @@
       <span v-if="currectDate" class="truncate">{{ currectDate }}</span>
       <span v-else class="color-gray text-sm font-normal">
         {{
+          props.placeholder ? props.placeholder :
           props.dateFrom ? 'Начало периода' :
             props.dateTo ? 'Конец периода' :
               'Выберите дату'
@@ -88,6 +89,10 @@ const props = defineProps({
   modelValue: {
     type: String,
     default: null
+  },
+  placeholder: {
+    type: String,
+    default: ''
   }
 })
 const emit = defineEmits(['update:modelValue', 'isOpen'])

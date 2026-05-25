@@ -1,8 +1,12 @@
+import { formatCityLabel } from './formatCityLabel';
+import { formatPersonNameInitials } from './formatPersonNameInitials';
+
 // Интерфейс для входящих данных из API
 interface RawApplication {
     id: number;
     position: string;
     city: string;
+    created_at?: string;
     dateStart: string;
     dateWork: string;
     status: { id: number; name: string } | null;
@@ -77,11 +81,13 @@ export async function fetchApplications(page = 1, params = '') {
         const applications: Application[] = response.data.data.map((application: RawApplication) => ({
             id: application.id,
             title: application.position,
-            region: application.city,
-            createdAt: application.dateStart,
+            region: formatCityLabel(application.city),
+            createdAt: application.created_at ?? '',
             closeDate: application.dateWork,
             status: application.status?.name ?? 'Не указан',
-            customer: application.client?.name ?? 'Не указан',
+            customer: application.client?.name
+                ? formatPersonNameInitials(application.client.name)
+                : '—',
             executor: application.executor?.name ?? null,
             responsible: application.responsible?.name ?? 'Не указан', // Временное значение
             candidates: '0', // Временное значение

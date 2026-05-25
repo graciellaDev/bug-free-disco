@@ -50,6 +50,9 @@ function mapStagesToItems(stages: FunnelTemplateStageItem[]): StageItem[] {
   }))
 }
 
+/** Блок «Действие» на этапе — временно скрыт до готовности функционала */
+const showStageActions = false
+
 const templates = ref<TemplateWithStages[]>([])
 const loading = ref(true)
 const editingTemplateId = ref<number | null>(null)
@@ -473,7 +476,7 @@ onMounted(() => {
                         </button>
                       </div>
                       <div class="flex items-center w-full flex-wrap gap-x-6 gap-y-2">
-                        <div class="flex items-center">
+                        <div v-if="showStageActions" class="flex items-center">
                           <p class="text-sm text-slate-custom font-normal mr-1">
                             Действие:
                           </p>

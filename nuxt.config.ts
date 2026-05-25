@@ -2,21 +2,76 @@
 import path from 'node:path'
 import fs from 'node:fs'
 
+/** Пути проекта в сгенерированных .nuxt-файлах: /app в Docker, абсолютный путь на хосте. */
+function normalizeGeneratedProjectPaths(content: string, rootDir: string, isDocker: boolean): string {
+    const hostPrefix = rootDir.replace(/\\/g, '/').replace(/\/?$/, '/')
+    const dockerPrefix = '/app/'
+    let next = content
+
+    if (isDocker) {
+        // .nuxt мог быть создан на macOS — в контейнере /Users/... не существует
+        next = next.replace(/\/Users\/[^"'\\]+?\/bug-free-disco\//g, dockerPrefix)
+        if (hostPrefix !== dockerPrefix && hostPrefix.startsWith('/')) {
+            const escaped = hostPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            next = next.replace(new RegExp(escaped, 'g'), dockerPrefix)
+        }
+    } else {
+        next = next.replace(/\/app\//g, hostPrefix)
+    }
+
+    return next
+}
+
+const SVG_SPRITE_ICONS_RELATIVE = '../assets/sprite/gen/icons.svg'
+
+function patchSvgSpritePaths(rootDir: string) {
+    const spriteModulePath = path.join(rootDir, '.nuxt', 'svg-sprite.mjs')
+    if (!fs.existsSync(spriteModulePath)) return
+    const content = fs.readFileSync(spriteModulePath, 'utf8')
+    if (!content.includes('export const sprites')) return
+
+    const isDocker = process.env.NUXT_DOCKER === '1'
+    let next = normalizeGeneratedProjectPaths(content, rootDir, isDocker)
+    // Абсолютные пути (/Users/... или /app/...) ломают Vite в Docker — только относительный от .nuxt
+    next = next.replace(
+        /import\(["'][^"']*assets\/sprite\/gen\/icons\.svg["']\)/g,
+        `import("${SVG_SPRITE_ICONS_RELATIVE}")`
+    )
+
+    if (next !== content) {
+        fs.writeFileSync(spriteModulePath, next)
+    }
+}
+
 function patchTailwindConfig(rootDir: string) {
     const tailwindConfigPath = path.join(rootDir, '.nuxt', 'tailwind.config.cjs')
     if (!fs.existsSync(tailwindConfigPath)) return
-    let content = fs.readFileSync(tailwindConfigPath, 'utf8')
-    if (!content.includes('/app/node_modules')) return
-    const root = rootDir.replace(/\\/g, '/')
-    content = content.replace(
-        /require\s*\(\s*"\/app\/node_modules\/@nuxtjs\/tailwindcss\/dist\/runtime\/merger\.js"\s*\)/g,
-        'require(path.resolve(__dirname, "../node_modules/@nuxtjs/tailwindcss/dist/runtime/merger.js"))'
-    )
-    if (content.includes('path.resolve') && !content.includes('const path = require')) {
-        content = 'const path = require("path");\n' + content
+    const content = fs.readFileSync(tailwindConfigPath, 'utf8')
+    // Не трогаем файл, пока Nuxt ещё дописывает конфиг (иначе ломается PostCSS/Tailwind).
+    if (!content.includes('module.exports = config')) return
+    let next = content
+    const isDocker = process.env.NUXT_DOCKER === '1'
+
+    // Любой абсолютный require merger (Docker /app, локальный /Users/...) — в путь от .nuxt,
+    // чтобы один и тот же файл .nuxt/tailwind.config.cjs работал и на хосте, и в контейнере.
+    const mergerAbsRequire =
+        /require\s*\(\s*["'][^"']*@nuxtjs\/tailwindcss\/dist\/runtime\/merger\.js["']\s*\)/g
+    if (mergerAbsRequire.test(next)) {
+        mergerAbsRequire.lastIndex = 0
+        next = next.replace(
+            mergerAbsRequire,
+            'require(path.resolve(__dirname, "../node_modules/@nuxtjs/tailwindcss/dist/runtime/merger.js"))'
+        )
     }
-    content = content.replace(/\/app\//g, root.endsWith('/') ? root : root + '/')
-    fs.writeFileSync(tailwindConfigPath, content)
+    if (next.includes('path.resolve') && !next.includes('const path = require')) {
+        next = 'const path = require("path");\n' + next
+    }
+
+    next = normalizeGeneratedProjectPaths(next, rootDir, isDocker)
+
+    if (next !== content) {
+        fs.writeFileSync(tailwindConfigPath, next)
+    }
 }
 
 export default defineNuxtConfig({
@@ -26,12 +81,19 @@ export default defineNuxtConfig({
     ssr: true,
     hooks: {
         'ready'(nuxt) {
-            patchTailwindConfig(nuxt.options.rootDir)
+            const root = nuxt.options.rootDir
+            patchTailwindConfig(root)
+            patchSvgSpritePaths(root)
+            // svg-sprite.mjs иногда пишется после ready — повторный патч
+            setTimeout(() => {
+                patchTailwindConfig(root)
+                patchSvgSpritePaths(root)
+            }, 500)
         },
         'build:before'() {
-            // Патч ещё раз перед сборкой — шаблон tailwind мог записаться после ready
             const rootDir = process.cwd()
             patchTailwindConfig(rootDir)
+            patchSvgSpritePaths(rootDir)
         },
     },
     build: {
@@ -41,6 +103,21 @@ export default defineNuxtConfig({
         shim: false,
     },
     css: ['~/assets/css/main.scss'],
+    tailwindcss: {
+        config: {
+            content: [
+                './components/**/*.{vue,js,jsx,mjs,ts,tsx}',
+                './layouts/**/*.{vue,js,jsx,mjs,ts,tsx}',
+                './pages/**/*.{vue,js,jsx,mjs,ts,tsx}',
+                './plugins/**/*.{js,ts,mjs}',
+                './composables/**/*.{js,ts,mjs}',
+                './utils/**/*.{js,ts,mjs}',
+                './app.vue',
+                './error.vue',
+                './app.config.{js,ts,mjs}',
+            ],
+        },
+    },
     modules: [['@nuxtjs/google-fonts', {
         families: {
             Inter: [300, 400, 500, 600, 700],
@@ -65,21 +142,56 @@ export default defineNuxtConfig({
     },
     // code bottom answer for deprecated saas library Dark 2.0
     vite: {
+        plugins: [
+            {
+                name: 'jobly-patch-tailwind-docker-paths',
+                enforce: 'pre',
+                configResolved() {
+                    const root = process.cwd()
+                    patchTailwindConfig(root)
+                    patchSvgSpritePaths(root)
+                },
+                buildStart() {
+                    const root = process.cwd()
+                    patchTailwindConfig(root)
+                    patchSvgSpritePaths(root)
+                },
+                configureServer() {
+                    const root = process.cwd()
+                    patchTailwindConfig(root)
+                    patchSvgSpritePaths(root)
+                },
+            },
+        ],
         css: {
             preprocessorOptions: {
                 scss: {
                     api: 'modern-compiler' // or "modern"
                 }
             }
-        }
+        },
+        ...(process.env.NUXT_DOCKER === '1'
+            ? {
+                  server: {
+                      host: true,
+                      strictPort: true,
+                      hmr: { clientPort: 3000 },
+                      watch: { usePolling: true },
+                  },
+              }
+            : {}),
     },
     svgSprite: {
-        // input: '~/assets/sprite/'
+        input: '~/assets/sprite/svg',
     },
     app: {
         head: {
+            title: 'Наймикс',
             charset: 'utf-8',
             viewport: 'width=device-width, initial-scale=1',
+            link: [
+                { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+            ],
         },
         pageTransition: { name: 'page', mode: 'out-in' },
     },
@@ -102,6 +214,8 @@ export default defineNuxtConfig({
             wsAvitoCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_AVITO_CANDIDATE_MESSAGES_URL || '',
             /** Опционально: WebSocket push чата Rabota.ru. Если пусто — только polling. */
             wsRabotaCandidateMessagesUrl: process.env.NUXT_PUBLIC_WS_RABOTA_CANDIDATE_MESSAGES_URL || '',
+            /** Только dev: в кабинете показать Avito как подключённый (без OAuth). */
+            mockAvitoConnected: process.env.NUXT_PUBLIC_MOCK_AVITO_CONNECTED || '',
         }
     },
     pinia: {

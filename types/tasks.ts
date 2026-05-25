@@ -45,6 +45,8 @@ export type TaskSort = 'newest' | 'oldest' | 'has_comments';
 export interface TaskSearchFilters {
   /** `filters[assignee]` — подстрока по `assignee_name` (LIKE) */
   assignee?: string;
+  /** `filters[assignees][]` — список выбранных участников по имени */
+  assignees?: string[];
   /** `filters[candidate_id]` */
   candidate_id?: number;
   /** `filters[vacancy_id]` */

@@ -5,6 +5,7 @@ export type Stage = {
   name: string;
   fixed?: number; // 0 или 1 (boolean в виде числа)
   position?: number;
+  max_days?: number | null;
 };
 
 export type ApiStagesResponse = ApiSuccessResponse<Stage[]>;

@@ -21,12 +21,28 @@
         />
       </div>
       <button
+        v-if="props.showCatalogButton"
         type="button"
         class="shrink-0 py-2 px-3 border-l border-athens hover:bg-athens-gray transition-colors text-bali hover:text-space flex items-center justify-center"
         @click.stop="openCatalog"
         aria-label="Открыть каталог специализаций"
       >
         <svg-icon name="drag-burger" width="20" height="20" />
+      </button>
+      <button
+        v-else
+        type="button"
+        class="shrink-0 py-2 px-3 border-l border-athens hover:bg-athens-gray transition-colors text-bali hover:text-space flex items-center justify-center"
+        @click.stop="toggleDropdown"
+        aria-label="Открыть выпадающий список"
+      >
+        <svg-icon
+          name="dropdown-arrow"
+          width="20"
+          height="20"
+          class="transition-transform duration-200"
+          :class="isDropdownOpen ? 'rotate-180 text-dodger' : 'text-bali'"
+        />
       </button>
     </div>
     <transition name="slide-fade">
@@ -46,7 +62,7 @@
           </div>
         </template>
         <div v-else class="py-4 px-15px text-sm text-bali">
-          Ничего не найдено. Измените запрос или откройте каталог справа.
+          Ничего не найдено.
         </div>
       </div>
     </transition>
@@ -87,9 +103,13 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showCatalogButton: {
+    type: Boolean,
+    default: true,
+  },
 })
 
-const emit = defineEmits(['update:modelValue', 'focus', 'blur'])
+const emit = defineEmits(['update:modelValue', 'update:model-value', 'focus', 'blur'])
 
 const wrapperRef = ref(null)
 const inputRef = ref(null)
@@ -167,18 +187,24 @@ const openCatalog = (e) => {
   isDropdownOpen.value = false
 }
 
+const toggleDropdown = () => {
+  isDropdownOpen.value = !isDropdownOpen.value
+}
+
 const closeCatalog = () => {
   isCatalogOpen.value = false
 }
 
 const selectOption = (option) => {
   emit('update:modelValue', option)
+  emit('update:model-value', option)
   searchText.value = ''
   isDropdownOpen.value = false
 }
 
 const onCatalogSelect = (option) => {
   emit('update:modelValue', option)
+  emit('update:model-value', option)
   isCatalogOpen.value = false
 }
 

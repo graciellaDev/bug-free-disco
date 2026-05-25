@@ -1,5 +1,6 @@
 <script setup lang="ts">
-  import { ref, computed, nextTick, onBeforeUnmount } from 'vue';
+  import { ref, computed, nextTick, onBeforeUnmount, toRef } from 'vue';
+  import { useCandidatePhotoSrc } from '@/composables/useCandidatePhotoSrc';
   import { createTag, findTag } from '@/src/api/tags';
   import { detachCandidateTag, updateCandidate } from '@/src/api/candidates';
   import type {
@@ -18,6 +19,7 @@
   const props = defineProps<{
     candidate: Candidate;
     vacancyName: string;
+    vacancyId?: number | null;
   }>();
 
   const emit = defineEmits<{
@@ -26,8 +28,6 @@
     'candidate-updated': [candidate: Candidate];
     'write-email': [];
   }>();
-
-  const DEFAULT_AVATAR_SRC = '/img/default-avatar.png';
 
   const contactToast = ref<{
     show: boolean;
@@ -52,14 +52,12 @@
     }, 4000);
   }
 
-  const candidatePhotoSrc = computed(
-    () => props.candidate.imagePath?.trim() || DEFAULT_AVATAR_SRC
-  );
-
-  /** Заглушка — целиком в квадрате; фото — cover как раньше */
-  const isPlaceholderAvatar = computed(
-    () => !props.candidate.imagePath?.trim()
-  );
+  const { photoSrc: candidatePhotoSrc, isPlaceholder: isPlaceholderAvatar, onPhotoError } =
+    useCandidatePhotoSrc(
+      toRef(() => props.candidate.id),
+      toRef(() => props.candidate.imagePath),
+      toRef(() => props.vacancyId)
+    );
 
   const isAddingTag = ref(false);
   const tagInputValue = ref('');
@@ -639,6 +637,7 @@
         alt="Фото кандидата"
         class="h-full w-full object-center"
         :class="isPlaceholderAvatar ? 'object-contain' : 'object-cover'"
+        @error="onPhotoError"
       />
     </div>
   </div>

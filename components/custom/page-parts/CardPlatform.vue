@@ -4,7 +4,7 @@
             <svg-icon :name="platform.platform" width="41" height="40" />
             <p class="text-sm font-medium text-slate-custom">{{ platform.domain }}</p>
           </div>
-          <DotsDropdonw :platform :items="dropItems" @select-item="handleSelectItem" />
+          <DotsDropdown :items="dropItems" @select-item="handleSelectItem" />
     </div>
     <div class="w-full h-[1px] bg-athens mb-3.5"></div>
     <p class="text-sm font-medium text-space mb-3.5">Аккаунт:</p>
@@ -24,32 +24,24 @@
 </template>
 
 <script setup>
-import DotsDropdonw from '~/components/custom/DotsDropdown.vue'
+import DotsDropdown from '~/components/custom/DotsDropdown.vue'
 
 const dropItems = ['Импорт публикаций', 'Отвязать профиль']
-const importPopup = ref(false)
-
 
 const props = defineProps({
-    platform : {
-        default: null
-    }
+  platform: {
+    type: Object,
+    default: null,
+  },
 })
-console.log(props.platform)
-function disableBodyScroll() {
-    document.body.style.overflow = 'hidden' // Отключаем прокрутку
-  }
 
-// const handleSelectItem: (item: string)  => {
-//     if (item === 'Импорт публикаций') {
-//       importPopup.value = true
-//       disableBodyScroll()
-//     }
-//   }
+const emit = defineEmits(['import-publications', 'unlink-request'])
+
 const handleSelectItem = (item) => {
-    if (item === 'Импорт публикаций') {
-      importPopup.value = true
-      disableBodyScroll()
-    }
+  if (item === 'Импорт публикаций') {
+    emit('import-publications', props.platform)
+  } else if (item === 'Отвязать профиль') {
+    emit('unlink-request', props.platform)
   }
+}
 </script>

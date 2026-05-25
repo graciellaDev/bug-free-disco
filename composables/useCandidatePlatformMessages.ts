@@ -132,6 +132,11 @@ export function useCandidatePlatformMessages(
       messages.value = [];
       return;
     }
+    // Avito: сообщения в ленте событий (sync-messenger раз в 5 мин), без live-опроса API.
+    if (platform.value === 'avito') {
+      messages.value = [];
+      return;
+    }
     void fetchMessages();
     pollTimer = setInterval(() => {
       void fetchMessages();

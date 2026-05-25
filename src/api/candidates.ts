@@ -84,10 +84,18 @@ export async function getCandidatesAllPages(
     return all;
 }
 
-export async function getCandidateById(id: number): Promise<ApiResponseById> {
+export async function getCandidateById(
+    id: number,
+    vacancyId?: number | string | null
+): Promise<ApiResponseById> {
     try {
+        const query =
+            vacancyId != null && String(vacancyId) !== ''
+                ? { vacancy_id: String(vacancyId) }
+                : undefined;
         const response = await apiGet<ApiCandidateByIdResponse['data']>(
-            `/candidates/${id}`
+            `/candidates/${id}`,
+            query
         );
         return {
             candidateData: response.data as Candidate,
@@ -153,6 +161,40 @@ export async function detachCandidateTag(
 
 export async function deleteCandidate(id: number): Promise<void> {
     await apiDelete(`/candidates/${id}`);
+}
+
+/**
+ * Фото кандидата с hh.ru и др. — через бэкенд с токеном площадки.
+ */
+export async function fetchCandidateAvatarBlobUrl(
+    candidateId: number,
+    vacancyId?: number | string | null
+): Promise<string> {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+    if (!authToken || !authUser) {
+        throw new Error('Не авторизован');
+    }
+    const params = new URLSearchParams();
+    if (vacancyId != null && String(vacancyId) !== '') {
+        params.set('vacancy_id', String(vacancyId));
+    }
+    const qs = params.toString();
+    const url = `${config.public.apiBase}/candidates/${candidateId}/avatar${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${authToken}`,
+            'X-Auth-User': authUser,
+            Accept: 'image/*',
+        },
+    });
+    if (!res.ok) {
+        throw new Error('Не удалось загрузить фото');
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
 }
 
 /**

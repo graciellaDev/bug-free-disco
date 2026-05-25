@@ -1,6 +1,4 @@
-// import { data } from "autoprefixer";
-
-export const deleteApplication = async (id: string) => {
+export const deleteApplication = async (id: string | number) => {
   const config = useRuntimeConfig();
 
   try {
@@ -14,16 +12,20 @@ export const deleteApplication = async (id: string) => {
       },
     });
 
-    // console.log('Server response:', data);
-    return { data: data, error: null };
-  } catch (error: any) {
-    if (error.response?.status === 401) {
-      useRouter().replace('/auth');
-    } else {
-      console.error('Ошибка при удалении заявки:', error);
-      return { data: null, error: error.response._data.message };
+    const message = typeof data === 'object' && data && 'message' in data
+      ? String((data as { message?: string }).message ?? '')
+      : '';
+    if (message.includes('не найдена')) {
+      return { data: null, error: { data: { message }, message } };
     }
-  }
-  return { data: null, error: 'Неизвестная ошибка' };
 
+    return { data, error: null };
+  } catch (error: any) {
+    if (error?.status === 401 || error?.statusCode === 401) {
+      useRouter().replace('/auth');
+      return { data: null, error };
+    }
+    console.error('Ошибка при удалении заявки:', error);
+    return { data: null, error };
+  }
 };

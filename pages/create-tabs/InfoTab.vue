@@ -15,13 +15,13 @@ import CheckboxGroup from '~/components/custom/CheckboxGroup.vue'
 import PhoneInput from '~/components/custom/PhoneInput.vue'
 import EmailInput from '~/components/custom/EmailInput.vue'
 import CustomDropdown from '~/components/custom/CustomDropdown.vue'
-import GenerateButton from '~/components/custom/GenerateButton.vue'
+// import GenerateButton from '~/components/custom/GenerateButton.vue' // временно скрыто в блоке «Описание»
 import MyTextarea from '~/components/custom/MyTextarea.vue'
 import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue'
 import SpecializationSelector from '~/components/custom/SpecializationSelector.vue'
 import MultiSelect from '~/components/custom/MultiSelect.vue'
 import SkillsDropdown from '~/components/custom/SkillsDropdown.vue'
-import { getDepartments, executorsList } from '~/utils/executorsList'
+import { getDepartments, employeesList } from '~/utils/executorsList'
 import { useRoute } from 'vue-router'
 import { createError } from '#app'
 import { getHhRoles as getRolesHh, getLanguages, getLanguageLevels } from '@/utils/hhAccount'
@@ -36,13 +36,14 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount, nextTick, inject } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted, onActivated, onUnmounted, nextTick, inject, isRef } from 'vue'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
 import { fetchApplicationDetail } from '~/utils/applicationItem'
 import majors from '~/src/data/majors.json'
 import { convertDateFromApi } from '~/helpers/date'
+import { setVacancyCurrectLive } from '@/utils/useVacancyCurrect'
 
 const ArraySpecialization = specialization
 const ArrayOptions = MoreOptions
@@ -81,7 +82,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['goToPublish'])
+const emit = defineEmits(['goToPublish', 'save-and-continue'])
 
 
 // Тип сотрудника: постоянный или временный — определяет опции «Тип занятости»
@@ -133,10 +134,10 @@ const handleCheck = id => {
 
 onBeforeMount(async () => {
   try {
-    const result = await executorsList();
-    executors.value = result?.executors || []
+    const list = await employeesList();
+    executors.value = Array.isArray(list) ? list : []
   } catch (e) {
-    console.warn('executorsList:', e?.message || e)
+    console.warn('employeesList:', e?.message || e)
     executors.value = []
   }
   // Специализации из локальной БД (бэкенд GET /api/specializations)
@@ -269,6 +270,8 @@ const languageDropdownOptions = computed(() => {
 const languageLevelDropdownOptions = computed(() => Array.isArray(languageLevelOptions.value) ? languageLevelOptions.value : [])
 
 const headerVacancyStatus = inject('headerVacancyStatus', null)
+const vacancyIdRef = inject('vacancyIdRef', null)
+const isSavingVacancy = ref(false)
 
 const defaultDescriptionTemplate = `<p>Обязанности:</p>
 <ul><li></li><li></li></ul>
@@ -295,6 +298,9 @@ const newVacancy = ref({
   languages: [{ language: null, languageLevel: null }],
   description: defaultDescriptionTemplate,
 })
+watch(salaryType, (value) => {
+  newVacancy.value.salary_type = value === 'full-cash' ? 'До вычета налогов' : 'На руки'
+}, { immediate: true })
 const originalVacancyRaw = ref(null) // Исходные сырые данные с сервера
 const originalVacancyData = ref(null) // Отформатированные исходные данные для сравнения
 
@@ -376,6 +382,16 @@ if (props.id) {
     if (wh != null) {
       const arr = Array.isArray(wh) ? wh.map((v) => String(typeof v === 'object' ? (v?.value ?? v?.name) : v)) : [String(wh)]
       newVacancy.value.workHoursPerDay = arr.length ? arr : ['8']
+    }
+    const salaryTypeRaw = String(currectVacancy.salary_type ?? currectVacancy.salaryType ?? '').trim().toLowerCase()
+    if (salaryTypeRaw.includes('до вычета') || salaryTypeRaw === 'full-cash') {
+      salaryType.value = 'full-cash'
+    } else if (
+      salaryTypeRaw.includes('на руки')
+      || salaryTypeRaw.includes('после вычета')
+      || salaryTypeRaw === 'past-cash'
+    ) {
+      salaryType.value = 'past-cash'
     }
     // Сохраняем исходные сырые данные
     originalVacancyRaw.value = JSON.parse(JSON.stringify(currectVacancy))
@@ -1048,6 +1064,8 @@ const vacancyData = computed(() => {
     currency: newVacancy.value.currency || 'RUB (рубль)',
     salary_frequency: newVacancy.value.salary_frequency || 'За месяц',
     salary_payment_frequency: newVacancy.value.salary_payment_frequency || 'Раз в месяц',
+    salary_type: salaryType.value === 'full-cash' ? 'До вычета налогов' : 'На руки',
+    salary_tax_id: salaryType.value,
     place: Array.isArray(newVacancy.value.place) ? [...newVacancy.value.place] : (newVacancy.value.place ? [newVacancy.value.place] : ['1']),
     oformlenie: newVacancy.value.oformlenie || [],
     publication_city: newVacancy.value.location?.trim() || null,
@@ -1064,6 +1082,33 @@ const vacancyData = computed(() => {
     peoples: newVacancy.value.peoples || null,
   }
 });
+
+let lastVacancyLiveJson = ''
+
+function resolveVacancyIdForLive() {
+  const fromRef = vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef
+  return fromRef ?? props.id
+}
+
+function syncVacancyCurrectLiveState() {
+  const payload = vacancyData.value
+  if (!payload || typeof payload !== 'object') return
+  const id = resolveVacancyIdForLive()
+  const snapshot = {
+    ...payload,
+    ...(id != null && String(id).trim() !== '' ? { id: Number(id) || id } : {}),
+  }
+  const json = JSON.stringify(snapshot)
+  if (json === lastVacancyLiveJson) return
+  lastVacancyLiveJson = json
+  setVacancyCurrectLive(snapshot)
+}
+
+watch(salaryType, syncVacancyCurrectLiveState)
+watch(salary, syncVacancyCurrectLiveState, { deep: true })
+watch(newVacancy, syncVacancyCurrectLiveState, { deep: true })
+watch(() => resolveVacancyIdForLive(), syncVacancyCurrectLiveState)
+onMounted(syncVacancyCurrectLiveState)
 
 // Функция для форматирования исходных данных в формат vacancyData
 function formatOriginalData(original) {
@@ -1099,6 +1144,7 @@ function formatOriginalData(original) {
     currency: original.currency || 'RUB (рубль)',
     salary_frequency: original.salary_frequency || 'За месяц',
     salary_payment_frequency: original.salary_payment_frequency || 'Раз в месяц',
+    salary_type: original.salary_type || 'На руки',
     place: Array.isArray(original.place) ? original.place.map((p) => String(p)) : (original.place != null ? [String(original.place)] : ['1']),
     oformlenie: original.oformlenie || [],
     publication_city: original.publication_city ?? original.publicationCity ?? original.location ?? null,
@@ -1286,7 +1332,7 @@ function getChangedFields(currentData, originalData) {
     'name', 'code', 'description', 'industry', 'specializations',
     'employment', 'schedule', 'work_hours_per_day', 'has_evening_night_shifts', 'experience', 'education',
     'phrases', 'languages', 'conditions', 'drivers', 'additions',
-    'salary_from', 'salary_to', 'currency', 'salary_frequency', 'salary_payment_frequency', 'place', 'oformlenie', 'publication_city', 'work_address', 'location',
+    'salary_from', 'salary_to', 'currency', 'salary_frequency', 'salary_payment_frequency', 'salary_type', 'place', 'oformlenie', 'publication_city', 'work_address', 'location',
     'executor_name', 'executor_phone', 'executor_email', 'status', 'department', 'dateEnd', 'comment', 'peoples'
   ]
   
@@ -1320,19 +1366,31 @@ function cleanDataForSending(data) {
 }
 
 async function saveVacancy(opt) {
+  if (isSavingVacancy.value) {
+    const fromRef =
+      vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef
+    const existingId = fromRef ?? props.id
+    return existingId != null && String(existingId) !== ''
+      ? { id: Number(existingId) }
+      : undefined
+  }
   if (!validateVacancy()) {
     await nextTick()
     scrollToFirstError()
     throw new Error('Validation failed')
   }
-  {
+  isSavingVacancy.value = true
+  try {
     let response, error;
     
     // Используем vacancyData для получения правильных данных (phrases как массив)
     const fullData = { ...vacancyData.value };
     fullData.application = route.query.application ?? null;
     // id для редактирования: при вызове с других вкладок берём из родителя (vacancyIdRef), т.к. props.id у закэшированного InfoTab может быть устаревшим
-    const effectiveId = (props.id || vacancyIdRef?.value) ?? null;
+    const effectiveId =
+      (props.id ||
+        (vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef)) ??
+      null;
     const isEdit = props.type === 'edit' || (effectiveId != null && String(effectiveId) !== '');
     if (isEdit && effectiveId) {
       // При редактировании отправляем только измененные поля
@@ -1376,25 +1434,28 @@ async function saveVacancy(opt) {
     }
     // API создания возвращает { message, data: vacancy } — id в response.data.id
     const id = response?.data?.id ?? response?.id ?? effectiveId ?? props.id
+    if (id != null && vacancyIdRef && isRef(vacancyIdRef)) {
+      vacancyIdRef.value = Number(id)
+    }
     return id != null ? { id: Number(id) } : undefined
+  } finally {
+    isSavingVacancy.value = false
   }
 }
 
 const saveAndContinueHandler = inject('saveAndContinueHandler', null)
 const mainSaveHandler = inject('mainSaveHandler', null)
-const vacancyIdRef = inject('vacancyIdRef', null)
-onMounted(() => {
+function registerVacancySaveHandlers() {
   if (saveAndContinueHandler) {
     saveAndContinueHandler.value = saveVacancy
   }
   if (mainSaveHandler) {
     mainSaveHandler.value = saveVacancy
   }
-})
-onBeforeUnmount(() => {
-  if (saveAndContinueHandler) {
-    saveAndContinueHandler.value = null
-  }
+}
+onMounted(registerVacancySaveHandlers)
+onActivated(registerVacancySaveHandlers)
+onUnmounted(() => {
   if (mainSaveHandler) {
     mainSaveHandler.value = null
   }
@@ -1402,13 +1463,9 @@ onBeforeUnmount(() => {
 
 defineExpose({ saveVacancy })
 
-/** Обработчик нижней кнопки «Сохранить и продолжить» — перехватывает ошибку валидации, чтобы не было unhandled rejection. */
-async function onSaveAndContinueClick() {
-  try {
-    await saveVacancy({ goToPublish: true })
-  } catch (_) {
-    // Валидация не прошла или ошибка сохранения — остаёмся на вкладке
-  }
+/** Та же логика, что у кнопки в шапке: один save + обновление id в URL. */
+function onSaveAndContinueClick() {
+  emit('save-and-continue')
 }
 
 const updateEvent = (data, property) => {
@@ -1968,13 +2025,13 @@ const updateExecutor = (value, id) => {
           Описание вакансии
         </p>
         <div class="w-full mb-3.5" data-error-field="description">
-          <div class="w-full flex justify-between">
-            <p class="text-sm font-medium text-space">
-              <span class="text-red-custom">*</span>
-              Описание вакансии
-            </p>
-            <generate-button />
-          </div>
+          <p class="text-sm font-medium text-space">
+            <span class="text-red-custom">*</span>
+            Описание вакансии
+          </p>
+          <!-- GenerateButton (ИИ: тон, перегенерация) — временно скрыто
+          <GenerateButton />
+          -->
         </div>
         <div
           class="mt-15px mb-11px rounded-fifteen border transition-colors"

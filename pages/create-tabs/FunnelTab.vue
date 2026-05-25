@@ -8,6 +8,9 @@
   import MyDropdown from '~/components/custom/MyDropdown.vue'
   import ResponseChoose from '~/components/custom/ResponseChoose.vue'
   import Autocomplete from '~/components/custom/Autocomplete.vue'
+  import FunnelTemplatePanel from '~/components/funnel/FunnelTemplatePanel.vue'
+  import MyToggleSwitch from '~/components/custom/MyToggleSwitch.vue'
+  import { getVacancyById, patchVacancyUseRejectionReasons } from '@/src/api/vacancies'
   import {
     getVacancyStages,
     createVacancyStage,
@@ -16,12 +19,6 @@
     deleteVacancyStage,
     updateVacancyStageMaxDays,
   } from '@/src/api/vacancyStages'
-  import {
-    getFunnelTemplates,
-    createFunnelTemplate,
-    applyFunnelTemplate,
-    type FunnelTemplateItem,
-  } from '@/src/api/funnelTemplates'
   import type { VacancyStage } from '@/types/vacancy'
 
   import * as DropdownData from '~/src/data/funnelDropdowns.json'
@@ -35,6 +32,7 @@
   }>()
 
   const route = useRoute()
+
   // id вакансии: route.params → props → query._vid (после создания, пока URL не обновился) → pathname
   const vacancyId = computed(() => {
     const fromRoute = (route.params?.id != null && route.params?.id !== '') ? String(route.params.id) : null
@@ -54,6 +52,9 @@
 
   const saveAndContinueHandler = inject('saveAndContinueHandler', null)
 
+  /** Блок «Действие» на этапе — временно скрыт до готовности функционала */
+  const showStageActions = false
+
   const items = ref<{ id: number; title: string; isLocked: boolean; actions: { id: number; title: string }[]; maxDays: number | null }[]>([])
   const stagesListKey = ref(0)
   const isDragging = ref(false)
@@ -63,19 +64,10 @@
   const stageNameInputRef = ref<HTMLInputElement | null>(null)
   const removingStageId = ref<number | null>(null)
 
-  const openSaveTemplatePopup = ref(false)
-  const openLoadTemplatePopup = ref(false)
   const openTimeLimitPopup = ref(false)
   const stageForTimeLimit = ref<{ id: number; title: string; maxDays: number | null } | null>(null)
   const timeLimitDays = ref<string>('')
   const savingTimeLimit = ref(false)
-  const templateName = ref('')
-  const selectedTemplateId = ref<number | null>(null)
-  const templatesList = ref<FunnelTemplateItem[]>([])
-  const loadingTemplates = ref(false)
-  const savingTemplate = ref(false)
-  const applyingTemplate = ref(false)
-
   const openPopups = ref([])
   const openActionPopup = ref(false)
   const openInvitePopup = ref(false)
@@ -120,6 +112,9 @@
 
   const removingItemTitle = ref('')
 
+  const useRejectionReasons = ref(true)
+  const savingRejectionToggle = ref(false)
+
   // Этапы по умолчанию для отображения до сохранения вакансии (как на бэкенде)
   const DEFAULT_FUNNEL_STAGES: { id: number; title: string; isLocked: boolean; actions: { id: number; title: string }[]; maxDays: number | null }[] = [
     { id: -1, title: 'Новые', isLocked: true, actions: [], maxDays: null },
@@ -138,6 +133,38 @@
       actions: [] as { id: number; title: string }[],
       maxDays: s.max_days ?? null,
     }))
+  }
+
+  const fetchVacancyFunnelSettings = async () => {
+    if (!vacancyId.value) {
+      useRejectionReasons.value = true
+      return
+    }
+    try {
+      const v = await getVacancyById(vacancyId.value)
+      useRejectionReasons.value = !!v?.use_rejection_reasons
+    } catch (e) {
+      console.error('Ошибка при загрузке настроек воронки', e)
+      useRejectionReasons.value = true
+    }
+  }
+
+  async function onToggleUseRejectionReasons(next: boolean) {
+    if (!vacancyId.value) return
+    const previous = useRejectionReasons.value
+    useRejectionReasons.value = next
+    savingRejectionToggle.value = true
+    try {
+      const updated = await patchVacancyUseRejectionReasons(vacancyId.value, next)
+      if (updated) {
+        useRejectionReasons.value = !!updated.use_rejection_reasons
+      }
+    } catch (e) {
+      console.error('Ошибка при сохранении настройки причин отказа', e)
+      useRejectionReasons.value = previous
+    } finally {
+      savingRejectionToggle.value = false
+    }
   }
 
   const fetchItems = async () => {
@@ -314,6 +341,7 @@
     if (saveAndContinueHandler) {
       saveAndContinueHandler.value = async () => {}
     }
+    void fetchVacancyFunnelSettings()
     fetchItems()
   })
   onBeforeUnmount(() => {
@@ -322,6 +350,7 @@
     }
   })
   watch(vacancyId, () => {
+    void fetchVacancyFunnelSettings()
     fetchItems()
   })
 
@@ -440,60 +469,9 @@
     openRemovePopup.value = false
   }
 
-  function openSaveTemplateModal() {
-    templateName.value = ''
-    openSaveTemplatePopup.value = true
-    disableBodyScroll('save-template')
-  }
-  function closeSaveTemplatePopup() {
-    openSaveTemplatePopup.value = false
-    enableBodyScroll('save-template')
-  }
-  async function submitSaveTemplate() {
-    const name = (templateName.value || '').trim()
-    if (!name || !vacancyId.value) return
-    savingTemplate.value = true
-    try {
-      await createFunnelTemplate(name, vacancyId.value)
-      closeSaveTemplatePopup()
-    } catch (e) {
-      console.error('Ошибка сохранения шаблона', e)
-    } finally {
-      savingTemplate.value = false
-    }
-  }
-
-  async function openLoadTemplateModal() {
-    openLoadTemplatePopup.value = true
-    selectedTemplateId.value = null
-    loadingTemplates.value = true
-    disableBodyScroll('load-template')
-    try {
-      templatesList.value = await getFunnelTemplates()
-    } catch (e) {
-      console.error('Ошибка загрузки шаблонов', e)
-    } finally {
-      loadingTemplates.value = false
-    }
-  }
-  function closeLoadTemplatePopup() {
-    openLoadTemplatePopup.value = false
-    enableBodyScroll('load-template')
-  }
-  async function submitApplyTemplate() {
-    const tid = selectedTemplateId.value
-    if (tid == null || !vacancyId.value) return
-    applyingTemplate.value = true
-    try {
-      await applyFunnelTemplate(vacancyId.value, tid)
-      closeLoadTemplatePopup()
-      await fetchItems()
-      stagesListKey.value += 1
-    } catch (e) {
-      console.error('Ошибка применения шаблона', e)
-    } finally {
-      applyingTemplate.value = false
-    }
+  async function onFunnelTemplateApplied() {
+    await fetchItems()
+    stagesListKey.value += 1
   }
 
   function handleDeniedPopup() {
@@ -581,8 +559,8 @@
 <template>
   <div class="container pb-10 pt-6">
     <div class="w-full bg-white rounded-fifteen p-25px">
-      <div class="mb-[36px] flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div class="mb-[36px] flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div class="min-w-0 flex-1">
           <p class="text-space text-xl font-semibold mb-2.5 leading-normal">
             Настройка воронки найма
           </p>
@@ -591,24 +569,11 @@
             к&nbsp;ним.
           </p>
         </div>
-        <div class="flex flex-wrap gap-2 shrink-0">
-          <UiButton
-            variant="semiaction"
-            size="semiaction"
-            class="bg-athens-gray border border-athens text-space hover:bg-zumthor hover:border-dodger"
-            @click="openSaveTemplateModal()"
-          >
-            Сохранить как шаблон
-          </UiButton>
-          <UiButton
-            variant="semiaction"
-            size="semiaction"
-            class="bg-athens-gray border border-athens text-space hover:bg-zumthor hover:border-dodger"
-            @click="openLoadTemplateModal()"
-          >
-            Применить шаблон
-          </UiButton>
-        </div>
+        <FunnelTemplatePanel
+          class="self-center"
+          :vacancy-id="vacancyId"
+          @applied="onFunnelTemplateApplied"
+        />
       </div>
       <div>
         <draggable
@@ -670,7 +635,7 @@
                   </div>
                 </div>
                 <div class="flex items-center w-full flex-wrap gap-x-6 gap-y-2">
-                  <div class="flex items-center">
+                  <div v-if="showStageActions" class="flex items-center">
                     <p class="text-sm text-slate-custom font-normal mr-1">
                       Действие:
                     </p>
@@ -731,15 +696,26 @@
             </div>
           </template>
         </draggable>
-        <div class="pl-[55px] mt-18px mb-[34px]">
+        <div class="pl-[55px] mt-18px mb-[34px] flex flex-col gap-4">
           <UiButton
             variant="semiaction"
             size="semiaction"
-            class="bg-athens-gray border border-athens text-space hover:bg-zumthor hover:border-dodger"
+            class="w-fit bg-athens-gray border border-athens text-space hover:bg-zumthor hover:border-dodger"
             @click="addNewItem"
           >
             Добавить этап
           </UiButton>
+          <MyToggleSwitch
+            v-if="vacancyId"
+            id="vacancy-use-rejection-reasons"
+            :model-value="useRejectionReasons"
+            label="Использовать причины отказа"
+            label-color="space"
+            font-weight="medium"
+            font-size="sm"
+            :disabled="savingRejectionToggle || loadingStages"
+            @update:model-value="onToggleUseRejectionReasons"
+          />
         </div>
         <div v-if="loadingStages" class="text-sm text-slate-custom pl-[55px]">
           Загрузка этапов...
@@ -1103,120 +1079,6 @@
       </div>
     </Popup>
   </transition>
-  <transition name="fade" @after-leave="enableBodyScroll('save-template')">
-    <Popup
-      :isOpen="openSaveTemplatePopup"
-      @close="closeSaveTemplatePopup"
-      width="490px"
-      :showCloseButton="false"
-      :lgSize="true"
-      :parentRounded="true"
-      :contentRounded="false"
-      :contentPadding="false"
-    >
-      <div class="flex flex-col gap-y-6 pl-[15px]">
-        <h2 class="text-xl font-semibold text-space">
-          Сохранить как шаблон
-        </h2>
-        <p v-if="!vacancyId" class="text-sm text-slate-custom">
-          Сначала сохраните вакансию, нажав «Сохранить и продолжить» на вкладке «Описание вакансии».
-        </p>
-        <div v-else>
-          <label class="text-sm font-medium text-space mb-2 block">
-            Название шаблона
-          </label>
-          <MyInput
-            v-model="templateName"
-            placeholder="Введите название"
-            class="w-full"
-          />
-        </div>
-        <div class="flex gap-x-3">
-          <button
-            type="button"
-            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors bg-space hover:bg-space/90 text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold disabled:opacity-50"
-            :disabled="savingTemplate || !vacancyId || !(templateName && templateName.trim())"
-            @click="submitSaveTemplate"
-          >
-            {{ savingTemplate ? 'Сохранение…' : 'Сохранить' }}
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors bg-athens-gray border border-athens text-slate-custom p-border-semi-btn text-sm rounded-ten leading-normal font-medium"
-            @click="closeSaveTemplatePopup"
-          >
-            Отмена
-          </button>
-        </div>
-      </div>
-    </Popup>
-  </transition>
-  <transition name="fade" @after-leave="enableBodyScroll('load-template')">
-    <Popup
-      :isOpen="openLoadTemplatePopup"
-      @close="closeLoadTemplatePopup"
-      width="490px"
-      :showCloseButton="false"
-      :lgSize="true"
-      :parentRounded="true"
-      :contentRounded="false"
-      :contentPadding="false"
-    >
-      <div class="flex flex-col gap-y-6 pl-[15px]">
-        <h2 class="text-xl font-semibold text-space">
-          Применить шаблон
-        </h2>
-        <p v-if="!vacancyId" class="text-sm text-slate-custom">
-          Сначала сохраните вакансию, нажав «Сохранить и продолжить» на вкладке «Описание вакансии».
-        </p>
-        <template v-else>
-        <p class="text-sm text-slate-custom">
-          Выберите сохранённый шаблон воронки — текущие этапы будут заменены.
-        </p>
-        <div v-if="loadingTemplates" class="text-sm text-slate-custom">
-          Загрузка шаблонов…
-        </div>
-        <div v-else>
-          <label class="text-sm font-medium text-space mb-2 block">
-            Шаблон воронки
-          </label>
-          <select
-            v-model="selectedTemplateId"
-            class="w-full border border-athens rounded-ten bg-athens-gray text-space text-sm px-3 py-2.5 outline-none focus:ring-1 focus:ring-dodger"
-          >
-            <option :value="null">
-              Выберите шаблон
-            </option>
-            <option
-              v-for="t in templatesList"
-              :key="t.id"
-              :value="t.id"
-            >
-              {{ t.name }}
-            </option>
-          </select>
-        </div>
-        <div class="flex gap-x-3">
-          <button
-            type="button"
-            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors bg-space hover:bg-space/90 text-white p-semi-btn text-sm rounded-ten leading-normal h-fit font-semibold disabled:opacity-50"
-            :disabled="applyingTemplate || !vacancyId || selectedTemplateId == null"
-            @click="submitApplyTemplate"
-          >
-            {{ applyingTemplate ? 'Применение…' : 'Применить' }}
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-colors bg-athens-gray border border-athens text-slate-custom p-border-semi-btn text-sm rounded-ten leading-normal font-medium"
-            @click="closeLoadTemplatePopup"
-          >
-            Отмена
-          </button>
-        </div>
-        </template>
-      </div>
-    </Popup>
-  </transition>
   <transition name="fade" @after-leave="enableBodyScroll('time-limit')">
     <Popup
       :isOpen="openTimeLimitPopup"
@@ -1228,7 +1090,7 @@
       :contentRounded="false"
       :contentPadding="false"
     >
-      <div class="flex flex-col gap-y-6 pl-[15px]">
+      <div class="popup-delete-content flex flex-col gap-y-6">
         <h2 class="text-xl font-semibold text-space">
           Время на этапе
         </h2>

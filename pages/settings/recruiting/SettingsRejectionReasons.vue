@@ -1,11 +1,9 @@
 <script setup lang="ts">
   import { ref, onMounted } from 'vue';
   import MyInput from '~/components/custom/MyInput.vue';
-  import MyToggleSwitch from '~/components/custom/MyToggleSwitch.vue';
   import Popup from '~/components/custom/Popup.vue';
   import {
     getRejectionReasons,
-    patchRejectionReasonsSettings,
     createRejectionReason,
     updateRejectionReason,
     deleteRejectionReason,
@@ -21,8 +19,6 @@
   });
 
   const loading = ref(true);
-  const savingToggle = ref(false);
-  const useReasons = ref(false);
   const reasons = ref<RejectionReasonRow[]>([]);
 
   const message = ref<string | null>(null);
@@ -43,32 +39,12 @@
     try {
       const res = await getRejectionReasons();
       const payload = res.data;
-      useReasons.value = payload?.use_rejection_reasons ?? false;
       reasons.value = Array.isArray(payload?.reasons) ? [...payload.reasons] : [];
     } catch (e: unknown) {
       error.value = 'Не удалось загрузить причины отказа';
       console.error(e);
     } finally {
       loading.value = false;
-    }
-  }
-
-  async function onToggleUse(next: boolean) {
-    const previous = useReasons.value;
-    useReasons.value = next;
-    savingToggle.value = true;
-    message.value = null;
-    error.value = null;
-    try {
-      await patchRejectionReasonsSettings({
-        use_rejection_reasons: useReasons.value,
-      });
-    } catch (e: unknown) {
-      error.value = 'Не удалось сохранить настройку';
-      console.error(e);
-      useReasons.value = previous;
-    } finally {
-      savingToggle.value = false;
     }
   }
 
@@ -145,8 +121,8 @@
     <div class="mb-15px rounded-fifteen bg-white p-25px">
       <p class="mb-2.5 text-xl font-semibold text-space">Причины отказа</p>
       <p class="text-sm font-normal leading-150 text-bali">
-        Справочник причин, по которым кандидат может быть отклонён. При отказе рекрутер выбирает
-        причину из списка — если включено использование причин и в списке есть хотя бы одна запись.
+        Справочник причин, по которым кандидат может быть отклонён. При переводе на этап «Отказ»
+        рекрутер выбирает причину из этого списка (если в воронке вакансии включены причины отказа).
       </p>
     </div>
 
@@ -165,20 +141,8 @@
       </div>
 
       <div
-        class="mb-25px flex flex-wrap items-center justify-between gap-4 border-b border-athens pb-25px"
+        class="mb-25px flex flex-wrap items-center justify-end gap-4 border-b border-athens pb-25px"
       >
-        <div class="flex max-w-full flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-          <MyToggleSwitch
-            id="use-rejection-reasons"
-            :model-value="useReasons"
-            label="Использовать причины отказа"
-            label-color="space"
-            font-weight="medium"
-            :disabled="savingToggle || loading"
-            @update:model-value="(v: boolean) => onToggleUse(v)"
-          />
-          <span v-if="savingToggle" class="text-sm text-bali">Сохранение…</span>
-        </div>
         <button
           type="button"
           class="rounded-ten bg-dodger px-20px py-10px text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
@@ -204,84 +168,72 @@
           <li
             v-for="row in reasons"
             :key="row.id"
-            class="group relative flex w-full flex-col gap-2 overflow-hidden py-15px first:pt-0 md:min-h-[56px] md:flex-row md:items-stretch md:gap-0"
+            class="flex min-h-[52px] items-center justify-between gap-4 py-15px"
           >
             <span
-              class="min-w-0 flex-1 self-center pr-2 text-base font-medium leading-150 text-space md:pr-4"
+              class="min-w-0 flex-1 text-base font-medium leading-150 text-space"
             >{{ row.name }}</span>
-            <!-- Как в ленте событий (CandidateLog): на md+ панель выезжает справа при наведении -->
-            <div
-              class="flex shrink-0 items-center justify-end gap-1.5 md:absolute md:right-0 md:top-0 md:h-full md:translate-x-full md:transition-transform md:duration-200 md:ease-out md:group-hover:translate-x-0 md:group-focus-within:translate-x-0"
-            >
-              <div
-                class="hidden w-3 shrink-0 rounded-l-lg bg-white md:block"
-                aria-hidden="true"
-              />
-              <div class="hidden w-px shrink-0 bg-[#f4f6f8] md:block" aria-hidden="true" />
-              <div
-                class="flex shrink-0 items-center gap-1.5 rounded-r-lg bg-white px-2 py-1.5 md:h-full md:items-center"
+            <div class="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                class="group/btn flex items-center gap-0.5 rounded text-sm font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
+                title="Удалить"
+                @click="confirmDelete(row)"
               >
-                <button
-                  type="button"
-                  class="group/btn flex items-center gap-0.5 rounded text-sm font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
-                  title="Удалить"
-                  @click="confirmDelete(row)"
+                <span
+                  class="flex h-6 w-6 items-center justify-center text-red-500 transition-colors group-hover/btn:text-red-600"
                 >
-                  <span
-                    class="flex h-6 w-6 items-center justify-center text-red-500 transition-colors group-hover/btn:text-red-600"
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"
-                      />
-                      <line x1="10" y1="11" x2="10" y2="17" />
-                      <line x1="14" y1="11" x2="14" y2="17" />
-                    </svg>
-                  </span>
-                  <span
-                    class="text-sm font-normal leading-150 text-[#92989B] transition-colors group-hover/btn:text-dodger"
-                  >Удалить</span>
-                </button>
-                <button
-                  type="button"
-                  class="group/btn flex items-center gap-0.5 rounded text-sm font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
-                  title="Изменить"
-                  @click="openEdit(row)"
+                    <path
+                      d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"
+                    />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                  </svg>
+                </span>
+                <span
+                  class="text-sm font-normal leading-150 text-[#92989B] transition-colors group-hover/btn:text-dodger"
+                >Удалить</span>
+              </button>
+              <button
+                type="button"
+                class="group/btn flex items-center gap-0.5 rounded text-sm font-normal leading-150 text-[#92989B] transition-colors hover:text-dodger"
+                title="Изменить"
+                @click="openEdit(row)"
+              >
+                <span
+                  class="flex h-6 w-6 items-center justify-center text-dodger transition-colors group-hover/btn:text-dodger"
                 >
-                  <span
-                    class="flex h-6 w-6 items-center justify-center text-dodger transition-colors group-hover/btn:text-dodger"
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                    </svg>
-                  </span>
-                  <span
-                    class="text-sm font-normal leading-150 text-[#92989B] transition-colors group-hover/btn:text-dodger"
-                  >Изменить</span>
-                </button>
-              </div>
+                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  </svg>
+                </span>
+                <span
+                  class="text-sm font-normal leading-150 text-[#92989B] transition-colors group-hover/btn:text-dodger"
+                >Изменить</span>
+              </button>
             </div>
           </li>
         </ul>
@@ -296,18 +248,18 @@
       :parent-rounded="true"
       :content-rounded="false"
       :content-padding="false"
-      :no-scrollbar-gutter="true"
       @close="closeEdit"
     >
-      <div class="popup-delete-content flex flex-col gap-y-6">
+      <div class="flex min-w-0 flex-col gap-y-6">
         <h2 class="text-xl font-semibold text-space">
           {{ editingId == null ? 'Новая причина отказа' : 'Редактирование' }}
         </h2>
-        <div>
+        <div class="min-w-0">
           <p class="mb-2 text-sm font-medium text-space">Название</p>
           <MyInput
             v-model="formName"
             placeholder="Например: Не подходит по опыту"
+            class="w-full min-w-0"
             @keydown.enter.prevent="saveForm"
           />
         </div>
@@ -339,10 +291,9 @@
       :parent-rounded="true"
       :content-rounded="false"
       :content-padding="false"
-      :no-scrollbar-gutter="true"
       @close="deletePopupOpen = false"
     >
-      <div class="popup-delete-content flex flex-col gap-y-6">
+      <div class="flex min-w-0 flex-col gap-y-6">
         <h2 class="text-xl font-semibold text-space">Удалить причину?</h2>
         <p class="text-sm text-slate-custom">
           «{{ deletingRow?.name }}» будет удалена из справочника. Для уже отклонённых кандидатов

@@ -31,6 +31,8 @@ export interface Vacancy {
   executor_phone?: string;
   status?: string;
   show_executor?: boolean;
+  /** Запрашивать причину отказа при переводе на этап «Отказ» */
+  use_rejection_reasons?: boolean;
   phrases?: Phrase;
   conditions?: Option[];
   drivers?: Option[];
