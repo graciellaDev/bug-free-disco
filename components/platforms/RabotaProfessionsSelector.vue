@@ -30,7 +30,7 @@
       :open="isModalOpen"
       :selected="selectedList"
       :max-selection="maxSelection"
-      @update:open="isModalOpen = $event"
+      @update:open="setModalOpen"
       @save="onModalSave"
     />
   </div>
@@ -69,6 +69,10 @@ const displayLabel = computed(() => {
   if (names.length <= 2) return names.join(', ')
   return `${names.slice(0, 2).join(', ')} и ещё ${names.length - 2}`
 })
+
+const setModalOpen = (value) => {
+  isModalOpen.value = !!value
+}
 
 const openModal = () => {
   isModalOpen.value = true
