@@ -2,7 +2,7 @@ import { joinURL } from 'ufo'
 
 /**
  * Catch-all API proxy: перенаправляет запросы к Laravel бэкенду.
- * Не перехватывает /api/hh/* и /api/candidates/* — они обрабатываются Nuxt.
+ * Не перехватывает /api/hh/*, /api/candidates/* и /api/dadata/* — они обрабатываются Nuxt.
  */
 export default defineEventHandler(async (event) => {
   const path = getRouterParam(event, 'path')
