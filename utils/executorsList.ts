@@ -201,32 +201,23 @@ export async function  getDepartments(divisions: boolean = false) {
         throw new Error('Данные исполнителей не найдены или имеют неверный формат');
     }
 
+    const normalized = response.data.map((item: any) => ({
+      id: Number(item?.id),
+      name: String(item?.name ?? '').trim(),
+      role: String(item?.name ?? '').trim(),
+    }))
+    .filter((item: any) => Number.isFinite(item.id) && item.id > 0 && item.name.length > 0);
+
+    const uniqueById = Array.from(
+      new Map(normalized.map((item: any) => [item.id, item])).values()
+    );
+
+    // divisions=true оставлен только для обратной совместимости по сигнатуре.
     if (divisions) {
-        return response.data;
-    }
-    const departments: Array<any> = [];
-    if (response.data.length > 0) {
-      response.data.forEach((item: any) => {
-        const divisions = item?.divisions ?? []
-        if (divisions.length > 0) {
-          divisions.forEach((division: any) => {
-            departments.push({
-              id: division.id,
-              name: division.division ?? division.name ?? '',
-              role: item.name
-            })
-          })
-        } else {
-          departments.push({
-            id: item.id,
-            name: item.name ?? '',
-            role: item.name ?? ''
-          })
-        }
-      })
+      return uniqueById;
     }
 
-    return departments;
+    return uniqueById;
 };
 
 export async function createDepartment(name: string) {
@@ -249,6 +240,50 @@ export async function createDepartment(name: string) {
             body: bodyData,
         }
     );
+    return response;
+}
+
+export async function updateDepartment(id: number, name: string) {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+
+    const bodyData = new FormData();
+    bodyData.append('name', name);
+    bodyData.append('_method', 'PUT');
+
+    const response = await $fetch<{ success?: boolean; message?: string; department?: { id: number; name: string } }>(
+        `${config.public.apiBase}/departments/${id}`,
+        {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${authToken}`,
+                'X-Auth-User': `${authUser}`,
+            },
+            body: bodyData,
+        }
+    );
+    return response;
+}
+
+export async function deleteDepartment(id: number) {
+    const config = useRuntimeConfig();
+    const authToken = useCookie('auth_token').value;
+    const authUser = useCookie('auth_user').value;
+
+    const response = await $fetch<{ success?: boolean; message?: string }>(
+        `${config.public.apiBase}/departments/${id}`,
+        {
+            method: 'DELETE',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${authToken}`,
+                'X-Auth-User': `${authUser}`,
+            },
+        }
+    );
+
     return response;
 }
 

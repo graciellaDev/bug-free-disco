@@ -1,16 +1,48 @@
 <!-- components/SettingsNavigation.vue -->
 <template>
   <nav class="max-w-[275px] p-25px bg-white rounded-fifteen w-full h-fit">
-    <!-- Пользователи -->
+    <!-- Мой аккаунт -->
     <div class="nav-group">
-      <h3 class="text-sm font-medium text-space mb-2.5">Пользователи</h3>
+      <h3 class="text-sm font-medium text-space mb-2.5">Мой аккаунт</h3>
       <ul>
+        <li :class="{ active: isActive('/settings/personal/SettingsProfile') }">
+          <NuxtLink to="/settings/personal/SettingsProfile">Профиль</NuxtLink>
+        </li>
+        <li :class="{
+          active: isActive('/settings/personal/SettingsNotifications'),
+        }">
+          <NuxtLink to="/settings/personal/SettingsNotifications" class="block">
+            Уведомления
+          </NuxtLink>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Компания -->
+    <div class="nav-group">
+      <h3 class="text-sm font-medium text-space mb-2.5">Компания</h3>
+      <ul>
+        <li :class="{ active: isActive('/settings/company/SettingsCompany') }">
+          <NuxtLink to="/settings/company/SettingsCompany">
+            Профиль компании
+          </NuxtLink>
+        </li>
         <li :class="{ active: isActive('/settings/users/SettingsEmployees') }">
           <NuxtLink to="/settings/users/SettingsEmployees">Сотрудники</NuxtLink>
         </li>
         <li :class="{ active: isActive('/settings/users/SettingsDepartments') }">
           <NuxtLink to="/settings/users/SettingsDepartments">
-            Отделы и роли
+            Справочники
+          </NuxtLink>
+        </li>
+        <li :class="{ active: isActive('/settings/company/SettingsPayment') }">
+          <NuxtLink to="/settings/company/SettingsPayment">
+            Платежная информация
+          </NuxtLink>
+        </li>
+        <li :class="{ active: isActive('/settings/company/SettingsTariff') }">
+          <NuxtLink to="/settings/company/SettingsTariff">
+            Тарифный план
           </NuxtLink>
         </li>
       </ul>
@@ -33,37 +65,6 @@
         <li :class="{ active: isActive('/settings/recruiting/settingsfunnel') }">
           <NuxtLink to="/settings/recruiting/settingsfunnel">
             Шаблоны воронок
-          </NuxtLink>
-        </li>
-        <li
-          :class="{
-            active: isActive('/settings/recruiting/SettingsRejectionReasons'),
-          }"
-        >
-          <NuxtLink to="/settings/recruiting/SettingsRejectionReasons">
-            Причины отказа
-          </NuxtLink>
-        </li>
-      </ul>
-    </div>
-
-    <!-- Компания -->
-    <div class="nav-group">
-      <h3 class="text-sm font-medium text-space mb-2.5">Компания</h3>
-      <ul>
-        <li :class="{ active: isActive('/settings/company/SettingsCompany') }">
-          <NuxtLink to="/settings/company/SettingsCompany">
-            Профиль компании
-          </NuxtLink>
-        </li>
-        <li :class="{ active: isActive('/settings/company/SettingsPayment') }">
-          <NuxtLink to="/settings/company/SettingsPayment">
-            Платежная информация
-          </NuxtLink>
-        </li>
-        <li :class="{ active: isActive('/settings/company/SettingsTariff') }">
-          <NuxtLink to="/settings/company/SettingsTariff">
-            Тарифный план
           </NuxtLink>
         </li>
       </ul>
@@ -90,22 +91,6 @@
       </ul>
     </div>
 
-    <!-- Личное -->
-    <div class="nav-group">
-      <h3 class="text-sm font-medium text-space mb-2.5">Личное</h3>
-      <ul>
-        <li :class="{ active: isActive('/settings/personal/SettingsProfile') }">
-          <NuxtLink to="/settings/personal/SettingsProfile">Профиль</NuxtLink>
-        </li>
-        <li :class="{
-          active: isActive('/settings/personal/SettingsNotifications'),
-        }">
-          <NuxtLink to="/settings/personal/SettingsNotifications" class="block">
-            Уведомления
-          </NuxtLink>
-        </li>
-      </ul>
-    </div>
   </nav>
 </template>
 

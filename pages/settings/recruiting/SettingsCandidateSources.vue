@@ -7,7 +7,7 @@ useHead({
   title: 'Настройки — Справочники',
 })
 
-await navigateTo('/settings/users/SettingsDepartments')
+await navigateTo('/settings/users/SettingsDepartments?tab=candidateSources')
 </script>
 
 <template>
@@ -15,3 +15,4 @@ await navigateTo('/settings/users/SettingsDepartments')
     <p class="text-sm text-bali">Перенаправление в раздел «Справочники»…</p>
   </div>
 </template>
+

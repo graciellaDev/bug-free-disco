@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPut } from './client';
+import { apiGet, apiPatch, apiPost, apiPut } from './client';
 
 export type NotificationChannelKey =
   | 'email'
@@ -73,6 +73,48 @@ export async function putNotificationSettings(
   return await apiPut<NotificationSettingsGetResponse, NotificationSettings>(
     '/notification-settings',
     payload,
+    { skipLoader: true, signal: opts?.signal }
+  );
+}
+
+export type PushPublicKeyResponse = {
+  public_key: string;
+};
+
+export type PushSubscriptionPayload = {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+};
+
+export async function getPushPublicKey(opts?: { signal?: AbortSignal }) {
+  return await apiGet<PushPublicKeyResponse>(
+    '/push/public-key',
+    undefined,
+    { skipLoader: true, signal: opts?.signal }
+  );
+}
+
+export async function subscribePush(
+  subscription: PushSubscriptionPayload,
+  opts?: { signal?: AbortSignal }
+) {
+  return await apiPost<{ id: number; enabled: boolean }, { subscription: PushSubscriptionPayload }>(
+    '/push/subscribe',
+    { subscription },
+    { skipLoader: true, signal: opts?.signal }
+  );
+}
+
+export async function unsubscribePush(
+  endpoint?: string,
+  opts?: { signal?: AbortSignal }
+) {
+  return await apiPost<{ message?: string }, { endpoint?: string }>(
+    '/push/unsubscribe',
+    endpoint ? { endpoint } : {},
     { skipLoader: true, signal: opts?.signal }
   );
 }
