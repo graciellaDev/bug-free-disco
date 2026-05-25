@@ -1338,7 +1338,6 @@ import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
 import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
-import { getRabotaVacancyExportMap } from '@/utils/getVacancies'
 import {
   flattenSelectableProfessions,
   findProfessionByNameLoose,
@@ -1892,70 +1891,7 @@ function applyRabotaExperienceFromVacancy(vacancy) {
       name: match.name ?? match.title,
       value: match.value ?? match.id,
     }
-    return
-  // Регион/город размещения + город размещения (если в размещения нет отдельного адреса — используем регион)
-//   const regionId = pub.region_id ?? pub.regionId ?? pub.region?.id ?? pub.area?.id ?? pub.address?.region_id
-//   const regionName = pub.region?.name ?? pub.region?.title ?? pub.area?.name
-//   if (regionId != null) {
-//     const match = findValueByIdOrName(rabotaRegions.value, regionId)
-//     const name = match?.name ?? match?.title ?? regionName
-//     data.value.area = { id: regionId, name }
-//     // address в форме — это тоже CityAutocomplete; для rabota.ru часто совпадает с городом размещения
-//     const showMetroOnly = data.value.address?.show_metro_only ?? false
-//     data.value.address = { id: regionId, name, show_metro_only: showMetroOnly }
   }
-}
-
-async function applyJoblyVacancyToRabotaForm(vacancy) {
-  if (!vacancy || currentPlatform.value !== 'rabota') return
-
-  applyRabotaVacancyNameToForm(vacancy)
-  applyRabotaSalaryFromVacancy(vacancy)
-
-  // Город публикации/размещения: vacancy.location (строка) -> rabotaRegions
-  const loc = vacancy.location ?? vacancy.city ?? vacancy.area?.name
-  if (typeof loc === 'string' && loc.trim()) {
-    const match = findByNameLoose(rabotaRegions.value, loc)
-    if (match) {
-      const id = match.id ?? match.region_id
-      const name = match.name ?? match.title
-      if (id != null) {
-        data.value.area = { id, name }
-        const showMetroOnly = data.value.address?.show_metro_only ?? false
-        data.value.address = { id, name, show_metro_only: showMetroOnly }
-      }
-    }
-  }
-
-  // Тип занятости: vacancy.employment (Jobly) → rabota.ru по правилам маппинга
-  if (vacancy.employment) {
-    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
-  }
-
-  // График: vacancy.schedule (Jobly) → rabota.ru по правилам маппинга
-  if (vacancy.schedule) {
-    applyRabotaScheduleFromVacancySchedule(vacancy.schedule)
-  }
-
-  applyRabotaExperienceFromVacancy(vacancy)
-
-  // Образование: vacancy.education (строка) -> справочник educations
-  if (vacancy.education) {
-    const match = findByNameLoose(rabotaEducationLevels.value, vacancy.education)
-    if (match) {
-      data.value.education_level = {
-        id: match.id ?? match.education_id,
-        name: match.name ?? match.title ?? '',
-      }
-    }
-  }
-
-  // Формат работы: vacancy.place (Jobly) → справочник working-hours rabota.ru
-  if (vacancy.place != null && vacancy.place !== '') {
-    applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
-  }
-
-  await applyRabotaProfessionalSphereFields(vacancy)
 }
 
 async function applyRabotaActivePublicationToForm() {
@@ -3009,46 +2945,6 @@ const avitoActivePublicationApplied = ref(false)
 /** Live-снимок при лёгком редактировании: каталоги подгружаются позже в loadDictionaries — профессию применяем там. */
 const avitoLightEditLivePublication = ref(null)
 
-const validFields = ref({
-  name: {
-    status: true,
-    name: 'Название вакансии',
-  },
-  description: {
-    status: true,
-    name: 'Описание вакансии',
-    error: null,
-  },
-  professional_roles: {
-    status: true,
-    name: 'Профессиональные роли',
-  },
-  experience: {
-    status: true,
-    name: 'Опыт работы',
-  },
-  employment_form: {
-    status: true,
-    name: 'Форма найма',
-  },
-  work_schedule_by_days: {
-    status: true,
-    name: 'График работы',
-  },
-  area: {
-    status: true,
-    name: 'Город размещения',
-  },
-  address: {
-    status: true,
-    name: 'Город размещения',
-  },
-  working_hours: {
-    status: true,
-    name: 'Рабочие часы в день',
-  },
-});
-
 const mappingFieldsHH = {
   'experience': { 'field': 'experience', 'values': experience },
   'employment_form': { 'field': 'employment', 'values': HH_EMPLOYMENT_TYPES },
@@ -3534,7 +3430,7 @@ const avitoBusinessAreaCatalogForSelector = computed(() => {
     name: 'Сферы деятельности компании',
     roles: Array.isArray(currectRole.value) ? currectRole.value : [],
   }]
-}) master
+})
 
 const professionsOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaProfessions.value.length > 0) {
@@ -3954,11 +3850,16 @@ function onHhWorkAddressUpdate(addr) {
 }
 
 const workSchedulesOptions = computed(() => {
-  if (currentPlatform.value === 'rabota' && rabotaWorkSchedules.value.length > 0) {
-    return rabotaWorkSchedules.value.map(schedule => ({
-      id: schedule.id || schedule.work_schedule_id,
-      name: schedule.name || schedule.title
-    }))
+  if (currentPlatform.value === 'rabota') {
+    if (rabotaScheduleDropdownOptions.value.length > 0) {
+      return rabotaScheduleDropdownOptions.value
+    }
+    if (rabotaWorkSchedules.value.length > 0) {
+      return rabotaWorkSchedules.value.map(schedule => ({
+        id: schedule.id || schedule.work_schedule_id,
+        name: schedule.name || schedule.title
+      }))
+    }
   }
   if (currentPlatform.value === 'avito' && Array.isArray(avitoCatalogs.value?.schedules) && avitoCatalogs.value.schedules.length > 0) {
     return avitoCatalogs.value.schedules.map((schedule) => ({
@@ -4768,13 +4669,6 @@ async function applyAvitoMappedSalaryPeriodFromJobly() {
   data.value.salary_range.mode = { id: opt.id, name: opt.name }
 }
 
-const workSchedulesOptions = computed(() => {
-  if (currentPlatform.value === 'rabota' && rabotaScheduleDropdownOptions.value.length > 0) {
-    return rabotaScheduleDropdownOptions.value
-  }
-  return HH_WORK_SCHEDULE_BY_DAYS
-})
-
 async function ensureAvitoPayoutFrequencyMappingsLoaded() {
   const existing = unwrapAvitoMappingsPayload(avitoPayoutFrequencyMappings.value)
   if (Object.keys(existing).length > 0) return
@@ -4905,15 +4799,6 @@ function applyRabotaWorkFormatFromVacancyPlace(placeVal) {
   }
 }
 
-// Опции опыта работы для Avito
-const AVITO_EXPERIENCE_OPTIONS = [
-  { id: 'noMatter', name: 'Неважно' },
-  { id: 'moreThan1', name: 'Более 1 года' },
-  { id: 'moreThan3', name: 'Более 3 лет' },
-  { id: 'moreThan5', name: 'Более 5 лет' },
-  { id: 'moreThan10', name: 'Более 10 лет' },
-]
-
 function resolveJoblyPayoutFrequencyIdForAvitoPrefill() {
   const preferJobly = shouldPreferJoblyVacancyTitleForAvito()
   return resolveJoblyPayoutFrequencyIdWithPriority({
@@ -4922,7 +4807,7 @@ function resolveJoblyPayoutFrequencyIdForAvitoPrefill() {
     form: data.value,
     preferInjectedOnly: preferJobly,
   })
-} master
+}
 
 async function applyAvitoMappedPayoutFrequencyFromJobly() {
   if (currentPlatform.value !== 'avito') return
@@ -4990,16 +4875,6 @@ function ensureAvitoSalaryDefaults() {
     if (opt) data.value.salary_range.frequency = { id: opt.id, name: opt.name }
   }
 }
-  
-const educationOptions = computed(() => {
-  if (currentPlatform.value === 'rabota' && rabotaEducationLevels.value.length > 0) {
-    return rabotaEducationLevels.value.map((edu) => ({
-      id: edu.id ?? edu.education_id,
-      name: edu.name ?? edu.title ?? '',
-    }))
-  }
-  return HH_EDUCATION_LAVEL
-})
 
 function applyAvitoWorkPlaceFromPublication(pub) {
   const params = typeof pub?.params === 'object' && pub.params != null ? pub.params : null
@@ -6362,11 +6237,14 @@ watch(
     } finally {
       joblyVacancyPrefillApplied.value = true
     }
+  },
+)
 
+watch(
   () => {
     if (currentPlatform.value !== 'avito' && normalizePlatformName(props.selectedPlatform) !== 'avito') {
       return ''
-   }
+    }
     const v = vacancyCurrectLive.value
     if (!v) return ''
     return [
