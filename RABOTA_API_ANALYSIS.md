@@ -147,7 +147,7 @@ X-Auth-User: {userToken}
 | `name` | `title` | string |
 | `description` | `description` | string |
 | `professional_roles[0].id` | `profession_id` | integer |
-| `areas[0].id` | `region_id` | integer |
+| `area.id` или `areas[0].id` | `region_id` / `regions[]` | integer |
 | `employment_form.id` | `employment_type_id` | integer |
 | `work_schedule_by_days.id` | `work_schedule_id` | integer |
 | `experience.id` | `experience_id` | integer |

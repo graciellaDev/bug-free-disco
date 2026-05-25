@@ -53,6 +53,110 @@ export const getRabotaProfile = async () => {
   }
 };
 
+export type RabotaProfileContactDefaults = {
+  name: string
+  email: string
+  phone: string
+}
+
+/** Распаковка объекта профиля из ответа GET /rabota/profile. */
+export function unwrapRabotaProfileRecord(profilePayload: unknown): Record<string, unknown> | null {
+  if (profilePayload == null || typeof profilePayload !== 'object') return null
+
+  const root = profilePayload as Record<string, unknown>
+  if (
+    root.first_name != null ||
+    root.last_name != null ||
+    root.firstName != null ||
+    root.lastName != null ||
+    root.email != null ||
+    root.phone != null
+  ) {
+    return root
+  }
+
+  if (root.data != null && typeof root.data === 'object') {
+    const inner = root.data as Record<string, unknown>
+    if (inner.data != null && typeof inner.data === 'object') {
+      return inner.data as Record<string, unknown>
+    }
+    return inner
+  }
+
+  return null
+}
+
+/** Нормализация телефона профиля в формат +7XXXXXXXXXX (как в PhoneInput). */
+export function normalizeRabotaProfilePhone(raw: unknown): string {
+  if (raw == null || raw === '') return ''
+
+  if (Array.isArray(raw)) {
+    return normalizeRabotaProfilePhone(raw[0])
+  }
+
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    return normalizeRabotaProfilePhone(
+      o.number_international ??
+        o.formatted ??
+        o.number ??
+        o.phone ??
+        o.value ??
+        o.mobile,
+    )
+  }
+
+  const digits = String(raw).replace(/\D/g, '')
+  if (!digits) return ''
+
+  let normalized = digits
+  if (normalized.length === 10) normalized = `7${normalized}`
+  if (normalized.length === 11 && normalized.startsWith('8')) {
+    normalized = `7${normalized.slice(1)}`
+  }
+  if (normalized.length >= 11 && normalized.startsWith('7')) {
+    return `+${normalized.slice(0, 11)}`
+  }
+
+  return normalized.length >= 10 ? `+${normalized}` : ''
+}
+
+/** Контакты по умолчанию из GET /rabota/profile. */
+export function extractRabotaProfileContactDefaults(
+  profilePayload: unknown,
+): RabotaProfileContactDefaults {
+  const person = unwrapRabotaProfileRecord(profilePayload)
+  if (!person) return { name: '', email: '', phone: '' }
+
+  const first = String(person.first_name ?? person.firstName ?? '').trim()
+  const last = String(person.last_name ?? person.lastName ?? '').trim()
+  const name = [first, last].filter(Boolean).join(' ')
+
+  const email = String(
+    person.email ??
+      person.mail ??
+      person.contact_email ??
+      person.user_email ??
+      '',
+  ).trim()
+
+  const phoneRaw =
+    person.phone ??
+    person.mobile ??
+    person.phone_number ??
+    person.contact_phone ??
+    (Array.isArray(person.phones) ? person.phones[0] : null)
+
+  const phone = normalizeRabotaProfilePhone(phoneRaw)
+
+  return { name, email, phone }
+}
+
+/** Имя контактного лица из ответа GET /rabota/profile (first_name + last_name). */
+export function formatRabotaProfileContactName(profilePayload: unknown): string {
+  return extractRabotaProfileContactDefaults(profilePayload).name
+}
+
 /**
  * Авторизация на Rabota.ru
  * @returns Результат авторизации
@@ -1063,6 +1167,23 @@ const toPositiveInt = (value: unknown): number | null => {
   return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null
 }
 
+/** ID региона размещения: в форме rabota.ru — `area`, для HH — часто `areas[0]`. */
+export function resolveRabotaRegionIdFromFormData(data: DraftDataHh): number | null {
+  const raw = data as Record<string, unknown>
+  const area = raw.area
+  if (area != null && typeof area === 'object' && !Array.isArray(area)) {
+    const fromArea = toPositiveInt((area as { id?: unknown }).id)
+    if (fromArea != null) return fromArea
+  }
+
+  const areas = data.areas
+  if (Array.isArray(areas) && areas.length > 0 && areas[0]?.id != null) {
+    return toPositiveInt(areas[0].id)
+  }
+
+  return null
+}
+
 const buildRabotaContactPerson = (data: DraftDataHh): Record<string, unknown> => {
   const raw = data as Record<string, unknown>
   const contacts =
@@ -1086,6 +1207,7 @@ const buildRabotaContactPerson = (data: DraftDataHh): Record<string, unknown> =>
 
   const name =
     (typeof contacts?.name === 'string' && contacts.name.trim()) ||
+    (typeof raw.executor_name === 'string' && raw.executor_name.trim()) ||
     (typeof person?.name === 'string' && person.name.trim()) ||
     (typeof platformData?.name === 'string' && platformData.name.trim()) ||
     ''
@@ -1115,6 +1237,13 @@ const buildRabotaContactPerson = (data: DraftDataHh): Record<string, unknown> =>
       .filter(Boolean)
     if (phones.length > 0) {
       contact.phones = phones
+      contact.has_phone = true
+    }
+  } else {
+    const executorPhone =
+      typeof raw.executor_phone === 'string' ? raw.executor_phone.trim() : ''
+    if (executorPhone) {
+      contact.phones = [{ number_international: executorPhone }]
       contact.has_phone = true
     }
   }
@@ -1171,9 +1300,9 @@ const mapDataToRabotaFormat = (data: DraftDataHh): RabotaVacancyCreateBody => {
     })
   }
 
-  const regionId = data.areas?.[0]?.id
-  const parsedRegionId = toPositiveInt(regionId)
+  const parsedRegionId = resolveRabotaRegionIdFromFormData(data)
   if (parsedRegionId != null) {
+    vacancy.region_id = parsedRegionId
     vacancy.regions = [{ id: parsedRegionId }]
   }
 
@@ -1262,35 +1391,6 @@ const mapDataToRabotaFormat = (data: DraftDataHh): RabotaVacancyCreateBody => {
       .filter(Boolean)
     if (applicantCategories.length > 0) {
       vacancy.applicant_categories = applicantCategories
-    }
-  }
-
-  if (
-    data.driver_license_types &&
-    Array.isArray(data.driver_license_types) &&
-    data.driver_license_types.length > 0
-  ) {
-    const driverClasses = data.driver_license_types
-      .map((license: unknown) => {
-        if (license == null) return null
-        if (typeof license === 'object' && 'id' in (license as object)) {
-          const lic = license as { id?: unknown; name?: string }
-          const numId = toPositiveInt(lic.id)
-          if (
-            numId != null &&
-            (typeof lic.id === 'number' || /^\d+$/.test(String(lic.id ?? '')))
-          ) {
-            return { id: numId }
-          }
-          const name = String(lic.id ?? lic.name ?? '').trim()
-          return name ? { name } : null
-        }
-        const name = String(license).trim()
-        return name ? { name } : null
-      })
-      .filter(Boolean)
-    if (driverClasses.length > 0) {
-      vacancy.driver_license_classes = driverClasses
     }
   }
 
