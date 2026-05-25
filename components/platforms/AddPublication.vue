@@ -904,7 +904,7 @@
                 Добавьте хотя бы один навык
               </p>
             </div>
-            <div class="w-full">
+            <div v-if="currentPlatform !== 'rabota'" class="w-full">
               <p class="text-sm font-medium text-space mb-13px">
                 Водительские права
               </p>
@@ -970,7 +970,11 @@
               <p class="text-sm font-medium mb-4 leading-normal text-space">
                 Контактное лицо
               </p>
-              <MyInput placeholder="Ответственный" type="String" />
+              <MyInput
+                placeholder="Ответственный"
+                type="String"
+                v-model="data.executor_name"
+              />
             </div>
             <div class="w-full"></div>
           </div>
@@ -979,14 +983,16 @@
               <p class="text-sm font-medium mb-4 leading-normal text-space">
                 Номер телефона
               </p>
-              <PhoneInput :model-value="null" />
+              <PhoneInput v-model="data.executor_phone" />
             </div>
             <div class="w-full">
               <p class="text-sm font-medium text-space leading-normal mb-4">
                 Email
               </p>
-              <email-input :model-value="data.executor_email"
-                @update:model-value="$event => console.log('update:model-value', $event)" />
+              <email-input
+                :model-value="data.executor_email"
+                @update:model-value="(value) => (data.executor_email = value)"
+              />
             </div>
           </div>
 
@@ -1308,6 +1314,7 @@ import {
 } from '@/utils/avitoAccount'
 import {
   getRabotaProfile as profileRabota,
+  extractRabotaProfileContactDefaults,
   addRabotaDraft as addDraftRabota,
   publishRabotaVacancy as publishVacancyToRabota,
   getRabotaProfessionsHierarchy,
@@ -1351,6 +1358,10 @@ import {
   resolveAvitoExperienceFromJobly,
   resolveJoblyExperienceId,
 } from '@/utils/avitoExperienceMapping';
+import {
+  extractRabotaPublicationExperienceRaw,
+  resolveRabotaExperienceOption,
+} from '@/utils/rabotaExperienceMapping'
 import {
   AVITO_POPUP_EMPLOYMENT_OPTIONS,
   normalizeAvitoEmploymentMappedId,
@@ -1869,34 +1880,98 @@ function applyRabotaExperienceFromVacancy(vacancy) {
   const raw = vacancy.experience
   if (raw == null || raw === '') return
 
-  if (typeof raw === 'object' && raw.id != null) {
-    const match = rabotaExperienceLevels.value.find(
-      (x) => String(x.id ?? x.experience_id) === String(raw.id),
-    )
-    if (match) {
-      data.value.experience = {
-        id: match.id ?? match.experience_id,
-        name: match.name ?? match.title,
-        value: match.value ?? match.id,
-      }
-      return
-    }
+  const hit = resolveRabotaExperienceOption(rabotaExperienceLevels.value, raw)
+  if (hit) {
+    data.value.experience = hit
+  }
+}
+
+function applyRabotaDefaultContactFromProfile(profilePayload) {
+  if (currentPlatform.value !== 'rabota') return
+
+  const defaults = extractRabotaProfileContactDefaults(profilePayload.response)
+  if (!defaults.name && !defaults.email && !defaults.phone) return
+
+  const prevContacts =
+    data.value.contacts && typeof data.value.contacts === 'object' && !Array.isArray(data.value.contacts)
+      ? data.value.contacts
+      : null
+  const contactsBase = prevContacts ? { ...prevContacts } : {}
+
+  const currentName = String(data.value.executor_name ?? '').trim()
+  const contactsName =
+    typeof contactsBase.name === 'string' ? contactsBase.name.trim() : ''
+  if (!currentName && !contactsName && defaults.name) {
+    data.value.executor_name = defaults.name
+    contactsBase.name = defaults.name
   }
 
-  const label = typeof raw === 'string' ? raw : raw.name ?? raw.title ?? ''
-  const match = findByNameLoose(rabotaExperienceLevels.value, label)
-  if (match) {
-    data.value.experience = {
-      id: match.id ?? match.experience_id,
-      name: match.name ?? match.title,
-      value: match.value ?? match.id,
-    }
+  if (!String(data.value.executor_email ?? '').trim() && defaults.email) {
+    data.value.executor_email = defaults.email
+    contactsBase.email = defaults.email
   }
+
+  const currentPhone = String(data.value.executor_phone ?? '').trim()
+  const hasContactsPhones =
+    Array.isArray(contactsBase.phones) && contactsBase.phones.length > 0
+  if (!currentPhone && !hasContactsPhones && defaults.phone) {
+    data.value.executor_phone = defaults.phone
+    contactsBase.phones = [{ number_international: defaults.phone }]
+  }
+
+  if (Object.keys(contactsBase).length > 0) {
+    data.value.contacts = contactsBase
+  }
+}
+
+function applyRabotaDefaultContactFromPlatformState() {
+  if (currentPlatform.value !== 'rabota') return
+  const rabotaKey = platforms.value?.find((p) => p.platform === 'rabota')
+  if (rabotaKey?.data) {
+    applyRabotaDefaultContactFromProfile(rabotaKey.data)
+  }
+}
+
+async function ensureRabotaProfileAndDefaultContact() {
+  if (currentPlatform.value !== 'rabota') return
+
+  const rabotaKey = platforms.value?.find((p) => p.platform === 'rabota')
+  if (rabotaKey?.data) {
+    applyRabotaDefaultContactFromProfile(rabotaKey.data)
+    return
+  }
+
+  try {
+    const profile = await profileRabota()
+    if (!profile?.error && profile?.data) {
+      if (rabotaKey) {
+        rabotaKey.isAuthenticated = true
+        rabotaKey.data = profile.data?.data ?? profile.data
+      }
+      applyRabotaDefaultContactFromProfile(profile.data)
+    }
+  } catch (e) {
+    console.warn('Rabota: не удалось подставить контакты из профиля:', e)
+  }
+}
+
+function applyRabotaExperienceFromPublication(pub) {
+  if (!pub || currentPlatform.value !== 'rabota') return false
+  if (!rabotaExperienceLevels.value.length) return false
+
+  const raw = extractRabotaPublicationExperienceRaw(pub)
+  if (raw == null || raw === '') return false
+
+  const hit = resolveRabotaExperienceOption(rabotaExperienceLevels.value, raw)
+  if (!hit) return false
+
+  data.value.experience = hit
+  return true
 }
 
 async function applyRabotaActivePublicationToForm() {
   if (currentPlatform.value !== 'rabota') return
-  if (rabotaActivePublicationApplied.value && rabotaExperienceLevels.value.length > 0) return
+  if (rabotaActivePublicationApplied.value) return
 
   let vacancy = globCurrentVacancy.value
   if (!vacancy) {
@@ -1906,13 +1981,21 @@ async function applyRabotaActivePublicationToForm() {
       if (vacancy) globCurrentVacancy.value = vacancy
     }
   }
-  if (!vacancy) return
 
-  applyRabotaVacancyNameToForm(vacancy)
-  if (vacancy.description) data.value.description = vacancy.description
+  if (vacancy) {
+    applyRabotaVacancyNameToForm(vacancy)
+    if (vacancy.description) data.value.description = vacancy.description
+    await applyJoblyVacancyToRabotaForm(vacancy)
+  }
 
-  await applyJoblyVacancyToRabotaForm(vacancy)
+  const pub = rabotaActivePublication.value
+  if (pub && typeof pub === 'object') {
+    applyRabotaExperienceFromPublication(pub)
+  }
 
+  if (!vacancy && !pub) return
+
+  applyRabotaDefaultContactFromPlatformState()
   rabotaActivePublicationApplied.value = true
   void nextTick(() => emit('form-ready'))
 }
@@ -2942,6 +3025,8 @@ const avitoCatalogs = ref({})
 /** Снимок объявления с Avito API при редактировании активной размещения (platform_id). */
 const avitoActivePublication = ref(null)
 const avitoActivePublicationApplied = ref(false)
+/** Снимок вакансии rabota.ru при редактировании размещения (platform_id). */
+const rabotaActivePublication = ref(null)
 /** Live-снимок при лёгком редактировании: каталоги подгружаются позже в loadDictionaries — профессию применяем там. */
 const avitoLightEditLivePublication = ref(null)
 
@@ -4896,6 +4981,8 @@ function applyAvitoWorkPlaceFromPublication(pub) {
 const loadDictionaries = async (platform, opts = {}) => {
   if (platform === 'rabota') {
     rabotaActivePublicationApplied.value = false
+    data.value.driver_license_types = []
+    await ensureRabotaProfileAndDefaultContact()
     // Загружаем справочники rabota.ru
     const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult, workCategoriesResult, workingHoursResult] = await Promise.all([
       getRabotaProfessionsHierarchy({ per_page: 50 }),
@@ -4947,6 +5034,10 @@ const loadDictionaries = async (platform, opts = {}) => {
     }
     if (experienceResult?.data) {
       rabotaExperienceLevels.value = Array.isArray(experienceResult.data) ? experienceResult.data : (experienceResult.data.items || [])
+      const vacancyForExp = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
+      if (vacancyForExp) applyRabotaExperienceFromVacancy(vacancyForExp)
+      const pubForExp = rabotaActivePublication.value
+      if (pubForExp) applyRabotaExperienceFromPublication(pubForExp)
     }
     if (educationResult?.data) {
       rabotaEducationLevels.value = Array.isArray(educationResult.data)
@@ -4985,6 +5076,7 @@ const loadDictionaries = async (platform, opts = {}) => {
     }
 
     await applyRabotaActivePublicationToForm()
+    applyRabotaDefaultContactFromPlatformState()
     const vacancyAfterPrefill = resolveCurrentJoblyVacancy()
     if (vacancyAfterPrefill) {
       applyRabotaVacancyNameToForm(vacancyAfterPrefill)
@@ -5275,6 +5367,10 @@ const loadRabotaCatalogsMinimalWithApplyForEdit = async () => {
       rabotaExperienceLevels.value = Array.isArray(experienceResult.data)
         ? experienceResult.data
         : (experienceResult.data.items || [])
+      const vacancyForExp = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
+      if (vacancyForExp) applyRabotaExperienceFromVacancy(vacancyForExp)
+      const pubForExp = rabotaActivePublication.value
+      if (pubForExp) applyRabotaExperienceFromPublication(pubForExp)
     }
     if (educationResult?.data) {
       rabotaEducationLevels.value = Array.isArray(educationResult.data)
@@ -5361,6 +5457,9 @@ async function ensurePlatformAuthForEditingModeDeferred() {
         key.isAuthenticated = true
         key.data = profile.data.data
         isPlatforms.value = true
+        if (currentPlatform.value === 'rabota') {
+          applyRabotaDefaultContactFromProfile(profile.data)
+        }
       }
     } else if (key.platform == 'superjob' || key.platform == 'superjob.ru') {
       key.isAuthenticated = true
@@ -5551,16 +5650,15 @@ async function fillFormFromCurrentVacancy() {
         : [])
     data.value.key_skills = arr
   }
-  // Водительские права: для вакансий с SuperJob наша БД может вернуть driving_licence: ["A", "B", "C"]; иначе — drivers: [{ id: 1 }, ...] (числовые id нашей БД).
-  // В форме опции MultiSelect — HH_DRIVER_LICENSE_TYPES с id "A", "B", "C"… Поэтому при drivers с числовыми id преобразуем в названия через справочник.
-  if (vacancy.driving_licence && Array.isArray(vacancy.driving_licence) && vacancy.driving_licence.length > 0) {
+  // Водительские права: для rabota.ru поле скрыто и не уходит в API.
+  if (currentPlatform.value !== 'rabota' && vacancy.driving_licence && Array.isArray(vacancy.driving_licence) && vacancy.driving_licence.length > 0) {
     const cats = vacancy.driving_licence.map((cat) => {
       const name = typeof cat === 'object' && cat != null ? (cat.title ?? cat.name ?? cat.id ?? '') : String(cat ?? '')
       const id = String(name).trim().toUpperCase()
       return /^[A-E]$/.test(id) ? { id } : null
     }).filter(Boolean)
     data.value.driver_license_types = cats
-  } else if (vacancy.drivers && Array.isArray(vacancy.drivers) && vacancy.drivers.length > 0) {
+  } else if (currentPlatform.value !== 'rabota' && vacancy.drivers && Array.isArray(vacancy.drivers) && vacancy.drivers.length > 0) {
     const hasNumericIds = vacancy.drivers.some((d) => typeof d?.id === 'number' || (typeof d?.id === 'string' && /^\d+$/.test(String(d.id))))
     if (hasNumericIds) {
       const applyDriversMap = (fields) => {
@@ -5982,6 +6080,9 @@ async function loadInitialFormData() {
             if (!snapR?.error && poR != null && typeof poR === 'object' && Object.keys(poR).length > 0) {
               rabotaActivePublication.value = poR
               filledRabota = true
+              if (rabotaExperienceLevels.value.length > 0) {
+                applyRabotaExperienceFromPublication(poR)
+              }
             }
           }
           if (!filledRabota) {
@@ -6000,6 +6101,9 @@ async function loadInitialFormData() {
             } else if (!pubResR?.error && pubResR?.data) {
               rabotaActivePublication.value = pubResR.data
             }
+          }
+          if (rabotaActivePublication.value && rabotaExperienceLevels.value.length > 0) {
+            applyRabotaExperienceFromPublication(rabotaActivePublication.value)
           }
         } catch (e) {
           console.warn('Не удалось загрузить размещение rabota.ru для префилла формы:', e)
@@ -6143,6 +6247,8 @@ async function loadInitialFormData() {
     vacancyIdFields.forEach((field) => {
       if (field === 'experience' && props.editingVacancy?.platforms_data?.[0]?.id === 4) return
       if (field === 'experience' && currentPlatform.value === 'avito') return
+      if (field === 'experience' && currentPlatform.value === 'rabota') return
+      if (field === 'experience' && normalizePlatformName(props.selectedPlatform) === 'rabota') return
       if (field === 'employment_form' && currentPlatform.value === 'avito') return
       const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
       const values = mappingFieldsHH[field].values
@@ -6237,6 +6343,17 @@ watch(
     } finally {
       joblyVacancyPrefillApplied.value = true
     }
+  },
+)
+
+watch(
+  () => rabotaExperienceLevels.value.length,
+  (len) => {
+    if (currentPlatform.value !== 'rabota' || len === 0) return
+    const vacancy = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
+    if (vacancy) applyRabotaExperienceFromVacancy(vacancy)
+    const pub = rabotaActivePublication.value
+    if (pub) applyRabotaExperienceFromPublication(pub)
   },
 )
 
@@ -6784,6 +6901,9 @@ async function ensurePlatformAuthForEditingMode() {
         key.isAuthenticated = true
         key.data = profile.data.data
         isPlatforms.value = true
+        if (currentPlatform.value === 'rabota') {
+          applyRabotaDefaultContactFromProfile(profile.data)
+        }
       }
     } else if (key.platform == 'superjob') {
       key.isAuthenticated = true
@@ -6916,6 +7036,9 @@ if (isEditingMode.value && !props.selectedPlatform) {
             key.isAuthenticated = true
             key.data = profile.data.data
             isPlatforms.value = true
+            if (currentPlatform.value === 'rabota') {
+              applyRabotaDefaultContactFromProfile(profile.data)
+            }
             if (!isNewPublicationFromCard || targetPlatformFromProps !== 'rabota') {
               await loadDictionaries('rabota')
             }
@@ -6956,6 +7079,9 @@ if (isEditingMode.value && !props.selectedPlatform) {
           key.isAuthenticated = true
           key.data = profile.data.data
           isPlatforms.value = true
+          if (currentPlatform.value === 'rabota') {
+            applyRabotaDefaultContactFromProfile(profile.data)
+          }
           // Загружаем справочники rabota.ru
           await loadDictionaries('rabota')
         }
