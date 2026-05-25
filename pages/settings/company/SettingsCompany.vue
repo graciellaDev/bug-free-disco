@@ -111,7 +111,7 @@ onMounted(() => load())
     <div class="rounded-fifteen p-25px bg-white">
       <h2 class="text-lg font-semibold text-space mb-2.5">Профиль компании</h2>
       <p class="text-sm font-normal text-slate-custom mb-25px leading-150">
-        Описание компании поможет выделить вас на некоторых досках объявлений о вакансиях, включая доску внешнюю вакансию Jobly.
+        Этот текст будет опубликован на карьерной странице вашей компании. Кратко расскажите, чем занимается ваша команда и почему у вас интересно работать.
       </p>
 
       <div v-if="loading" class="py-8 text-center text-slate-custom">

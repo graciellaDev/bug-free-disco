@@ -85,12 +85,6 @@
               </div>
               <span class="min-w-0 flex-1">
                 <span class="block text-space">{{ getOptionLabel(option) }}</span>
-                <span
-                  v-if="getOptionSubtitle(option)"
-                  class="mt-0.5 block text-xs font-normal text-bali"
-                >
-                  {{ getOptionSubtitle(option) }}
-                </span>
               </span>
             </label>
           </div>
@@ -188,7 +182,33 @@ const getOptionLabel = (option) => {
 const getOptionSubtitle = (option) => {
   if (typeof option !== 'object' || option === null) return ''
   const sub = option.subtitle ?? option.role
-  return sub != null && String(sub).trim() !== '' ? String(sub).trim() : ''
+  const subtitle = sub != null ? String(sub).trim() : ''
+  if (!subtitle) return ''
+
+  const normalize = (value) =>
+    String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[.,;:!?()[\]{}"']/g, '')
+
+  const label = String(getOptionLabel(option) ?? '').trim()
+  const normalizedLabel = normalize(label)
+  const normalizedSubtitle = normalize(subtitle)
+
+  if (
+    normalizedLabel &&
+    normalizedSubtitle &&
+    (
+      normalizedLabel === normalizedSubtitle ||
+      normalizedLabel.includes(normalizedSubtitle) ||
+      normalizedSubtitle.includes(normalizedLabel)
+    )
+  ) {
+    return ''
+  }
+
+  return subtitle
 }
 
 // Преобразование selectedOptions в формат для emit
