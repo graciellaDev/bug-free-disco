@@ -1,3 +1,4 @@
+import { getFetchErrorMeta } from '@/helpers/authToken';
 import { getServerToken } from './getServerToken';
 import { useUserStore } from '@/stores/user';
 
@@ -91,23 +92,27 @@ export const profile = async () => {
     })
 
     return { data: response, error: null, status: 200 };
-  } catch (error: any) {
-    // Обработка различных типов ошибок
-    if (error.code === 'ETIMEDOUT' || error.name === 'TimeoutError') {
+  } catch (error: unknown) {
+    const err = error as { code?: string; name?: string };
+    if (err.code === 'ETIMEDOUT' || err.name === 'TimeoutError') {
       console.error('Таймаут при получении профиля: API не отвечает в течение 10 секунд');
       return { data: null, error: 'Таймаут запроса', status: 504 };
-    } else if (error.code === 'ECONNREFUSED') {
+    }
+    if (err.code === 'ECONNREFUSED') {
       console.error('Ошибка подключения: API недоступен');
       return { data: null, error: 'API недоступен', status: 503 };
-    } else if (error.response?.status) {
+    }
+
+    const { status, message } = getFetchErrorMeta(error);
+    if (status) {
       return {
         data: null,
-        error: error.response?._data?.message || 'Ошибка запроса',
-        status: error.response.status
+        error: message || 'Ошибка запроса',
+        status,
       };
-    } else {
-      console.error('Неизвестная ошибка при получении профиля:', error);
-      return { data: null, error: 'Ошибка запроса', status: 500 };
     }
+
+    console.error('Неизвестная ошибка при получении профиля:', error);
+    return { data: null, error: 'Ошибка запроса', status: 500 };
   }
 }
