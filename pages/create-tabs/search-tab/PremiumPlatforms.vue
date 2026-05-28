@@ -8,7 +8,7 @@
   import Autocomplete from '~/components/custom/Autocomplete.vue'
   import MyTooltip from '~/components/custom/MyTooltip.vue'
   import GenerateButton from '~/components/custom/GenerateButton.vue'
-  import TiptapEditor from '~/components/TiptapEditor.vue'
+  import { LazyTiptapEditor as TiptapEditor } from '~/utils/lazyTiptapEditor'
   import CustomDropdown from '~/components/custom/CustomDropdown.vue'
   import MyDropdown from '~/components/custom/MyDropdown.vue'
   import TagSelect from '~/components/custom/TagSelect.vue'

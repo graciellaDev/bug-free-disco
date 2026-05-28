@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootEl"
     class="address-map-input w-full"
     :class="
       layout === 'inline'
@@ -29,10 +30,7 @@
             autocomplete="off"
             @input="onInlineInput"
             @keydown.enter.prevent="onEnterKey"
-            @focus="
-              isFocused = true;
-              emit('focus');
-            "
+            @focus="onAddressInputFocus"
             @blur="onInputBlur"
           />
           <button
@@ -101,17 +99,9 @@
               :placeholder="isFocused ? '' : placeholder"
               class="w-full rounded-ten border bg-athens-gray py-[9px] pl-[42px] pr-[42px] text-sm font-normal text-[#2F353D] focus:border-dodger focus:outline-none"
               :class="error ? 'border-red-500' : 'border-athens'"
-              @input="
-                () => {
-                  filterAddresses();
-                  autoGeocodeOnInput();
-                }
-              "
+              @input="onFullAddressInput"
               @keydown.enter.prevent="onEnterKey"
-              @focus="
-                isFocused = true;
-                emit('focus');
-              "
+              @focus="onAddressInputFocus"
               @blur="onInputBlur"
             />
             <button
@@ -189,7 +179,7 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
-import debounce from 'lodash/debounce'
+import { debounce } from '@/utils/debounce'
 import { loadScript } from '@/plugins/loader'
 import { API_YANDEX_KEY, API_YANDEX_SUGGEST } from '@/src/constants'
 import MyCheckbox from '~/components/custom/MyCheckbox.vue'
@@ -227,6 +217,7 @@ watch(() => props.hideAddress, (val) => {
   hideAddress.value = !!val
 })
 
+const rootEl = ref(null)
 const mapContainer = ref(null)
 const inlineInputRef = ref(null)
 const currentAddress = ref(props.modelValue || '')
@@ -478,6 +469,10 @@ const onMapClick = async (e) => {
   await updateAddressFromCoords(coords)
 }
 
+const YANDEX_MAPS_SCRIPT_URL = `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}&results=10`
+
+let ymapsLoadPromise = null
+
 /** Ждём появления window.ymaps после загрузки скрипта (API инициализируется асинхронно) */
 const waitForYmaps = (maxMs = 8000) =>
   new Promise((resolve) => {
@@ -522,34 +517,85 @@ const initMap = () => {
   return true
 }
 
-onMounted(async () => {
-  if (typeof window === 'undefined') return
-  const scriptUrl = `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}&results=10`
-  if (!document.querySelector(`script[src="${scriptUrl}"]`)) {
-    try {
-      await loadScript(scriptUrl)
-    } catch (e) {
+async function ensureYmapsLoaded() {
+  if (typeof window === 'undefined') return false
+  if (window.ymaps) {
+    ymapsReady.value = true
+    return true
+  }
+  if (!ymapsLoadPromise) {
+    ymapsLoadPromise = (async () => {
+      if (!document.querySelector(`script[src="${YANDEX_MAPS_SCRIPT_URL}"]`)) {
+        await loadScript(YANDEX_MAPS_SCRIPT_URL)
+      }
+      await waitForYmaps()
+      const ok = !!(typeof window !== 'undefined' && window.ymaps)
+      ymapsReady.value = ok
+      return ok
+    })().catch((e) => {
+      ymapsLoadPromise = null
       console.warn('Yandex Maps load error:', e)
-      return
-    }
+      return false
+    })
   }
-  await waitForYmaps()
-  ymapsReady.value = !!(
-    typeof window !== 'undefined' && window.ymaps
-  )
-  if (props.layout === 'inline') {
-    await nextTick()
-    measureInlineTextReserve()
-    return
-  }
+  return ymapsLoadPromise
+}
+
+async function initMapWhenReady() {
+  if (props.layout === 'inline' || hideAddress.value) return
+  const ok = await ensureYmapsLoaded()
+  if (!ok) return
   await nextTick()
   if (!initMap() && mapContainer.value) {
     await nextTick()
     setTimeout(() => initMap(), 150)
   }
+}
+
+async function onAddressInputFocus() {
+  isFocused.value = true
+  emit('focus')
+  await ensureYmapsLoaded()
+  if (props.layout === 'full' && !hideAddress.value && !map) {
+    await initMapWhenReady()
+  }
+  if (props.layout === 'inline') {
+    filterAddresses()
+    await nextTick()
+    measureInlineTextReserve()
+    return
+  }
+  filterAddresses()
+}
+
+async function onFullAddressInput() {
+  await ensureYmapsLoaded()
+  filterAddresses()
+  autoGeocodeOnInput()
+}
+
+let intersectionObserver = null
+
+onMounted(() => {
+  if (typeof window === 'undefined') return
+  if (props.layout === 'inline') {
+    nextTick(() => measureInlineTextReserve())
+    return
+  }
+  const target = rootEl.value
+  if (!target || typeof IntersectionObserver === 'undefined') return
+  intersectionObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return
+    intersectionObserver?.disconnect()
+    intersectionObserver = null
+    void initMapWhenReady()
+  }, { rootMargin: '120px', threshold: 0.01 })
+  intersectionObserver.observe(target)
 })
 
 onBeforeUnmount(() => {
+  intersectionObserver?.disconnect()
+  intersectionObserver = null
   if (map) {
     map.events.remove('click', onMapClick)
     map.destroy()
@@ -584,15 +630,7 @@ watch(hideAddress, async hidden => {
       placemark = null
     }
   } else {
-    await nextTick()
-    if (!mapContainer.value || map) return
-    if (typeof window !== 'undefined' && !window.ymaps) {
-      await waitForYmaps()
-    }
-    await nextTick()
-    if (!initMap()) {
-      setTimeout(() => initMap(), 200)
-    }
+    await initMapWhenReady()
   }
 })
 </script>

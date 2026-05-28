@@ -86,25 +86,17 @@
         </div>
       </div>
       <div class="video-block">
-        <video-player
-          src="/assets/demo1.mp4"
-          poster="/assets/cover3.png"
-          controls
-          :loop="false"
-          :volume="0.6"
-          :width="442.5"
-          style="height: 100%"
-        />
+        <AuthDemoVideoPlayer />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-  import { ref, watch } from 'vue'
-  import { VideoPlayer } from '@videojs-player/vue'
+  import { ref, watch, defineAsyncComponent } from 'vue'
   import { resetUser } from '~/utils/resetUser'
-  import 'video.js/dist/video-js.css'
+
+  const AuthDemoVideoPlayer = defineAsyncComponent(() => import('~/components/auth/AuthDemoVideoPlayer.vue'))
 
   const props = defineProps({
     initialEmail: {

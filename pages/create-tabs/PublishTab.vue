@@ -708,7 +708,7 @@
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent, watch, onMounted, onActivated, onBeforeUnmount, nextTick, inject } from "vue";
+import { ref, computed, defineAsyncComponent, watch, onMounted, onActivated, onDeactivated, onBeforeUnmount, nextTick, inject, isRef } from "vue";
 import DeleteConfirmPopup from '~/components/custom/DeleteConfirmPopup.vue';
 import BulkActionBar from '~/components/custom/BulkActionBar.vue';
 import { useJoblyToastTopStyle } from '@/composables/useJoblyToastTopStyle';
@@ -716,18 +716,13 @@ import MyCheckbox from "~/components/custom/MyCheckbox.vue";
 import DotsDropdown from '~/components/custom/DotsDropdown.vue';
 import CardIcon from '~/components/custom/CardIcon.vue';
 import Popup from '~/components/custom/Popup.vue';
-import AddPublication from "~/components/platforms/AddPublication.vue";
 import HhOriginalVacancyPopup from "~/components/platforms/HhOriginalVacancyPopup.vue";
 import UiDotsLoader from "~/components/custom/UiDotsLoader.vue";
-import MultiDropdown from "~/components/custom/MultiDropdown.vue";
 import MyInput from '~/components/custom/MyInput.vue';
-import TiptapEditor from '~/components/TiptapEditor.vue';
-import DropDownRoles from '~/components/platforms/DropDownRoles.vue';
-import DropDownTypes from '~/components/platforms/DropDownTypes.vue';
-import CardOption from '~/components/custom/CardOption.vue';
-import GeoInput from '~/components/custom/GeoInput.vue';
-import MyDropdown from '~/components/custom/MyDropdown.vue';
-import { RadioGroup } from '@/components/ui/radio-group';
+
+const AddPublication = defineAsyncComponent(
+    () => import('~/components/platforms/AddPublication.vue'),
+);
 import { 
     getHhPublications as getPublications, 
     getAllHhPublications as getAllPublications, 
@@ -756,6 +751,8 @@ import cardsData from '~/src/data/cards-data.json'
 import ratesData from '~/src/data/rates-data.json'
 import { getVacancy, getVacancies, getHhVacancyExportMap, getVacancyFields, updateVacancyApi as updateVacancy, resolveDriverNamesToDbIds, postPublicationPlatformStatsCache, buildDriverDbIdToNameMap } from '@/utils/getVacancies'
 import { buildHhOriginalDraftFromJoblyForPublish } from '@/utils/buildHhOriginalDraftFromJoblyVacancy'
+import { buildJoblyPublishStaticHhDraft } from '@/utils/publishCardStaticPrefill'
+import { useVacancyCurrectLive } from '@/utils/useVacancyCurrect'
 import { deleteVacancy } from '@/utils/deleteVacancy'
 import { mapVacancyToHhFormat } from '@/utils/mapVacancyToHh'
 import { createVacancy } from '@/utils/createVacancy'
@@ -812,6 +809,22 @@ const publicationPlatforms = ref([]);
 const cartStore = useCartStore()
 const saveAndContinueHandler = inject('saveAndContinueHandler', null)
 const setPublicationsCount = inject('setPublicationsCount', null)
+const initialVacancyDataInject = inject('initialVacancyData', null)
+const vacancyCurrectLive = useVacancyCurrectLive()
+
+function resolveJoblyVacancyForPublishPrefill() {
+    const live = vacancyCurrectLive.value
+    if (live && typeof live === 'object') return live
+    const initial =
+        initialVacancyDataInject != null
+            ? isRef(initialVacancyDataInject)
+                ? initialVacancyDataInject.value
+                : initialVacancyDataInject
+            : null
+    if (initial && typeof initial === 'object') return initial
+    if (currentVacancy.value && typeof currentVacancy.value === 'object') return currentVacancy.value
+    return null
+}
 
 // Синхронизация количества размещений с вкладкой (для подписи «Размещения (N)»)
 watch(() => publicationPlatforms.value.length, (len) => { setPublicationsCount?.(len); }, { immediate: true })
@@ -2690,19 +2703,46 @@ async function refreshPlatformAuthStatus() {
     platformsAuth.value['superjob'] = !!(superjobProfile && !superjobProfile.error && superjobProfile.data);
 }
 
-onMounted(async () => {
-    if (saveAndContinueHandler) {
-      saveAndContinueHandler.value = async () => {}
-    }
-    await Promise.all([
-      cartStore.setCardsData(cardsData),
-      cartStore.setRatesData(ratesData),
-    ])
+let publishTabInitialLoadDone = false
 
+async function loadPublishTabDataOnActivate() {
     const publicationsLoad =
         currentVacancyId.value ? loadPublicationPlatforms() : Promise.resolve();
     await Promise.all([refreshPlatformAuthStatus(), publicationsLoad]);
+}
 
+async function refreshPublishTabOnReactivate() {
+    await refreshPlatformAuthStatus();
+    if (publicationPlatforms.value.length > 0) {
+        clearPublicationStatsPolling();
+        await refreshPublicationPlatformsStats();
+        startPublicationStatsPolling();
+        return;
+    }
+    if (currentVacancyId.value) {
+        await loadPublicationPlatforms();
+    }
+}
+
+function prefetchAddPublicationChunk(platform) {
+    void import('~/components/platforms/AddPublication.vue')
+    void import('@/utils/addPublication/preloadPlatformBundle').then((m) =>
+        m.preloadPublicationPlatformBundle(platform),
+    )
+}
+
+async function onPublishTabActivated() {
+    prefetchAddPublicationChunk(selectedPlatformForPublish.value)
+    await handleOAuthRedirectsIfNeeded();
+    if (!publishTabInitialLoadDone) {
+        publishTabInitialLoadDone = true;
+        await loadPublishTabDataOnActivate();
+        return;
+    }
+    await refreshPublishTabOnReactivate();
+}
+
+async function handleOAuthRedirectsIfNeeded() {
     // Обработка редиректа после авторизации
     const query = useRoute().query;
     const returnUrlCookie = useCookie('auth_return_url');
@@ -2801,13 +2841,27 @@ onMounted(async () => {
         // Редирект на исходную страницу
         await navigateTo(redirectUrl);
     }
-  })
+}
 
-  onActivated(() => {
-    void Promise.all([refreshPlatformAuthStatus(), refreshPublicationPlatformsStats()]);
-  });
+onMounted(() => {
+    if (saveAndContinueHandler) {
+      saveAndContinueHandler.value = async () => {}
+    }
+    void Promise.all([
+      cartStore.setCardsData(cardsData),
+      cartStore.setRatesData(ratesData),
+    ])
+})
 
-  onBeforeUnmount(() => {
+onActivated(() => {
+    void onPublishTabActivated()
+})
+
+onDeactivated(() => {
+    clearPublicationStatsPolling()
+})
+
+onBeforeUnmount(() => {
     clearPublicationStatsPolling();
     if (editPopupLoadingTimer) {
       clearTimeout(editPopupLoadingTimer);
@@ -3393,20 +3447,27 @@ const handleVacancyUpdated = () => {
 const openPopupNewPublication = async (platformName) => {
     selectedPlatformForPublish.value = platformName;
     if (platformName === 'hh.ru') {
-        hhPublishInitialDraft.value = undefined;
+        const instantVac = resolveJoblyVacancyForPublishPrefill();
+        hhPublishInitialDraft.value = buildJoblyPublishStaticHhDraft(instantVac);
         hhPublishPopupKey.value += 1;
         isPublishPopupOpen.value = true;
         const vid = currentVacancyId.value;
         void (async () => {
             try {
-                const [vac, mapRows, pubRef, fieldsRes, langPack, levPack] = await Promise.all([
-                    vid ? getVacancy(vid) : Promise.resolve(null),
+                let vac = instantVac;
+                const [fetchedVac, mapRows, pubRef, fieldsRes, langPack, levPack] = await Promise.all([
+                    !vac && vid ? getVacancy(vid) : Promise.resolve(null),
                     getHhVacancyExportMap(),
                     getPublishFormReference(),
                     getVacancyFields(),
                     getLanguages(),
                     getLanguageLevels(),
                 ]);
+                if (!vac && fetchedVac && typeof fetchedVac === 'object') {
+                    vac = fetchedVac;
+                    currentVacancy.value = fetchedVac;
+                    hhPublishInitialDraft.value = buildJoblyPublishStaticHhDraft(vac);
+                }
                 const categories =
                     pubRef?.data?.professional_roles?.categories &&
                     Array.isArray(pubRef.data.professional_roles.categories)
@@ -3447,6 +3508,7 @@ const openPopupNewPublication = async (platformName) => {
         })();
         return;
     }
+    prefetchAddPublicationChunk(platformName);
     clearCreatePublicationLoadingTimer();
     isCreatePublicationLoading.value = true;
     createPublicationModalKey.value += 1;

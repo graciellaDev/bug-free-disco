@@ -1,5 +1,5 @@
 import type { FormConfig } from '@/types/form';
-import TiptapEditor from '@/components/TiptapEditor.vue';
+import { LazyTiptapEditor } from '@/utils/lazyTiptapEditor';
 
 export const emailToCandidateFormConfig: FormConfig = {
   fields: [
@@ -18,7 +18,7 @@ export const emailToCandidateFormConfig: FormConfig = {
       name: 'body',
       label: 'Содержание письма',
       type: 'custom',
-      component: TiptapEditor,
+      component: LazyTiptapEditor,
       required: true,
       row: 5,
       placeholder: 'Начните вводить...',

@@ -3,7 +3,7 @@
   import Popup from '~/components/custom/Popup.vue';
   import MyInput from '~/components/custom/MyInput.vue';
   import MyDropdown from '~/components/custom/MyDropdown.vue';
-  import TiptapEditor from '@/components/TiptapEditor.vue';
+  import { LazyTiptapEditor as TiptapEditor } from '@/utils/lazyTiptapEditor';
   import { getConnectedEmailsForSender } from '~/utils/gmailAccount';
   import { getEmailTemplates } from '@/src/api/emailTemplates';
   import { apiGet } from '@/src/api/client';

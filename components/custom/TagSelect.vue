@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
-import debounce from 'lodash/debounce';
+import { debounce } from '@/utils/debounce';
 
 const props = defineProps({
     modelValue: {

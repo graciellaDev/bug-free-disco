@@ -132,7 +132,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
-import debounce from 'lodash/debounce'
+import { debounce } from '@/utils/debounce'
 import MyInput from '~/components/custom/MyInput.vue'
 import { updateRabotaWorkplace } from '@/utils/rabotaAccount'
 import { suggestDadataAddress } from '@/utils/dadataAddressSuggest'

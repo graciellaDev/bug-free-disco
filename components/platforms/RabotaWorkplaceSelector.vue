@@ -88,7 +88,7 @@
 
 <script setup>
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import debounce from 'lodash/debounce'
+import { debounce } from '@/utils/debounce'
 import { searchRabotaWorkplaces } from '@/utils/rabotaAccount'
 import RabotaWorkplaceConfirmPopup from '~/components/platforms/RabotaWorkplaceConfirmPopup.vue'
 

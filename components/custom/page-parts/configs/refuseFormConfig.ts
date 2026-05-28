@@ -1,4 +1,4 @@
-import TiptapEditor from '@/components/TiptapEditor.vue';
+import { LazyTiptapEditor } from '@/utils/lazyTiptapEditor';
 import type { FormConfig, FormFieldConfig } from '@/types/form';
 
 export type RefuseReasonOption = { id: number; name: string };
@@ -55,7 +55,7 @@ export function getRefuseFormConfig(
         name: 'body',
         label: 'Содержание письма',
         type: 'custom',
-        component: TiptapEditor,
+        component: LazyTiptapEditor,
         hidden: !sendEmail,
         required: sendEmail,
         row: 5,

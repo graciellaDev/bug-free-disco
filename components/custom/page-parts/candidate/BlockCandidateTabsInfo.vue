@@ -6,7 +6,10 @@
     computed,
     onBeforeUnmount,
     provide,
+    reactive,
+    defineAsyncComponent,
   } from 'vue';
+  import { CANDIDATE_CARD_CONTEXT_KEY } from '@/components/custom/page-parts/candidate/candidateCardContext';
   import BtnTab from '~/components/custom/BtnTab.vue';
   import TextWithLinks from '~/components/custom/TextWithLinks.vue';
   import MyInputSecond from '~/components/custom/MyInputSecond.vue';
@@ -2826,9 +2829,384 @@
       .filter((row) => row.value.trim() !== '')
   );
 
+  
+  const candidateTabComponents = {
+    resume: defineAsyncComponent(() => import('./tabs/CandidateTabResume.vue')),
+    fields: defineAsyncComponent(() => import('./tabs/CandidateTabFields.vue')),
+    chat: defineAsyncComponent(() => import('./tabs/CandidateTabChat.vue')),
+    review: defineAsyncComponent(() => import('./tabs/CandidateTabReview.vue')),
+  };
+  const activeCandidateTab = computed(
+    () => candidateTabComponents[activeTab.value as keyof typeof candidateTabComponents],
+  );
+
   const hasAdditionalInfoSection = computed(
     () => candidateAdditionalRowsFilled.value.length > 0
   );
+
+provide(
+  CANDIDATE_CARD_CONTEXT_KEY,
+  reactive({
+    CANDIDATE_EMAIL_REGEX,
+    CANDIDATE_RESPONSE_TYPE_OPTIONS,
+    CANDIDATE_SOURCE_OPTIONS,
+    KNOWN_EDUCATION_LEVEL_PHRASES,
+    LOCAL_CF_SORTABLE_FILTER,
+    PHONE_API_REGEX,
+    STORAGE_KEY,
+    TAB_VALUES,
+    aboutMeDisplayText,
+    ac,
+    accountCustomFieldValuesSaveTimer,
+    actions,
+    activeTab,
+    agg,
+    aggregate,
+    answers,
+    author,
+    birthDateEdit,
+    birthDateFieldSaving,
+    buildAccountCustomFieldValuesPayload,
+    business,
+    byId,
+    byLevel,
+    c,
+    candidateAdditionalRows,
+    candidateAdditionalRowsFilled,
+    candidateAwardEntries,
+    candidateCustomFieldRows,
+    candidatePortfolioEntries,
+    candidateResumeTestsEntries,
+    candidateSalaryDigitsFromCard,
+    capitalizeFirstLetter,
+    cf,
+    chatInputRef,
+    chatPlatform,
+    chatStore,
+    children,
+    citizenship,
+    citizenshipEdit,
+    citizenshipFieldSaving,
+    city,
+    cityEdit,
+    cityFieldSaving,
+    closeEditLocalCustomField,
+    closeLocalCustomFieldDeleteConfirm,
+    commentToDeleteEventId,
+    commute,
+    company,
+    confirmLocalCustomFieldDelete,
+    considerations,
+    considerationsAbort,
+    considerationsLoading,
+    content,
+    courseQualificationDetails,
+    courseQualificationTitle,
+    cp,
+    cs,
+    ct,
+    cur,
+    curId,
+    current,
+    currentCanon,
+    currentNorm,
+    d,
+    dash,
+    dates,
+    decodeHtmlEntities,
+    def,
+    digits,
+    download,
+    driverLicenses,
+    dropdownOptions,
+    duration,
+    ed,
+    editStr,
+    editingCommentId,
+    editingCommentText,
+    editingLocalCustomField,
+    editingTaskId,
+    editingTaskText,
+    el,
+    emailEdit,
+    emailFieldSaving,
+    emailHasAtAndDot,
+    emailLineError,
+    emit,
+    enc,
+    esc,
+    eventFeedRef,
+    eventId,
+    expandedExperience,
+    experienceDescEls,
+    experienceDescObservers,
+    experienceDescOverflow,
+    experienceDisplay,
+    experienceEntries,
+    extractHhCertificateUrl,
+    f,
+    fallback,
+    fid,
+    fieldsTabToast,
+    fieldsTabToastFixedStyle,
+    fieldsTabToastTimer,
+    file,
+    finishLocalCustomFieldsLayoutEdit,
+    first,
+    firstnameEdit,
+    flushAccountCustomFieldValuesSave,
+    flushCitizenshipFromBlur,
+    flushCityFromBlur,
+    flushEmailFromBlur,
+    flushNameFieldsFromBlur,
+    flushPhoneFromBlur,
+    flushSalaryDesiredFromBlur,
+    formatAwardSecondaryLine,
+    formatCandidateDriverLicensesLine,
+    formatCandidatePhoneDisplay,
+    formatCandidateVehicleLine,
+    formatHhCourseSecondaryLine,
+    formatHhCourseTitleLine,
+    formatHhEducationLine1,
+    formatHhEducationLine2,
+    formatTestScoreLine,
+    formsStore,
+    from,
+    fromId,
+    hadRange,
+    handleBirthDateFieldUpdate,
+    handleCancelEditComment,
+    handleCancelEditTask,
+    handleChatSend,
+    handleCommentDeleteClose,
+    handleCommentDeleteConfirm,
+    handleCompleteTask,
+    handleDeleteCommentRequest,
+    handleDeleteTaskRequest,
+    handleEditComment,
+    handleEditTask,
+    handleEmailViewClose,
+    handleEmailViewReply,
+    handleOpenEmailCard,
+    handleRecruitersFieldUpdate,
+    handleRejectionReasonFieldUpdate,
+    handleResponseTypeFieldUpdate,
+    handleSourceFieldUpdate,
+    handleTaskDeleteClose,
+    handleTaskDeleteConfirm,
+    hasAboutMeText,
+    hasAdditionalInfoSection,
+    hasAnyCustomFields,
+    hasCourseQualificationBlock,
+    hasCoverLetter,
+    hasFrom,
+    hasMore,
+    hasResumeEducationBlock,
+    hasResumeExperienceBlock,
+    hasResumePositionBlock,
+    hasSalary,
+    hasStrongDetails,
+    hasText,
+    hasTo,
+    hhCertificateEntries,
+    hhEducationAdditionalEntries,
+    hhEducationPrimaryEntries,
+    hhLanguageItems,
+    hhNativeLanguages,
+    hhOtherLanguages,
+    hhRecommendations,
+    hhSkillSetItems,
+    hydrateLocalCandidateCustomFields,
+    hydrateLocalCustomFieldsSeq,
+    i,
+    id,
+    idRaw,
+    ids,
+    inferEducationLevelFromEducationField,
+    institution,
+    isAddCustomFieldPopupOpen,
+    isCommentDeletePopupOpen,
+    isEmailViewOpen,
+    isHydratingLocalCustomFields,
+    isLocalCustomFieldsLayoutEditMode,
+    isNative,
+    iso,
+    items,
+    kept,
+    label,
+    legacyEducationFallback,
+    level,
+    levelObj,
+    levelOrder,
+    licenses,
+    list,
+    loadConsiderations,
+    loadRecruiterOptions,
+    loadRejectionReasonsOptions,
+    localCandidateCustomFields,
+    localCustomFieldDeleteDescription,
+    localCustomFieldPendingDelete,
+    localCustomFieldsSaveToastTimer,
+    localDefs,
+    low,
+    lvl,
+    m,
+    marital,
+    measureExpDescriptionOverflow,
+    military,
+    n,
+    name,
+    nameFieldsSaving,
+    nameFromObj,
+    nameFromPivot,
+    nameRaw,
+    named,
+    nativeRaw,
+    newCustomFirst,
+    newCustomSecond,
+    newCustomThird,
+    newEducation,
+    newEmail,
+    newExperience,
+    newHeader,
+    newLocation,
+    newName,
+    newPhone,
+    newPosition,
+    next,
+    nextCanon,
+    nextFrom,
+    nextId,
+    nextNorm,
+    nextTo,
+    nonEmpty,
+    normalize,
+    normalizeBirthDateForInput,
+    normalizeCandidatePhoneForCompare,
+    normalizeDriverLicenseTypes,
+    normalized,
+    o,
+    obj,
+    onLocalCustomFieldAdded,
+    onLocalCustomFieldDeleteRequest,
+    onLocalCustomFieldDeleted,
+    onLocalCustomFieldUpdated,
+    onRecruitersModelUpdate,
+    one,
+    openChatAndFocus,
+    openCommentAndFocus,
+    openEditLocalCustomField,
+    openTaskAndFocus,
+    org,
+    organization,
+    organizationRaw,
+    otherRaw,
+    out,
+    p,
+    paren,
+    parseAccountCustomFieldValueJson,
+    parseCandidateAwardItem,
+    parseCandidatePortfolioItem,
+    parseCandidateResumeTestItem,
+    parseHhCertificateItem,
+    parseHhEducationAdditionalItem,
+    parseHhEducationPrimaryEntry,
+    parseHhRecommendationItem,
+    parseLanguageLabel,
+    parsePhoneInputToApi,
+    parseRabotaProfileRowsFromAboutMe,
+    parsed,
+    parsedCur,
+    parsedLine,
+    parsedPrev,
+    parts,
+    patronymicEdit,
+    payload,
+    persistLocalCandidateCustomFields,
+    phoneEdit,
+    phoneFieldSaving,
+    phoneLineError,
+    pickCandidateStr,
+    pivot,
+    position,
+    positions,
+    props,
+    q,
+    questions,
+    rabotaProfileRowsEffective,
+    rabotaProfileRowsFromDb,
+    raw,
+    rawC,
+    rawEdit,
+    reasons,
+    recruiterFieldSaving,
+    recruiterIdsEdit,
+    recruiterOptions,
+    recruitersListLoading,
+    rejectionReasonFieldSaving,
+    rejectionReasonList,
+    rejectionReasonOptions,
+    rejectionReasonsLoading,
+    relocation,
+    res,
+    responseTypeFieldSaving,
+    result,
+    resumeEducationLevelLabel,
+    resumeSalaryLine,
+    ro,
+    route,
+    router,
+    row,
+    rows,
+    ru,
+    s,
+    salaryDesiredEdit,
+    salaryFieldSaving,
+    saved,
+    scheduleAccountCustomFieldValuesSave,
+    scheduleLocalCustomFieldsSavedToast,
+    scheduledAt,
+    scrollEventFeedToInput,
+    selectedEmailEvent,
+    seq,
+    serverAccountCustomFieldsReady,
+    setExperienceDescriptionEl,
+    showFieldsTabToast,
+    single,
+    source,
+    sourceFieldSaving,
+    spec,
+    splitLanguageCsv,
+    stripRabotaProfileLinesFromAboutMe,
+    surnameEdit,
+    t,
+    tabIsChatOrOmitted,
+    tabQ,
+    tabs,
+    taskDate,
+    taskTime,
+    taskToDeleteEventId,
+    text,
+    title,
+    to,
+    toggleExperience,
+    trimmed,
+    u,
+    u2,
+    uploadLetter,
+    uploadPhoto,
+    uploadResume,
+    url,
+    v,
+    valueMap,
+    valuePivot,
+    valueTop,
+    vehicle,
+    workPermit,
+    y,
+    year,
+  }),
+);
 </script>
 
 <template>
@@ -2837,1027 +3215,7 @@
       <BtnTab :tabs="tabs" v-model="activeTab" />
     </div>
     <div class="min-h-0 flex-1 flex flex-col">
-      <div
-        v-if="activeTab === 'resume'"
-        class="candidate-resume-tab-text [&>div:last-child]:rounded-b-fifteen"
-      >
-        <div v-if="hasCoverLetter" class="mb-px bg-white p-25px pt-[27px]">
-          <p class="mb-15px text-15px font-medium text-space">
-            Сопроводительное письмо
-          </p>
-          <p class="break-words text-sm leading-150 text-slate-custom">
-            <TextWithLinks :text="candidate.coverLetter || ''" />
-          </p>
-        </div>
-        <div v-if="hasResumePositionBlock" class="mb-px bg-white p-25px">
-          <div
-            class="mb-15px flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
-          >
-            <p class="min-w-0 flex-1 text-15px font-medium leading-normal text-space">
-              {{ candidate.quickInfo?.trim() || 'Должность' }}
-            </p>
-            <p
-              v-if="resumeSalaryLine"
-              class="shrink-0 text-right text-15px font-medium leading-normal text-space"
-            >
-              {{ resumeSalaryLine }}
-            </p>
-          </div>
-          <p
-            v-if="(candidate.specializations ?? '').toString().trim() !== ''"
-            class="mb-3 text-sm font-normal leading-150"
-          >
-            <span class="text-slate-custom">Специализации: </span>
-            <span class="text-space">{{ candidate.specializations }}</span>
-          </p>
-          <p
-            v-if="(candidate.employment ?? '').toString().trim() !== ''"
-            class="mb-3 text-sm font-normal leading-150"
-          >
-            <span class="text-slate-custom">Тип занятости: </span>
-            <span class="text-space">{{ candidate.employment }}</span>
-          </p>
-          <p
-            v-if="(candidate.workFormat ?? candidate.work_format ?? '').toString().trim() !== ''"
-            class="text-sm font-normal leading-150"
-          >
-            <span class="text-slate-custom">Формат работы: </span>
-            <span class="text-space">{{ candidate.workFormat || candidate.work_format }}</span>
-          </p>
-        </div>
-        <div v-if="hasResumeExperienceBlock" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">
-            Опыт работы: {{ experienceDisplay }}
-          </p>
-          <div class="space-y-5">
-          <div
-            v-for="(exp, idx) in experienceEntries"
-            :key="exp.id ?? idx"
-              class="experience-entry"
-          >
-            <div class="flex gap-4">
-              <div class="experience-entry-dates w-[118px] shrink-0">
-                <template
-                  v-for="period in [formatExperienceWorkPeriod(exp)]"
-                  :key="'exp-period-' + (exp.id ?? idx)"
-                >
-                  <template v-if="period">
-                    <p class="text-sm font-normal leading-normal text-space">
-                      {{ period.line1 }}
-                    </p>
-                    <p class="text-sm font-normal leading-normal text-space">
-                      {{ period.line2 }}
-                    </p>
-                    <p
-                      class="mt-0.5 text-xs font-normal leading-normal text-slate-custom"
-                    >
-                      {{ period.line3 }}
-                    </p>
-                  </template>
-                  <template v-else>
-                    <p class="text-sm font-normal text-slate-custom">
-                      {{
-                        exp.dates ||
-                          [exp.start_date, exp.end_date]
-                            .filter(Boolean)
-                            .join(' – ') ||
-                          '—'
-                      }}
-                    </p>
-                    <p
-                      v-if="exp.duration"
-                      class="mt-0.5 text-xs font-normal text-slate-custom"
-                    >
-                      {{ exp.duration }}
-                    </p>
-                  </template>
-                </template>
-              </div>
-              <div class="experience-entry-details min-w-0 flex-1">
-                <div class="flex items-start justify-between gap-3">
-                  <p class="min-w-0 flex-1 text-sm font-semibold leading-normal text-space">
-                    {{ exp.company || '—' }}
-                  </p>
-                  <button
-                    v-if="
-                      exp.description &&
-                      (expandedExperience[idx] ||
-                        experienceDescOverflow[idx] === true)
-                    "
-                    type="button"
-                    class="experience-toggle inline-flex shrink-0 items-center gap-1 pt-px text-sm font-normal leading-normal text-slate-custom hover:text-space"
-                    @click="toggleExperience(idx)"
-                  >
-                    <span>{{ expandedExperience[idx] ? 'Свернуть' : 'Развернуть' }}</span>
-                    <svg-icon
-                      name="dropdown-arrow"
-                      width="14"
-                      height="14"
-                      class="shrink-0 transition-transform duration-200"
-                      :class="{ 'rotate-180': expandedExperience[idx] }"
-                    />
-                  </button>
-                </div>
-                <p v-if="exp.location" class="mt-0.5 text-sm font-normal text-space">
-                  {{ exp.location }}
-                </p>
-                <p
-                  v-if="exp.industry"
-                  class="mt-0.5 text-sm font-normal text-space"
-                >
-                  {{ exp.industry }}
-                </p>
-                <p v-if="exp.job_title" class="mt-1.5 text-sm font-semibold text-space">
-                  {{ exp.job_title }}
-                </p>
-                <p v-if="exp.role_dates" class="mt-0.5 text-sm font-normal text-space">
-                  {{ exp.role_dates }}
-                </p>
-                <div
-                  v-if="exp.description"
-                  :ref="(el) => setExperienceDescriptionEl(el, idx)"
-                  class="mt-1.5 text-sm font-normal leading-150 text-space"
-                  :class="{ 'line-clamp-2': !expandedExperience[idx] }"
-                >
-                  <TextWithLinks :text="exp.description" />
-                </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-if="hhSkillSetItems.length > 0" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Навыки</p>
-          <div class="flex flex-wrap gap-2">
-            <span
-              v-for="(skill, index) in hhSkillSetItems"
-              :key="`${skill}-${index}`"
-              class="inline-flex items-center rounded-fifteen bg-athens-gray px-3 py-1.5 text-sm font-normal leading-normal text-space"
-            >
-              {{ skill }}
-            </span>
-        </div>
-        </div>
-        <div
-          v-if="hhNativeLanguages.length > 0 || hhOtherLanguages.length > 0"
-          class="mb-px bg-white p-25px"
-        >
-          <p class="mb-15px text-15px font-medium text-space">Языки</p>
-          <div v-if="hhNativeLanguages.length > 0" class="mb-4">
-            <p class="mb-2 text-sm font-normal text-slate-custom">Родной</p>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="(lang, index) in hhNativeLanguages"
-                :key="`${lang.name}-native-${index}`"
-                class="inline-flex items-center rounded-fifteen bg-athens-gray px-3 py-1.5 text-sm font-normal leading-normal text-space"
-              >
-                {{ lang.name }}
-              </span>
-          </div>
-          </div>
-          <div v-if="hhOtherLanguages.length > 0">
-            <p class="mb-2 text-sm font-normal text-slate-custom">Другие языки</p>
-            <div class="flex flex-wrap gap-2">
-            <span
-                v-for="(lang, index) in hhOtherLanguages"
-                :key="`${lang.name}-other-${index}`"
-                class="inline-flex items-center rounded-fifteen bg-[#DFF3E8] px-3 py-1.5 text-sm font-normal leading-normal text-[#12A45C]"
-              >
-                {{ lang.name }}<span v-if="lang.level"> — {{ lang.level }}</span>
-            </span>
-          </div>
-        </div>
-        </div>
-        <div v-if="hasAboutMeText" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">
-            Обо мне
-          </p>
-          <p class="text-sm leading-150 text-slate-custom">
-            <TextWithLinks :text="aboutMeDisplayText" />
-          </p>
-        </div>
-        <div v-if="hhRecommendations.length > 0" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Рекомендации</p>
-          <div class="space-y-4">
-            <div
-              v-for="(rec, index) in hhRecommendations"
-              :key="`${rec.name}-${index}`"
-            >
-              <p class="text-sm font-medium leading-normal text-space">
-                {{ rec.name }}
-              </p>
-              <p
-                v-if="rec.position || rec.company"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                {{ rec.position || '—' }}<span v-if="rec.company"> · {{ rec.company }}</span>
-              </p>
-              <p
-                v-if="rec.text"
-                class="mt-2 text-sm font-normal leading-150 text-slate-custom"
-              >
-                <TextWithLinks :text="rec.text" />
-              </p>
-            </div>
-          </div>
-        </div>
-        <div v-if="hasResumeEducationBlock" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Образование</p>
-          <p class="mb-1 text-sm font-normal text-slate-custom">Уровень</p>
-          <p
-            class="text-sm font-normal leading-150 text-space"
-            :class="
-              hhEducationPrimaryEntries.length > 0 || legacyEducationFallback ? 'mb-5' : ''
-            "
-          >
-            {{ resumeEducationLevelLabel || '—' }}
-          </p>
-          <div v-if="hhEducationPrimaryEntries.length > 0" class="space-y-5">
-            <div v-for="(edu, eduIdx) in hhEducationPrimaryEntries" :key="eduIdx">
-              <p class="text-sm font-normal leading-150 text-space">
-                {{ formatHhEducationLine1(edu) }}
-              </p>
-              <p
-                v-if="formatHhEducationLine2(edu, resumeEducationLevelLabel)"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                {{ formatHhEducationLine2(edu, resumeEducationLevelLabel) }}
-            </p>
-          </div>
-          </div>
-          <p
-            v-else-if="legacyEducationFallback"
-            class="text-sm font-normal leading-150 text-space"
-          >
-            {{ legacyEducationFallback }}
-            </p>
-          </div>
-        <div v-if="hasCourseQualificationBlock" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">
-            Курсы повышения квалификации
-          </p>
-          <div v-if="hhEducationAdditionalEntries.length > 0" class="space-y-5">
-            <div
-              v-for="(course, cIdx) in hhEducationAdditionalEntries"
-              :key="course.id || String(cIdx)"
-            >
-              <p class="text-sm font-normal leading-150 text-space">
-                {{ formatHhCourseTitleLine(course) }}
-              </p>
-              <p
-                v-if="formatHhCourseSecondaryLine(course)"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                <TextWithLinks :text="formatHhCourseSecondaryLine(course)" />
-            </p>
-          </div>
-          </div>
-          <template v-else>
-            <p class="text-sm font-normal leading-150 text-space">
-              {{ courseQualificationTitle || '—' }}
-            </p>
-            <p
-              v-if="courseQualificationDetails"
-              class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-            >
-              <TextWithLinks :text="courseQualificationDetails" />
-            </p>
-          </template>
-          </div>
-        <div v-if="hhCertificateEntries.length > 0" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Сертификаты</p>
-          <div class="space-y-5">
-            <div
-              v-for="(cert, certIdx) in hhCertificateEntries"
-              :key="certIdx"
-              class="min-w-0"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <p class="min-w-0 flex-1 text-sm font-normal leading-150 text-space">
-                  <TextWithLinks :text="cert.title" />
-                </p>
-                <a
-                  v-if="cert.url"
-                  :href="cert.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                  class="shrink-0 text-sm font-normal text-slate-custom hover:text-dodger"
-                >
-                  Посмотреть &gt;
-              </a>
-          </div>
-              <p
-                v-if="cert.organization"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                {{ cert.organization }}
-              </p>
-              <p
-                v-if="cert.year"
-                class="mt-1 text-xs font-normal leading-normal text-slate-custom"
-              >
-                {{ cert.year }}
-            </p>
-          </div>
-        </div>
-        </div>
-        <div v-if="candidateResumeTestsEntries.length > 0" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Тесты</p>
-          <div class="space-y-4">
-            <div
-              v-for="(test, testIdx) in candidateResumeTestsEntries"
-              :key="testIdx"
-              class="min-w-0"
-            >
-              <p class="text-sm font-normal leading-150 text-space">
-                {{ test.name }}
-              </p>
-              <p
-                v-if="formatTestScoreLine(test)"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                {{ formatTestScoreLine(test) }}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div v-if="candidatePortfolioEntries.length > 0" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Портфолио</p>
-          <div class="space-y-5">
-            <div
-              v-for="(pf, pfIdx) in candidatePortfolioEntries"
-              :key="pfIdx"
-              class="min-w-0"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <p class="min-w-0 flex-1 text-sm font-normal leading-150 text-space">
-                  <TextWithLinks :text="pf.title" />
-                </p>
-                <a
-                  v-if="pf.url"
-                  :href="pf.url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="shrink-0 text-sm font-normal text-slate-custom hover:text-dodger"
-                >
-                  Открыть &gt;
-                </a>
-              </div>
-              <p
-                v-if="pf.description"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                <TextWithLinks :text="pf.description" />
-              </p>
-            </div>
-          </div>
-        </div>
-        <div v-if="candidateAwardEntries.length > 0" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Награды</p>
-          <div class="space-y-4">
-            <div
-              v-for="(aw, awIdx) in candidateAwardEntries"
-              :key="awIdx"
-              class="min-w-0"
-            >
-              <p class="text-sm font-normal leading-150 text-space">
-                <TextWithLinks :text="aw.name" />
-              </p>
-              <p
-                v-if="formatAwardSecondaryLine(aw)"
-                class="mt-1 text-sm font-normal leading-150 text-slate-custom"
-              >
-                <TextWithLinks :text="formatAwardSecondaryLine(aw)" />
-              </p>
-            </div>
-          </div>
-        </div>
-        <div v-if="hasAdditionalInfoSection" class="mb-px bg-white p-25px">
-          <p class="mb-15px text-15px font-medium text-space">Дополнительно</p>
-          <ul class="list-none space-y-3 p-0">
-            <li
-              v-for="(row, rowIdx) in candidateAdditionalRowsFilled"
-              :key="rowIdx"
-              class="text-sm font-normal leading-150"
-            >
-              <span class="text-slate-custom">{{ row.label }}: </span>
-              <span class="text-space">{{ row.value }}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-      <div v-if="activeTab === 'fields'">
-        <div
-          class="fields-tab-block mb-px rounded-b-fifteen bg-white py-25px px-30px"
-        >
-          <div class="mb-22px">
-            <p class="text-lg font-bold leading-normal text-space">
-              Системные поля
-            </p>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Источник
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <div class="fields-tab-line__value">
-              <PlainSingleSelectDropdown
-                :model-value="candidate.source || ''"
-                :options="CANDIDATE_SOURCE_OPTIONS"
-                placeholder="Выбрать"
-                :disabled="sourceFieldSaving"
-                @update:model-value="handleSourceFieldUpdate"
-              />
-          </div>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Рекрутеры
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <div class="fields-tab-line__value">
-              <PlainMultiSelectDropdown
-                :model-value="recruiterIdsEdit"
-                :options="recruiterOptions"
-                placeholder="Выбрать"
-                :disabled="recruiterFieldSaving || recruitersListLoading"
-                @update:model-value="onRecruitersModelUpdate"
-              />
-            </div>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Тип отклика
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <div class="fields-tab-line__value">
-              <PlainSingleSelectDropdown
-                :model-value="
-                  (candidate.response_type || '').trim() === ''
-                    ? 'Не указан'
-                    : candidate.response_type || ''
-                "
-                :options="CANDIDATE_RESPONSE_TYPE_OPTIONS"
-                placeholder="Выбрать"
-                :disabled="responseTypeFieldSaving"
-                @update:model-value="handleResponseTypeFieldUpdate"
-              />
-            </div>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Причина отказа
-            </span>
-            <span class="fields-tab-line__dots" aria-hidden="true" />
-            <div class="fields-tab-line__value">
-              <PlainSingleSelectDropdown
-                :model-value="candidate.rejection_reason?.name?.trim() || ''"
-                :options="rejectionReasonOptions"
-                placeholder="Выбрать"
-                :disabled="
-                  rejectionReasonFieldSaving || rejectionReasonsLoading
-                "
-                @update:model-value="handleRejectionReasonFieldUpdate"
-              />
-            </div>
-          </div>
-          <div class="mb-22px mt-30px">
-            <p class="text-lg font-bold leading-normal text-space">
-              Информация
-            </p>
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Фамилия
-            </span>
-            <PlainInlineTextInput
-              v-model="surnameEdit"
-              leader-full-width
-              placeholder=""
-              autocomplete="family-name"
-              :disabled="nameFieldsSaving"
-              @blur="flushNameFieldsFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Имя
-            </span>
-            <PlainInlineTextInput
-              v-model="firstnameEdit"
-              leader-full-width
-              placeholder=""
-              autocomplete="given-name"
-              :disabled="nameFieldsSaving"
-              @blur="flushNameFieldsFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Отчество
-            </span>
-            <PlainInlineTextInput
-              v-model="patronymicEdit"
-              leader-full-width
-              placeholder=""
-              autocomplete="additional-name"
-              :disabled="nameFieldsSaving"
-              @blur="flushNameFieldsFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span
-              class="fields-tab-line__label text-sm font-normal transition-colors duration-150"
-              :class="emailLineError ? 'text-[#ef4444]' : 'text-bali'"
-            >
-              Электронная почта
-            </span>
-            <PlainInlineTextInput
-              v-model="emailEdit"
-              leader-full-width
-              :line-error="emailLineError"
-              type="email"
-              placeholder=""
-              autocomplete="email"
-              :disabled="emailFieldSaving"
-              @blur="flushEmailFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Дата рождения
-            </span>
-            <PlainDateSelectDropdown
-              :model-value="birthDateEdit"
-              :disabled="birthDateFieldSaving"
-              @update:model-value="handleBirthDateFieldUpdate"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span
-              class="fields-tab-line__label text-sm font-normal transition-colors duration-150"
-              :class="phoneLineError ? 'text-[#ef4444]' : 'text-bali'"
-            >
-              Телефон
-            </span>
-            <PlainInlineTextInput
-              v-model="phoneEdit"
-              leader-full-width
-              :line-error="phoneLineError"
-              type="tel"
-              placeholder=""
-              autocomplete="tel"
-              :disabled="phoneFieldSaving"
-              @blur="flushPhoneFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Город
-            </span>
-            <PlainInlineTextInput
-              v-model="cityEdit"
-              leader-full-width
-              type="text"
-              placeholder=""
-              autocomplete="address-level2"
-              :disabled="cityFieldSaving"
-              @blur="flushCityFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line mb-5">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Гражданство
-            </span>
-            <PlainInlineTextInput
-              v-model="citizenshipEdit"
-              leader-full-width
-              type="text"
-              placeholder=""
-              autocomplete="off"
-              :disabled="citizenshipFieldSaving"
-              @blur="flushCitizenshipFromBlur"
-            />
-          </div>
-          <div class="fields-tab-line">
-            <span class="fields-tab-line__label text-sm font-normal text-bali">
-              Желаемая зарплата
-            </span>
-            <PlainInlineTextInput
-              v-model="salaryDesiredEdit"
-              leader-full-width
-              digits-only
-              type="text"
-              placeholder=""
-              autocomplete="off"
-              :disabled="salaryFieldSaving"
-              @blur="flushSalaryDesiredFromBlur"
-            />
-          </div>
-          <div
-            class="mb-22px mt-30px flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2"
-          >
-            <p
-              class="min-w-0 pr-2 text-lg font-bold leading-normal text-space"
-            >
-              Пользовательские поля
-            </p>
-            <div
-              v-if="localCandidateCustomFields.length > 0"
-              class="flex shrink-0 items-center gap-3"
-            >
-              <button
-                v-if="!isLocalCustomFieldsLayoutEditMode"
-                type="button"
-                class="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-normal leading-normal text-dodger transition-opacity hover:opacity-85"
-                @click="isLocalCustomFieldsLayoutEditMode = true"
-              >
-                <svg
-                  class="local-cf-header-stroke-icon shrink-0"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
-                  />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                Настроить
-              </button>
-              <button
-                v-else
-                type="button"
-                class="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-normal leading-normal text-dodger transition-opacity hover:opacity-85"
-                @click="finishLocalCustomFieldsLayoutEdit"
-              >
-                <svg
-                  class="local-cf-header-stroke-icon shrink-0"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
-                  />
-                  <path d="M17 21v-8H7v8" />
-                  <path d="M7 3v8h8" />
-                </svg>
-                Сохранить
-              </button>
-          </div>
-          </div>
-          <!-- Старый вывод customFields с API (только текст) — не показываем вместе с полями аккаунта с сервера, иначе дубль -->
-          <template
-            v-if="
-              candidateCustomFieldRows.length && !serverAccountCustomFieldsReady
-            "
-          >
-            <div
-              v-for="row in candidateCustomFieldRows"
-              :key="'api-cf-' + row.id"
-              :class="[
-                'fields-tab-line mb-5',
-                localCandidateCustomFields.length > 0 &&
-                  isLocalCustomFieldsLayoutEditMode &&
-                  'fields-tab-line--cf-pencil-gap',
-              ]"
-            >
-              <span class="fields-tab-line__label text-sm font-normal text-bali">
-                {{ row.label }}
-              </span>
-              <span class="fields-tab-line__dots" aria-hidden="true" />
-              <p
-                class="fields-tab-line__value fields-tab-line__value--truncate text-sm font-normal leading-150 text-slate-custom"
-              >
-                {{ row.text }}
-            </p>
-          </div>
-          </template>
-          <ClientOnly>
-            <draggable
-              v-if="isLocalCustomFieldsLayoutEditMode"
-              v-model="localCandidateCustomFields"
-              item-key="localId"
-              :animation="200"
-              easing="cubic-bezier(0.25, 1, 0.5, 1)"
-              ghost-class="local-cf-sortable-ghost"
-              chosen-class="local-cf-sortable-chosen"
-              drag-class="local-cf-sortable-drag"
-              :filter="LOCAL_CF_SORTABLE_FILTER"
-              :prevent-on-filter="false"
-            >
-              <template #item="{ element }">
-                <CandidateLocalCustomFieldRow
-                  :key="element.localId"
-                  :field="element"
-                  :layout-edit-mode="true"
-                  @edit="openEditLocalCustomField"
-                  @delete-request="onLocalCustomFieldDeleteRequest"
-                />
-              </template>
-            </draggable>
-            <template v-else>
-              <CandidateLocalCustomFieldRow
-                v-for="field in localCandidateCustomFields"
-                :key="field.localId"
-                :field="field"
-                :layout-edit-mode="false"
-                @edit="openEditLocalCustomField"
-                @delete-request="onLocalCustomFieldDeleteRequest"
-              />
-            </template>
-            <template #fallback>
-              <CandidateLocalCustomFieldRow
-                v-for="field in localCandidateCustomFields"
-                :key="field.localId"
-                :field="field"
-                :layout-edit-mode="false"
-                @edit="openEditLocalCustomField"
-                @delete-request="onLocalCustomFieldDeleteRequest"
-              />
-            </template>
-          </ClientOnly>
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 text-dodger transition-opacity hover:opacity-85"
-            :class="hasAnyCustomFields ? 'mt-2' : ''"
-            @click="isAddCustomFieldPopupOpen = true"
-          >
-            <span
-              class="inline-flex h-[16.25px] w-[16.25px] shrink-0 items-center justify-center rounded-full bg-dodger text-white"
-              aria-hidden="true"
-            >
-              <svg
-                class="block h-[8.125px] w-[8.125px]"
-                viewBox="0 0 12 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M6 2.25v7.5M2.25 6h7.5"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                />
-              </svg>
-            </span>
-            <span class="text-[13px] font-normal leading-normal">
-              Добавить
-            </span>
-          </button>
-          </div>
-        <!-- Секция «Информация» скрыта по макету
-        <div class="bg-white p-25px pl-30px">
-          <div class="mb-26px flex items-center">
-            <p class="mr-2.5 text-lg font-bold leading-normal text-space">
-              Информация
-            </p>
-            <span
-              class="h-fit rounded-fifteen bg-athens-gray px-2.5 py-[3.5px] text-xs font-normal"
-            >
-              Используется в системе
-            </span>
-          </div>
-          <div class="flex items-center gap-2.5">
-            <p class="min-w-[240px] text-sm font-normal text-space">Разряд</p>
-            <MinDropdownSecond :options="positions" v-model="newPosition" />
-          </div>
-          <div class="mb-0.5 flex items-center gap-2.5">
-            <p class="min-w-[240px] text-sm font-normal text-space">Раз</p>
-            <MyInputSecond v-model="newCustomFirst" />
-          </div>
-          <div class="mb-0.5 flex items-center gap-2.5">
-            <p class="min-w-[240px] text-sm font-normal text-space">Два</p>
-            <MyInputSecond v-model="newCustomSecond" />
-          </div>
-          <div class="flex items-center gap-2.5">
-            <p class="min-w-[240px] text-sm font-normal text-space">Три</p>
-            <MyInputSecond v-model="newCustomThird" />
-          </div>
-          <div
-                v-for="(q, idx) in questions"
-                :key="q.id"
-                class="flex items-center gap-2.5"
-              >
-                <div v-if="q.type === 'Поле для ввода в одну строку'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <MyInput
-                    :placeholder="'Введите ваш ответ'"
-                    v-model="answers[idx]"
-                  />
-                </div>
-                <div v-if="q.type === 'Поле для ввода в несколько строк'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <MyTextarea
-                    :maxHeight="100"
-                    :placeholder="'Введите ваш ответ'"
-                    v-model="answers[idx]"
-                  />
-                </div>
-                <div v-if="q.type === 'Выпадающий список (один выбор)'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <MyDropdown
-                    :defaultValue="'Выберите вариант ответа'"
-                    :options="q.options"
-                    v-model="answers[idx]"
-                  />
-                </div>
-                <div
-                  v-if="q.type === 'Мультисписок (вопрос с вариантами ответа)'"
-                >
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <MultiSelect :options="q.options" v-model="answers[idx]" />
-                </div>
-                <div v-if="q.type === 'Время (выбор времени)'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <ChooseTime v-model="answers[idx]" />
-                </div>
-                <div v-if="q.type === 'Дата (выбор даты)'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <DropdownCalendarStatic
-                    :is-open="isOpenDate"
-                    @isOpen="isOpenCalendar"
-                    v-model="answers[idx]"
-                  />
-                </div>
-                <div v-if="q.type === 'Дата (срок)'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <div class="flex gap-x-15px">
-                    <DropdownCalendarStatic
-                      :is-open="isOpenDateFrom"
-                      @isOpen="isOpenCalendarFrom"
-                      v-model="answers[idx + '_from']"
-                      :dateFrom="true"
-                    />
-                    <DropdownCalendarStatic
-                      :is-open="isOpenDateTo"
-                      @isOpen="isOpenCalendarTo"
-                      v-model="answers[idx + '_to']"
-                      :dateTo="true"
-                    />
-                  </div>
-                </div>
-                <div v-if="q.type === 'Ссылка'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <MyInput :placeholder="'https://'" v-model="answers[idx]" />
-                </div>
-                <div v-if="q.type === 'Адрес'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <geo-input v-model="answers[idx]" />
-                </div>
-                <div v-if="q.type === 'Файл'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <InputUpload v-model="answers[idx]" :minStyle="true" />
-                </div>
-                <div v-if="q.type === 'Чекбокс'">
-                  <p class="mb-15px text-sm font-medium leading-150 text-space">
-                    {{ q.title }}
-                  </p>
-                  <div class="[&>*:not(:last-child)]:mb-2.5">
-                    <CheckboxGroup
-                      :options="
-                        q.options.map(opt => ({ label: opt, value: opt }))
-                      "
-                      v-model="answers[idx]"
-                    />
-                  </div>
-                </div>
-              </div>
-          <button class="mt-25px flex items-center gap-x-5px">
-            <MoreQuestions
-              v-model:modelValue="questions"
-              texButton="Добавить"
-            />
-          </button>
-        </div>
-        <div class="rounded-b-fifteen bg-white px-15px pb-25px">
-          <div>
-            <UiButton class="mr-15px" variant="semiaction" size="semiaction">
-              Сохранить изменения
-            </UiButton>
-            <UiButton variant="back" size="back">Отмена</UiButton>
-          </div>
-        </div>
-        -->
-      </div>
-      <div v-if="activeTab === 'chat'" ref="eventFeedRef" class="flex flex-col">
-        <div class="h-[500px] overflow-hidden border border-athens-gray bg-athens-gray">
-          <CandidateLog
-            :candidate-id="candidate?.id"
-            :refresh-trigger="props.logRefreshTrigger"
-            :vacancy-id="props.vacancyId"
-            :candidate-source="candidate?.source ?? null"
-            :feed-active="activeTab === 'chat'"
-            @delete-request="handleDeleteCommentRequest"
-            @edit-comment="handleEditComment"
-            @delete-task-request="handleDeleteTaskRequest"
-            @edit-task="handleEditTask"
-            @complete-task="handleCompleteTask"
-            @open-email="emit('open-email-popup')"
-            @open-email-card="handleOpenEmailCard"
-          />
-        </div>
-        <ChatInput
-          ref="chatInputRef"
-          :initial-recipient="`${candidate.firstname} ${candidate.surname}`"
-          :initial-edit-text="editingCommentText"
-          :edit-comment-id="editingCommentId"
-          :initial-edit-task-text="editingTaskText"
-          :edit-task-id="editingTaskId"
-          @send="handleChatSend"
-          @cancel-edit="handleCancelEditComment"
-          @cancel-edit-task="handleCancelEditTask"
-          @email-format-selected="emit('open-email-popup')"
-          @scroll-into-view="scrollEventFeedToInput"
-        />
-      </div>
-      <div v-if="activeTab === 'review'" class="considerations-block mb-px bg-white">
-        <div class="considerations-table-wrap">
-          <div class="considerations-table-header">
-            <div class="cell-inner">Вакансия и отв. рекрутеры</div>
-            <div class="cell-inner">Статус кандидата и обновление</div>
-            <div class="cell-inner">Заказчик</div>
-          </div>
-          <div v-if="considerationsLoading" class="considerations-loading">
-            <p class="text-sm text-slate-custom">Загрузка...</p>
-          </div>
-          <template v-else-if="considerations.length">
-            <div
-              v-for="(row, idx) in considerations"
-              :key="row.vacancy_id"
-              class="considerations-table-row"
-              :class="{ 'considerations-table-row-last': idx === considerations.length - 1 }"
-            >
-              <div class="cell-inner flex flex-col gap-0.5">
-                <NuxtLink
-                  :to="{
-                    path: `/vacancies/${row.vacancy_id}`,
-                    query: {
-                      candidate: String(candidate.id),
-                      ...(row.stage_id != null ? { stage: String(row.stage_id) } : {}),
-                    },
-                  }"
-                  class="text-sm font-medium text-dodger hover:underline"
-                >
-                  {{ row.vacancy_name }}
-                </NuxtLink>
-                <p v-if="row.recruiters?.length" class="text-xs text-bali">
-                  {{ row.recruiters.join(', ') }}
-                </p>
-              </div>
-              <div class="cell-inner flex flex-col gap-0.5">
-                <span class="text-sm font-medium text-space">{{ row.stage_name || '—' }}</span>
-                <span v-if="row.updated_at" class="text-xs text-bali">{{ row.updated_at }}</span>
-              </div>
-              <div class="cell-inner flex flex-col gap-0.5">
-                <span class="text-sm font-medium text-space">
-                  {{ row.customers?.[0] || '—' }}
-                </span>
-                <p
-                  v-if="row.customers && row.customers.length > 1"
-                  class="text-xs text-bali"
-                >
-                  {{ row.customers.slice(1).join(', ') }}
-                </p>
-              </div>
-            </div>
-          </template>
-          <div v-else class="considerations-empty">
-            <p class="text-sm text-slate-custom">Нет рассмотрений по вакансиям.</p>
-          </div>
-        </div>
-      </div>
+      <component :is="activeCandidateTab" :key="activeTab" />
     </div>
     <CandidateAddCustomFieldPopup
       :is-open="isAddCustomFieldPopupOpen"

@@ -4,7 +4,7 @@ import BtnTab from '~/components/custom/BtnTab.vue'
 import DotsDropdown from '~/components/custom/DotsDropdown.vue'
 import Popup from '~/components/custom/Popup.vue'
 import MyInput from '~/components/custom/MyInput.vue'
-import TiptapEditor from '~/components/TiptapEditor.vue'
+import { LazyTiptapEditor as TiptapEditor } from '~/utils/lazyTiptapEditor'
 import UiButton from '@/components/ui/button/Button.vue'
 import { getEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate } from '@/src/api/emailTemplates'
 

@@ -5,6 +5,31 @@
         <div
           :class="fixedModalFooter ? 'popup-scroll min-h-[min(320px,calc(90dvh-220px))] flex-1 overflow-y-auto overscroll-y-contain px-25px pb-25px' : 'contents'"
         >
+        <div
+          v-if="showReferenceDataBanner"
+          class="sticky top-0 z-[2] mb-4 flex items-start gap-2.5 rounded-ten border px-3 py-2.5 text-sm leading-snug shadow-sm"
+          :class="referenceDataBannerClass"
+          role="status"
+          :aria-live="referenceDataLoadState.status === 'loading' ? 'polite' : 'polite'"
+          :aria-busy="referenceDataLoadState.status === 'loading'"
+        >
+          <span
+            v-if="referenceDataLoadState.status === 'loading'"
+            class="mt-0.5 inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-dodger border-t-transparent"
+            aria-hidden="true"
+          />
+          <span
+            v-else-if="referenceDataLoadState.status === 'ready'"
+            class="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-green text-xs font-bold text-white"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-custom text-xs font-bold text-white"
+            aria-hidden="true"
+          >!</span>
+          <span>{{ referenceDataBannerText }}</span>
+        </div>
         <template v-if="currentPlatform === 'hh'">
           <p class="text-space text-xl font-semibold mb-2">
             {{ HH_PUBLICATION_SECTIONS.basic.titleRu }}
@@ -1186,7 +1211,7 @@ import MyDropdown from '~/components/custom/MyDropdown.vue';
 import MyInput from '~/components/custom/MyInput.vue';
 import MyCheckbox from '~/components/custom/MyCheckbox.vue';
 import EmailInput from '~/components/custom/EmailInput.vue';
-import TiptapEditor from '~/components/TiptapEditor.vue';
+import { LazyTiptapEditor as TiptapEditor } from '~/utils/lazyTiptapEditor'
 import GenerateButton from '../custom/GenerateButton.vue';
 import TagSelect from '~/components/custom/TagSelect.vue'
 import MultiSelect from '~/components/custom/MultiSelect.vue'
@@ -1224,7 +1249,7 @@ import {
 } from '@/src/constants'
 import { HH_OFORMLENIE_MULTISELECT_OPTIONS } from '@/utils/hhVacancyPayloadConstants'
 import experience from '~/src/data/experience.json'
-import { inject, watch, computed, defineProps, nextTick, onMounted, isRef } from 'vue'
+import { inject, watch, computed, defineProps, nextTick, onMounted, onBeforeUnmount, ref, isRef } from 'vue'
 
 const props = defineProps({
   selectedPlatform: {
@@ -1250,7 +1275,82 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['saved', 'cancel', 'form-ready'])
+const emit = defineEmits(['saved', 'cancel', 'form-ready', 'reference-data-status'])
+
+/** Статус фоновой загрузки справочников — баннер без блокировки полей. */
+const referenceDataLoadState = ref({ status: 'idle', message: '' })
+let referenceDataHideReadyTimer = null
+
+const showReferenceDataBanner = computed(() =>
+  ['loading', 'ready', 'error'].includes(referenceDataLoadState.value.status),
+)
+
+const referenceDataBannerText = computed(() => {
+  const { status, message } = referenceDataLoadState.value
+  if (message) return message
+  if (status === 'loading') return 'Загружаем справочники для формы…'
+  if (status === 'ready') return 'Справочники загружены. Списки и подсказки обновлены.'
+  return 'Часть справочников не загрузилась. Поля доступны — можно продолжить заполнение.'
+})
+
+const referenceDataBannerClass = computed(() => {
+  const status = referenceDataLoadState.value.status
+  if (status === 'error') return 'border-red-200 bg-cinderella text-red-custom'
+  if (status === 'ready') return 'border-athens bg-feta text-green'
+  return 'border-dodger/30 bg-zumthor text-dodger'
+})
+
+function getReferenceDataLoadMessage(platform) {
+  switch (normalizePlatformName(platform)) {
+    case 'avito':
+      return 'Загружаем справочники и подсказки Avito. Поля можно заполнять уже сейчас.'
+    case 'rabota':
+      return 'Загружаем справочники Rabota.ru. Поля можно заполнять уже сейчас.'
+    case 'superjob':
+      return 'Загружаем каталоги SuperJob. Поля можно заполнять уже сейчас.'
+    case 'hh':
+      return 'Загружаем справочники hh.ru. Поля можно заполнять уже сейчас.'
+    default:
+      return 'Загружаем справочники для формы. Поля можно заполнять уже сейчас.'
+  }
+}
+
+async function runReferenceDataLoad(message, fn) {
+  if (referenceDataHideReadyTimer) {
+    clearTimeout(referenceDataHideReadyTimer)
+    referenceDataHideReadyTimer = null
+  }
+  referenceDataLoadState.value = { status: 'loading', message }
+  try {
+    await fn()
+    referenceDataLoadState.value = {
+      status: 'ready',
+      message: 'Справочники загружены. Списки и подсказки в полях обновлены.',
+    }
+  } catch (e) {
+    console.warn('AddPublication: загрузка справочников:', e)
+    referenceDataLoadState.value = {
+      status: 'error',
+      message:
+        'Не все справочники загрузились. Поля остаются доступными — проверьте подключение и продолжайте заполнение.',
+    }
+  }
+  referenceDataHideReadyTimer = setTimeout(() => {
+    if (referenceDataLoadState.value.status !== 'loading') {
+      referenceDataLoadState.value = { status: 'idle', message: '' }
+    }
+    referenceDataHideReadyTimer = null
+  }, 3500)
+}
+
+watch(
+  referenceDataLoadState,
+  (state) => {
+    emit('reference-data-status', { ...state })
+  },
+  { deep: true },
+)
+
 const isEditingMode = computed(() => props.editingVacancy != null)
 
 /** Служебные / доменные значения вместо названия вакансии (CRM, pivot, поле name у Avito). */
@@ -1287,48 +1387,125 @@ function resolveEditingImportedPublicationTitle(v) {
 }
 
 import {
-  getHhProfile as profileHh,
-  getAvailableTypes as typesHh,
-  addHhDraft as addDraftHh,
-  publishHhVacancy as publishVacancyToHh,
-  getHhRoles as getRolesHh,
-  getAreas as getAreasHh,
-  getAddresses as getAddressesHh,
-  getAvailablePublications as getAvailablePublicationsHh,
-  getPublication as getHhPublicationById,
-} from '@/utils/hhAccount'
+  profileHh,
+  typesHh,
+  addDraftHh,
+  publishVacancyToHh,
+  getRolesHh,
+  getAreasHh,
+  getAddressesHh,
+  getAvailablePublicationsHh,
+  getHhPublicationById,
+} from '@/utils/addPublication/platformApi/hh'
 import {
-  addAvitoDraft as addDraftAvito,
-  getAvitoProfile as profileAvito,
-  publishAvitoVacancy as publishVacancyToAvito,
-  getAvitoCatalogs as getAvitoCatalogs,
-  getAvitoSpecializationMappings as getAvitoSpecializationMappings,
-  getAvitoExperienceMappings as getAvitoExperienceMappings,
-  getAvitoEmploymentMappings as getAvitoEmploymentMappings,
-  getAvitoContractMappings as getAvitoContractMappings,
-  getAvitoSalaryPeriodMappings as getAvitoSalaryPeriodMappings,
-  getAvitoSalaryTaxMappings as getAvitoSalaryTaxMappings,
-  getAvitoPayoutFrequencyMappings as getAvitoPayoutFrequencyMappings,
-  getAvitoContactEmployees as getAvitoContactEmployees,
+  addDraftAvito,
+  profileAvito,
+  publishVacancyToAvito,
+  getAvitoCatalogs,
+  getAvitoSpecializationMappings,
+  getAvitoExperienceMappings,
+  getAvitoEmploymentMappings,
+  getAvitoContractMappings,
+  getAvitoSalaryPeriodMappings,
+  getAvitoSalaryTaxMappings,
+  getAvitoPayoutFrequencyMappings,
+  getAvitoContactEmployees,
   buildAvitoPublicationRequestBody,
-} from '@/utils/avitoAccount'
+} from '@/utils/addPublication/platformApi/avito'
 import {
-  getRabotaProfile as profileRabota,
+  profileRabota,
   extractRabotaProfileContactDefaults,
-  addRabotaDraft as addDraftRabota,
-  publishRabotaVacancy as publishVacancyToRabota,
+  addDraftRabota,
+  publishVacancyToRabota,
   getRabotaProfessionsHierarchy,
   getRabotaProfessionsByProfessionalRole,
   searchRabotaRegions,
-  getEmploymentTypes as getEmploymentTypesRabota,
-  getExperienceLevels as getExperienceLevelsRabota,
-  getEducations as getEducationsRabota,
-  getWorkCategories as getWorkCategoriesRabota,
-  getWorkSchedules as getWorkSchedulesRabota,
-  getWorkingHours as getWorkingHoursRabota,
-} from '@/utils/rabotaAccount'
-import { updateSuperjobPublication as updatePublicationSuperjob, getSuperjobVacancy, getCatalogues as getSuperjobCatalogues, getTowns as getSuperjobTowns, publishSuperjobVacancy as publishVacancyToSuperjob } from '@/utils/superjobAccount'
-import { mapVacancyToSuperjobPayload } from '@/utils/mapVacancyToSuperjob'
+  getEmploymentTypesRabota,
+  getExperienceLevelsRabota,
+  getEducationsRabota,
+  getWorkCategoriesRabota,
+  getWorkSchedulesRabota,
+  getWorkingHoursRabota,
+} from '@/utils/addPublication/platformApi/rabota'
+import {
+  updatePublicationSuperjob,
+  getSuperjobVacancy,
+  getSuperjobCatalogues,
+  getSuperjobTowns,
+  publishVacancyToSuperjob,
+  mapVacancyToSuperjobPayload,
+} from '@/utils/addPublication/platformApi/superjob'
+import { preloadPublicationPlatformBundle } from '@/utils/addPublication/preloadPlatformBundle'
+import {
+  flattenSelectableProfessions,
+  findProfessionByNameLoose,
+  resolveProfessionalRoleIdFromVacancy,
+  resolveProfessionalRoleIdForRabotaFromSpecializationByHh,
+  mapRabotaProfessionByRoleItem,
+} from '@/utils/rabotaProfessionsHierarchy'
+import {
+  AVITO_EXPERIENCE_OPTIONS,
+  findAvitoExperienceOption,
+  resolveAvitoExperienceFromJobly,
+  resolveJoblyExperienceId,
+} from '@/utils/avitoExperienceMapping'
+import {
+  extractRabotaPublicationExperienceRaw,
+  resolveRabotaExperienceOption,
+} from '@/utils/rabotaExperienceMapping'
+import {
+  AVITO_POPUP_EMPLOYMENT_OPTIONS,
+  normalizeAvitoEmploymentMappedId,
+  resolveAvitoEmploymentFromJobly,
+  resolveJoblyEmploymentCompositeFromSources,
+} from '@/utils/avitoEmploymentMapping'
+import {
+  AVITO_POPUP_CONTRACT_OPTIONS,
+  collectJoblyOformlenieIdsFromList,
+  resolveAvitoContractsFromJobly,
+  resolveBillingTypeFromContractKeys,
+} from '@/utils/avitoContractMapping'
+import {
+  filterActiveAvitoBusinessAreaCatalog,
+  resolveBusinessAreaIdForAvitoApi,
+} from '@/utils/avitoBusinessAreaMapping'
+import {
+  buildAvitoContactEmployeeLabel,
+  findAvitoContactEmployeeByPhone,
+  formatAvitoPhoneDisplay,
+  normalizeAvitoPhoneDigits,
+  parseAvitoContactEmployeesResponse,
+} from '@/utils/avitoContactEmployees'
+import {
+  formatDescriptionForAvitoEditor,
+  formatDescriptionForAvitoApi,
+  needsAvitoDescriptionReformat,
+} from '@/utils/avitoDescriptionFormat'
+import {
+  parseJoblySalaryAmount,
+  resolveJoblySalaryGrossWithPriority,
+  resolveJoblySalaryRangeFromSources,
+  resolveJoblySalaryRangeFromVacancy,
+} from '@/utils/avitoSalaryFromJobly'
+import {
+  AVITO_POPUP_SALARY_MODE_OPTIONS,
+  findAvitoSalaryModeOption,
+  resolveAvitoSalaryPeriodFromJobly,
+  resolveJoblySalaryPeriodIdWithPriority,
+} from '@/utils/avitoSalaryPeriodMapping'
+import {
+  resolveAvitoGrossFromJoblyMapping,
+  resolveJoblySalaryTaxIdWithPriority,
+} from '@/utils/avitoSalaryTaxMapping'
+import {
+  AVITO_POPUP_PAYOUT_FREQUENCY_OPTIONS,
+  findAvitoPayoutFrequencyOption,
+  normalizeAvitoPayoutFrequencyIdForPopup,
+  resolveAvitoPayoutFrequencyForJoblyVacancy,
+  resolveAvitoPayoutFrequencyFromJobly,
+  resolveJoblyPayoutFrequencyIdFromVacancy,
+  resolveJoblyPayoutFrequencyIdWithPriority,
+} from '@/utils/avitoPayoutFrequencyMapping'
 import {
   getVacancy as getVacancyById,
   resolveDriverNamesToDbIds,
@@ -1345,77 +1522,13 @@ import { fetchVacancyUpdate } from '@/utils/applicationUpdate'
 import { mapVacancyToUpdateFormat } from '@/utils/mapVacancyToUpdateFormat'
 import { HH_PUBLICATION_SECTIONS } from '@/utils/hhPublicationFieldRegistry'
 import { applyJoblyVacancyToHhPublicationFormData } from '@/utils/mapJoblyVacancyToHhPublicationForm'
+import { pickJoblyVacancyName } from '@/utils/publishCardStaticPrefill'
 import {
-  flattenSelectableProfessions,
-  findProfessionByNameLoose,
-  resolveProfessionalRoleIdFromVacancy,
-  resolveProfessionalRoleIdForRabotaFromSpecializationByHh,
-  mapRabotaProfessionByRoleItem,
-} from '@/utils/rabotaProfessionsHierarchy'
-  import {
-  AVITO_EXPERIENCE_OPTIONS,
-  findAvitoExperienceOption,
-  resolveAvitoExperienceFromJobly,
-  resolveJoblyExperienceId,
-} from '@/utils/avitoExperienceMapping';
-import {
-  extractRabotaPublicationExperienceRaw,
-  resolveRabotaExperienceOption,
-} from '@/utils/rabotaExperienceMapping'
-import {
-  AVITO_POPUP_EMPLOYMENT_OPTIONS,
-  normalizeAvitoEmploymentMappedId,
-  resolveAvitoEmploymentFromJobly,
-  resolveJoblyEmploymentCompositeFromSources,
-} from '@/utils/avitoEmploymentMapping';
-import {
-  AVITO_POPUP_CONTRACT_OPTIONS,
-  collectJoblyOformlenieIdsFromList,
-  resolveAvitoContractsFromJobly,
-  resolveBillingTypeFromContractKeys,
-} from '@/utils/avitoContractMapping';
-import {
-  filterActiveAvitoBusinessAreaCatalog,
-  resolveBusinessAreaIdForAvitoApi,
-} from '@/utils/avitoBusinessAreaMapping';
-import {
-  buildAvitoContactEmployeeLabel,
-  findAvitoContactEmployeeByPhone,
-  formatAvitoPhoneDisplay,
-  normalizeAvitoPhoneDigits,
-  parseAvitoContactEmployeesResponse,
-} from '@/utils/avitoContactEmployees';
-import {
-  formatDescriptionForAvitoEditor,
-  formatDescriptionForAvitoApi,
-  needsAvitoDescriptionReformat,
-} from '@/utils/avitoDescriptionFormat';
-import {
-  parseJoblySalaryAmount,
-  resolveJoblySalaryGrossWithPriority,
-  resolveJoblySalaryRangeFromSources,
-  resolveJoblySalaryRangeFromVacancy,
-} from '@/utils/avitoSalaryFromJobly';
+  PUBLICATION_DICT_CACHE_KEYS,
+  readPublicationDictCache,
+  writePublicationDictCache,
+} from '@/utils/publicationDictionariesCache'
 import { useVacancyCurrectLive } from '@/utils/useVacancyCurrect';
-import {
-  AVITO_POPUP_SALARY_MODE_OPTIONS,
-  findAvitoSalaryModeOption,
-  resolveAvitoSalaryPeriodFromJobly,
-  resolveJoblySalaryPeriodIdWithPriority,
-} from '@/utils/avitoSalaryPeriodMapping';
-import {
-  resolveAvitoGrossFromJoblyMapping,
-  resolveJoblySalaryTaxIdWithPriority,
-} from '@/utils/avitoSalaryTaxMapping';
-import {
-  AVITO_POPUP_PAYOUT_FREQUENCY_OPTIONS,
-  findAvitoPayoutFrequencyOption,
-  normalizeAvitoPayoutFrequencyIdForPopup,
-  resolveAvitoPayoutFrequencyForJoblyVacancy,
-  resolveAvitoPayoutFrequencyFromJobly,
-  resolveJoblyPayoutFrequencyIdFromVacancy,
-  resolveJoblyPayoutFrequencyIdWithPriority,
-} from '@/utils/avitoPayoutFrequencyMapping';
 
 /** Возможные сетевые запросы при инициализации — перечень: `utils/addPublicationRemoteLoads.ts` (`ADD_PUBLICATION_REMOTE_LOADS`). */
 
@@ -1459,6 +1572,8 @@ const isNewHhPublicationFromCard =
   isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'hh'
 const isNewAvitoPublicationFromCard =
   isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'avito'
+const isNewRabotaPublicationFromCard =
+  isNewPublicationFromCard && normalizePlatformName(props.selectedPlatform) === 'rabota'
 
 /** По умолчанию размещение; черновик — только если пользователь отметил чекбокс (в формах, где он есть). */
 const isDraft = ref(false)
@@ -1481,19 +1596,32 @@ function resolvePlatformsInject() {
 const platforms = ref(resolvePlatformsInject())
 const isPlatforms = ref(inject('isPlatforms'))
 const vacancyData = inject('vacancyCurrect', null)
+const initialVacancyDataInject = inject('initialVacancyData', null)
 const vacancyCurrectLive = useVacancyCurrectLive()
 
 function getInjectedVacancyData() {
   const fromInject = vacancyData != null
     ? (isRef(vacancyData) ? vacancyData.value : vacancyData)
     : null
+  const fromInitial =
+    initialVacancyDataInject != null
+      ? isRef(initialVacancyDataInject)
+        ? initialVacancyDataInject.value
+        : initialVacancyDataInject
+      : null
+  const base =
+    fromInject != null && typeof fromInject === 'object'
+      ? fromInitial != null && typeof fromInitial === 'object'
+        ? { ...fromInitial, ...fromInject }
+        : { ...fromInject }
+      : fromInitial != null && typeof fromInitial === 'object'
+        ? { ...fromInitial }
+        : null
   const live = vacancyCurrectLive.value
   if (live != null && typeof live === 'object') {
-    return fromInject != null && typeof fromInject === 'object'
-      ? { ...fromInject, ...live }
-      : { ...live }
+    return base != null && typeof base === 'object' ? { ...base, ...live } : { ...live }
   }
-  return fromInject
+  return base
 }
 const currectRole = ref(null)
 const roleData = ref(null)
@@ -1564,7 +1692,7 @@ async function openAvitoRequestPreview() {
 
     const formPayload = resolveAvitoPublicationFormPayloadForPreview()
     const joblyVacancyId = resolveJoblyVacancyIdForAvitoPublish()
-    const requestBody = buildAvitoPublicationRequestBody(formPayload, joblyVacancyId)
+    const requestBody = await buildAvitoPublicationRequestBody(formPayload, joblyVacancyId)
 
     const publicationId = String(
       requestBody.publication_id ?? requestBody.vacancy_platform_id ?? '',
@@ -1888,8 +2016,11 @@ function applyRabotaExperienceFromVacancy(vacancy) {
 
 function applyRabotaDefaultContactFromProfile(profilePayload) {
   if (currentPlatform.value !== 'rabota') return
-
-  const defaults = extractRabotaProfileContactDefaults(profilePayload.response)
+  const response =
+    profilePayload?.response != null
+      ? profilePayload.response
+      : profilePayload
+  const defaults = extractRabotaProfileContactDefaults(response)
   if (!defaults.name && !defaults.email && !defaults.phone) return
 
   const prevContacts =
@@ -3476,6 +3607,7 @@ watch(
   currentPlatform,
   (p) => {
     validFields.value.address.name = p === 'avito' ? 'Место работы' : 'Город размещения'
+    void preloadPublicationPlatformBundle(p)
   },
   { immediate: true },
 )
@@ -4976,6 +5108,139 @@ function applyAvitoWorkPlaceFromPublication(pub) {
   applyAvitoWorkPlaceFromAddressText(addressText)
 }
 
+function snapshotHhDictionaries() {
+  return {
+    currectRole: currectRole.value,
+    cities: cities.value,
+  }
+}
+
+function restoreHhDictionaries(snapshot) {
+  currectRole.value = snapshot.currectRole
+  cities.value = snapshot.cities ?? []
+}
+
+function snapshotRabotaDictionaries() {
+  return {
+    rabotaProfessionsHierarchy: rabotaProfessionsHierarchy.value,
+    rabotaProfessions: rabotaProfessions.value,
+    rabotaRegions: rabotaRegions.value,
+    cities: cities.value,
+    rabotaEmploymentTypes: rabotaEmploymentTypes.value,
+    rabotaScheduleDropdownOptions: rabotaScheduleDropdownOptions.value,
+    rabotaExperienceLevels: rabotaExperienceLevels.value,
+    rabotaEducationLevels: rabotaEducationLevels.value,
+    rabotaWorkCategories: rabotaWorkCategories.value,
+    rabotaWorkFormatOptions: rabotaWorkFormatOptions.value,
+  }
+}
+
+function restoreRabotaDictionaries(snapshot) {
+  rabotaProfessionsHierarchy.value = snapshot.rabotaProfessionsHierarchy ?? []
+  rabotaProfessions.value = snapshot.rabotaProfessions ?? []
+  rabotaRegions.value = snapshot.rabotaRegions ?? []
+  cities.value = snapshot.cities ?? []
+  rabotaEmploymentTypes.value = snapshot.rabotaEmploymentTypes ?? []
+  rabotaScheduleDropdownOptions.value = snapshot.rabotaScheduleDropdownOptions ?? []
+  rabotaExperienceLevels.value = snapshot.rabotaExperienceLevels ?? []
+  rabotaEducationLevels.value = snapshot.rabotaEducationLevels ?? []
+  rabotaWorkCategories.value = snapshot.rabotaWorkCategories ?? []
+  rabotaWorkFormatOptions.value = snapshot.rabotaWorkFormatOptions ?? []
+  syncRabotaScheduleSelectedOption()
+}
+
+function snapshotSuperjobDictionaries() {
+  return {
+    currectRole: currectRole.value,
+    cities: cities.value,
+  }
+}
+
+function restoreSuperjobDictionaries(snapshot) {
+  currectRole.value = snapshot.currectRole ?? []
+  cities.value = snapshot.cities ?? []
+}
+
+function snapshotAvitoCoreDictionaries() {
+  return {
+    avitoCatalogs: avitoCatalogs.value,
+    avitoProfessions: avitoProfessions.value,
+    avitoBusinessAreas: avitoBusinessAreas.value,
+    currectRole: currectRole.value,
+    avitoSpecializationMappings: avitoSpecializationMappings.value,
+  }
+}
+
+function restoreAvitoCoreDictionaries(snapshot) {
+  avitoCatalogs.value = snapshot.avitoCatalogs ?? {}
+  avitoProfessions.value = snapshot.avitoProfessions ?? []
+  avitoBusinessAreas.value = snapshot.avitoBusinessAreas ?? []
+  currectRole.value = snapshot.currectRole ?? []
+  avitoSpecializationMappings.value = snapshot.avitoSpecializationMappings ?? {}
+}
+
+function snapshotAvitoSecondaryDictionaries() {
+  return {
+    avitoExperienceMappings: avitoExperienceMappings.value,
+    avitoEmploymentMappings: avitoEmploymentMappings.value,
+    avitoContractMappings: avitoContractMappings.value,
+    avitoSalaryPeriodMappings: avitoSalaryPeriodMappings.value,
+    avitoSalaryTaxMappings: avitoSalaryTaxMappings.value,
+    avitoPayoutFrequencyMappings: avitoPayoutFrequencyMappings.value,
+  }
+}
+
+function restoreAvitoSecondaryDictionaries(snapshot) {
+  avitoExperienceMappings.value = snapshot.avitoExperienceMappings ?? {}
+  avitoEmploymentMappings.value = snapshot.avitoEmploymentMappings ?? {}
+  avitoContractMappings.value = snapshot.avitoContractMappings ?? {}
+  avitoSalaryPeriodMappings.value = snapshot.avitoSalaryPeriodMappings ?? {}
+  avitoSalaryTaxMappings.value = snapshot.avitoSalaryTaxMappings ?? {}
+  avitoPayoutFrequencyMappings.value = snapshot.avitoPayoutFrequencyMappings ?? {}
+}
+
+function hasAvitoSecondaryDictionariesLoaded() {
+  return (
+    Object.keys(unwrapAvitoMappingsPayload(avitoExperienceMappings.value)).length > 0 &&
+    Object.keys(unwrapAvitoMappingsPayload(avitoEmploymentMappings.value)).length > 0
+  )
+}
+
+/** После восстановления справочников rabota из кэша — префилл полей, зависящих от списков. */
+function applyRabotaPrefillAfterDictionariesLoaded() {
+  const vacancy = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
+  if (vacancy?.employment) {
+    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
+  }
+  if (vacancy) {
+    applyRabotaExperienceFromVacancy(vacancy)
+  }
+  const pubForExp = rabotaActivePublication.value
+  if (pubForExp) applyRabotaExperienceFromPublication(pubForExp)
+  if (vacancy?.place != null && vacancy.place !== '') {
+    applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
+  }
+}
+
+function applySuperjobAreaMatchFromLoadedCities() {
+  const currentArea = data.value.area
+  if (!currentArea?.name || !Array.isArray(cities.value) || cities.value.length === 0) return
+  if (currentArea?.name && !currentArea?.id) {
+    const match = cities.value.find(
+      (c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase(),
+    )
+    if (match) data.value.area = { id: match.id, name: match.name }
+  } else if (currentArea?.name && currentArea?.id) {
+    const byId = cities.value.find((c) => Number(c.id) === Number(currentArea.id))
+    if (!byId) {
+      const byName = cities.value.find(
+        (c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase(),
+      )
+      if (byName) data.value.area = { id: byName.id, name: byName.name }
+    }
+  }
+}
+
 // Функция для загрузки справочников в зависимости от платформы
 // opts.skipAvitoAddressHints — не грузить getAreasHh для Avito (фаза B после form-ready).
 const loadDictionaries = async (platform, opts = {}) => {
@@ -4983,6 +5248,11 @@ const loadDictionaries = async (platform, opts = {}) => {
     rabotaActivePublicationApplied.value = false
     data.value.driver_license_types = []
     await ensureRabotaProfileAndDefaultContact()
+    const rabotaCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.rabota)
+    if (rabotaCached) {
+      restoreRabotaDictionaries(rabotaCached)
+      applyRabotaPrefillAfterDictionariesLoaded()
+    } else {
     // Загружаем справочники rabota.ru
     const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult, workCategoriesResult, workingHoursResult] = await Promise.all([
       getRabotaProfessionsHierarchy({ per_page: 50 }),
@@ -5075,6 +5345,9 @@ const loadDictionaries = async (platform, opts = {}) => {
       }
     }
 
+      writePublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.rabota, snapshotRabotaDictionaries())
+    }
+
     await applyRabotaActivePublicationToForm()
     applyRabotaDefaultContactFromPlatformState()
     const vacancyAfterPrefill = resolveCurrentJoblyVacancy()
@@ -5111,72 +5384,95 @@ const loadDictionaries = async (platform, opts = {}) => {
     }
     if (!opts.skipAvitoAddressHints) {
       // «Место работы»: подсказки из справочника городов (как для HH). С карточки «Опубликовать» адреса работодателя HH не подгружаются — иначе список пустой и «Город не найден».
-      try {
-        const { data: areasData, error: areasError } = await getAreasHh()
-        if (!areasError && areasData) {
-          addresses.value = dedupeAreasByName(areasData)
-        } else {
+      const addressHintsCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.avitoAddressHints)
+      if (addressHintsCached?.addresses) {
+        addresses.value = addressHintsCached.addresses
+      } else {
+        try {
+          const { data: areasData, error: areasError } = await getAreasHh()
+          if (!areasError && areasData) {
+            addresses.value = dedupeAreasByName(areasData)
+          } else {
+            addresses.value = []
+          }
+          writePublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.avitoAddressHints, {
+            addresses: addresses.value,
+          })
+        } catch (e) {
+          console.warn('Avito: не удалось загрузить города для места работы:', e)
           addresses.value = []
         }
-      } catch (e) {
-        console.warn('Avito: не удалось загрузить города для места работы:', e)
-        addresses.value = []
       }
       applyAvitoWorkPlaceFromJobly()
     }
   } else if (platform === 'superjob') {
-    // Каталог SuperJob: отрасли (key, title) и позиции (positions[].key, title). В вакансию передаём только id категории (position.key).
-    const cataloguesResult = await getSuperjobCatalogues()
-    if (cataloguesResult?.data && Array.isArray(cataloguesResult.data)) {
-      currectRole.value = cataloguesResult.data.map((c) => ({
-        id: c.key ?? c.id,
-        name: c.title ?? c.title_rus ?? '',
-        roles: (c.positions || []).map((p) => ({
-          id: p.key ?? p.id,
-          name: p.title ?? p.title_rus ?? '',
-        })),
-      }))
+    const superjobCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.superjob)
+    if (superjobCached) {
+      restoreSuperjobDictionaries(superjobCached)
+      applySuperjobAreaMatchFromLoadedCities()
       updateComputedValues()
       await applyComputedValues()
     } else {
-      currectRole.value = []
-    }
-    // Города SuperJob — API требует town как число (id). Загружаем справочник и подставляем в селектор.
-    const townsResult = await getSuperjobTowns({ all: 1 })
-    const townObjects = Array.isArray(townsResult?.data) ? townsResult.data : (townsResult?.data?.objects ?? [])
-    if (townObjects.length > 0) {
-      cities.value = townObjects.map((t) => ({ id: t.id, name: t.title ?? t.name ?? '' })).filter((c) => c.id != null && c.name)
-      // Если уже выбран город по названию (HH), подбираем SuperJob town по имени
-      const currentArea = data.value.area
-      if (currentArea?.name && !currentArea?.id) {
-        const match = cities.value.find((c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase())
-        if (match) data.value.area = { id: match.id, name: match.name }
-      } else if (currentArea?.name && currentArea?.id) {
-        const byId = cities.value.find((c) => Number(c.id) === Number(currentArea.id))
-        if (!byId) {
-          const byName = cities.value.find((c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase())
-          if (byName) data.value.area = { id: byName.id, name: byName.name }
-        }
+      // Каталог SuperJob: отрасли (key, title) и позиции (positions[].key, title). В вакансию передаём только id категории (position.key).
+      const cataloguesResult = await getSuperjobCatalogues()
+      if (cataloguesResult?.data && Array.isArray(cataloguesResult.data)) {
+        currectRole.value = cataloguesResult.data.map((c) => ({
+          id: c.key ?? c.id,
+          name: c.title ?? c.title_rus ?? '',
+          roles: (c.positions || []).map((p) => ({
+            id: p.key ?? p.id,
+            name: p.title ?? p.title_rus ?? '',
+          })),
+        }))
+        updateComputedValues()
+        await applyComputedValues()
+      } else {
+        currectRole.value = []
       }
-      updateComputedValues()
-      await applyComputedValues()
+      // Города SuperJob — API требует town как число (id). Загружаем справочник и подставляем в селектор.
+      const townsResult = await getSuperjobTowns({ all: 1 })
+      const townObjects = Array.isArray(townsResult?.data) ? townsResult.data : (townsResult?.data?.objects ?? [])
+      if (townObjects.length > 0) {
+        cities.value = townObjects.map((t) => ({ id: t.id, name: t.title ?? t.name ?? '' })).filter((c) => c.id != null && c.name)
+        // Если уже выбран город по названию (HH), подбираем SuperJob town по имени
+        const currentArea = data.value.area
+        if (currentArea?.name && !currentArea?.id) {
+          const match = cities.value.find((c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase())
+          if (match) data.value.area = { id: match.id, name: match.name }
+        } else if (currentArea?.name && currentArea?.id) {
+          const byId = cities.value.find((c) => Number(c.id) === Number(currentArea.id))
+          if (!byId) {
+            const byName = cities.value.find((c) => String(c.name || '').toLowerCase() === String(currentArea.name || '').toLowerCase())
+            if (byName) data.value.area = { id: byName.id, name: byName.name }
+          }
+        }
+        updateComputedValues()
+        await applyComputedValues()
+      }
+      writePublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.superjob, snapshotSuperjobDictionaries())
     }
   } else {
-    // Загружаем справочники hh.ru (по умолчанию)
-    const rolesPayload = await getRolesHh()
-    if (rolesPayload && !rolesPayload.errorRoles && rolesPayload.roles) {
-      const { roles } = rolesPayload
-      currectRole.value = roles.categories
-    }
-
-    // Загрузка списка городов из API (локальная БД hh_areas)
-    const { data: areasData, error: areasError } = await getAreasHh()
-    if (!areasError && areasData) {
-      cities.value = dedupeAreasByName(areasData)
-      console.log('Загружены города в loadDictionaries, количество:', cities.value.length)
-      // Обновляем вычисленные значения после загрузки городов
+    const hhCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.hh)
+    if (hhCached) {
+      restoreHhDictionaries(hhCached)
       updateComputedValues()
-      // Применяем значения, включая установку города из вакансии
+      await applyComputedValues()
+    } else {
+      // Загружаем справочники hh.ru (по умолчанию)
+      const rolesPayload = await getRolesHh()
+      if (rolesPayload && !rolesPayload.errorRoles && rolesPayload.roles) {
+        const { roles } = rolesPayload
+        currectRole.value = roles.categories
+      }
+
+      // Загрузка списка городов из API (локальная БД hh_areas)
+      const { data: areasData, error: areasError } = await getAreasHh()
+      if (!areasError && areasData) {
+        cities.value = dedupeAreasByName(areasData)
+        console.log('Загружены города в loadDictionaries, количество:', cities.value.length)
+      }
+      writePublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.hh, snapshotHhDictionaries())
+      updateComputedValues()
       await applyComputedValues()
     }
   }
@@ -6268,9 +6564,8 @@ async function loadInitialFormData() {
     const injectedForCard = globCurrentVacancy.value || getInjectedVacancyData()
     if (injectedForCard) {
       globCurrentVacancy.value = injectedForCard
-      if (isNewAvitoPublicationFromCard) {
-        const cardName = String(injectedForCard?.name ?? injectedForCard?.title ?? '').trim()
-        if (cardName) data.value.name = cardName
+      if (isNewAvitoPublicationFromCard || isNewRabotaPublicationFromCard) {
+        applyPublishCardStaticFieldsFromJobly(injectedForCard)
       } else {
         await applyVacancyToFormFields()
       }
@@ -6511,8 +6806,10 @@ if (!inject('isPlatforms') && !isNewPublicationFromCard && currentPlatform.value
 // При новой размещения (selectedPlatform) — всегда устанавливаем платформу и загружаем справочники
 const targetPlatformFromProps = props.selectedPlatform ? normalizePlatformName(props.selectedPlatform) : null
 const skipAvitoBootstrappingForPublishCard = isNewAvitoPublicationFromCard
+const skipRabotaBootstrappingForPublishCard = isNewRabotaPublicationFromCard
 const avitoPublishCardNameHydratedFromRoute = ref(false)
 let avitoPublishCardBootstrapPromise = null
+let rabotaPublishCardBootstrapPromise = null
 
 async function applyAvitoPublishCardMappingsFromJobly() {
   if (!skipAvitoBootstrappingForPublishCard) return
@@ -6534,8 +6831,9 @@ async function bootstrapAvitoPublishCardForm() {
   if (!skipAvitoBootstrappingForPublishCard) return
   if (avitoPublishCardBootstrapPromise) return avitoPublishCardBootstrapPromise
 
-  avitoPublishCardBootstrapPromise = (async () => {
-    try {
+  avitoPublishCardBootstrapPromise = runReferenceDataLoad(
+    getReferenceDataLoadMessage('avito'),
+    async () => {
       const v = getInjectedVacancyData() || globCurrentVacancy.value
       if (v) {
         applyAvitoInstantPrefillFromJobly(v)
@@ -6557,12 +6855,81 @@ async function bootstrapAvitoPublishCardForm() {
       void loadAvitoAddressHintsOnly().then(() => {
         applyAvitoWorkPlaceFromJobly()
       })
-    } catch (e) {
-      console.warn('Avito: отложенная загрузка формы размещения:', e)
-    }
-  })()
+    },
+  )
 
   return avitoPublishCardBootstrapPromise
+}
+
+/** Статические поля без справочников: название, описание, зарплата-числа, контакты. */
+function applyPublishCardStaticFieldsFromJobly(source) {
+  if (!source || typeof source !== 'object') return
+  globCurrentVacancy.value = source
+
+  const name = pickJoblyVacancyName(source)
+  if (name) {
+    data.value.name = name
+    if (validFields.value?.name) validFields.value.name.status = true
+  }
+
+  const desc = source.description ?? source.html_description
+  if (desc != null && String(desc).trim() !== '') {
+    data.value.description = desc
+    if (currentPlatform.value === 'avito') {
+      updateDescriptionValidation(data.value.description)
+    }
+  }
+
+  if (source.code != null && String(source.code).trim() !== '') {
+    data.value.code = String(source.code).trim()
+  }
+
+  if (currentPlatform.value === 'rabota' || normalizePlatformName(props.selectedPlatform) === 'rabota') {
+    applyRabotaSalaryFromVacancy(source)
+    if (source.executor_name) data.value.executor_name = source.executor_name
+    if (source.executor_phone) data.value.executor_phone = source.executor_phone
+    if (source.executor_email) data.value.executor_email = source.executor_email
+  }
+}
+
+/** Каталоги и export-map rabota.ru после первого рендера (карточка «Опубликовать»). */
+async function bootstrapRabotaPublishCardForm() {
+  if (!skipRabotaBootstrappingForPublishCard) return
+  if (rabotaPublishCardBootstrapPromise) return rabotaPublishCardBootstrapPromise
+
+  rabotaPublishCardBootstrapPromise = runReferenceDataLoad(
+    getReferenceDataLoadMessage('rabota'),
+    async () => {
+      const v = getInjectedVacancyData() || globCurrentVacancy.value
+      if (v) globCurrentVacancy.value = v
+
+      try {
+        rabotaExportMapRows.value = await getRabotaVacancyExportMap()
+      } catch (e) {
+        rabotaExportMapRows.value = []
+        console.warn('Не удалось загрузить маппинг полей rabota.ru:', e)
+      }
+      const rows = Array.isArray(rabotaExportMapRows.value) ? rabotaExportMapRows.value : []
+      const connectedKeys = new Set(
+        rows
+          .filter((r) => r?.connected === true && typeof r?.row_key === 'string' && r.row_key.trim() !== '')
+          .map((r) => String(r.row_key).trim()),
+      )
+      if (connectedKeys.size > 0) {
+        applyConnectedExportMapToForm(connectedKeys, 'rabota', {
+          preserveStaticFieldsFromJobly: true,
+        })
+      }
+
+      await loadDictionaries('rabota')
+      if (v) {
+        rabotaActivePublicationApplied.value = false
+        await applyJoblyVacancyToRabotaForm(v)
+      }
+    },
+  )
+
+  return rabotaPublishCardBootstrapPromise
 }
 
 function applyAvitoPublishCardNameFromJobly(source) {
@@ -6665,10 +7032,19 @@ function ingestAvitoSecondaryMappingResults({
 }
 
 async function loadAvitoDictionariesCore() {
+  const avitoCoreCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.avitoCore)
+  if (avitoCoreCached) {
+    restoreAvitoCoreDictionaries(avitoCoreCached)
+    return
+  }
+
   const hasCatalogs = Array.isArray(avitoProfessions.value) && avitoProfessions.value.length > 0
   const hasSpec =
     Object.keys(unwrapAvitoMappingsPayload(avitoSpecializationMappings.value)).length > 0
-  if (hasCatalogs && hasSpec) return
+  if (hasCatalogs && hasSpec) {
+    writePublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.avitoCore, snapshotAvitoCoreDictionaries())
+    return
+  }
 
   const [catalogsResult, mappingsResult] = await Promise.all([
     hasCatalogs ? Promise.resolve(null) : getAvitoCatalogs(),
@@ -6678,9 +7054,23 @@ async function loadAvitoDictionariesCore() {
   if (mappingsResult?.data && !mappingsResult.error && typeof mappingsResult.data === 'object') {
     avitoSpecializationMappings.value = unwrapAvitoMappingsPayload(mappingsResult.data)
   }
+  writePublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.avitoCore, snapshotAvitoCoreDictionaries())
 }
 
 async function loadAvitoDictionariesSecondaryMappings() {
+  const avitoSecondaryCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.avitoSecondary)
+  if (avitoSecondaryCached) {
+    restoreAvitoSecondaryDictionaries(avitoSecondaryCached)
+    return
+  }
+  if (hasAvitoSecondaryDictionariesLoaded()) {
+    writePublicationDictCache(
+      PUBLICATION_DICT_CACHE_KEYS.avitoSecondary,
+      snapshotAvitoSecondaryDictionaries(),
+    )
+    return
+  }
+
   const [
     experienceMappingsResult,
     employmentMappingsResult,
@@ -6704,6 +7094,10 @@ async function loadAvitoDictionariesSecondaryMappings() {
     salaryTaxMappingsResult,
     payoutFrequencyMappingsResult,
   })
+  writePublicationDictCache(
+    PUBLICATION_DICT_CACHE_KEYS.avitoSecondary,
+    snapshotAvitoSecondaryDictionaries(),
+  )
 }
 
 function resolveJoblyVacancyIdFromRoute() {
@@ -6743,22 +7137,20 @@ watch(
   async (v) => {
     if (!isNewPublicationFromCard) return
     if (isNewAvitoPublicationFromCard) {
-      if (v) applyAvitoInstantPrefillFromJobly(v)
-      else applyAvitoPublishCardNameFromJobly(v)
+      if (v) applyPublishCardStaticFieldsFromJobly(v)
+      applyAvitoInstantPrefillFromJobly(v)
       void bootstrapAvitoPublishCardForm()
+      return
+    }
+    if (isNewRabotaPublicationFromCard) {
+      if (v) applyPublishCardStaticFieldsFromJobly(v)
+      void bootstrapRabotaPublishCardForm()
       return
     }
     applyAvitoPublishCardNameFromJobly(v)
     if (!v || joblyVacancyPrefillApplied.value) return
-    globCurrentVacancy.value = v
-    try {
-      await fillFormFromCurrentVacancy()
-      if (currentPlatform.value === 'rabota') {
-        applyJoblyVacancyToRabotaForm(v)
-      }
-    } finally {
-      joblyVacancyPrefillApplied.value = true
-    }
+    applyPublishCardStaticFieldsFromJobly(v)
+    joblyVacancyPrefillApplied.value = true
   },
   { immediate: true },
 )
@@ -6788,19 +7180,25 @@ if (targetPlatformFromProps) {
         isPlatforms.value = true
       }
     } else if (targetPlatformFromProps === 'rabota') {
-      await loadDictionaries('rabota')
+      if (!skipRabotaBootstrappingForPublishCard) {
+        await loadDictionaries('rabota')
+      } else {
+        platformKey.isAuthenticated = true
+        isPlatforms.value = true
+      }
     }
   }
 }
 
-function applyConnectedExportMapToForm(rowKeys, platform) {
+function applyConnectedExportMapToForm(rowKeys, platform, options = {}) {
   // Сейчас используем только «обнуление» неподключённых полей после префилла.
   // Это безопаснее, чем пытаться маппить поля до заполнения (форма сложная и зависит от справочников).
   const has = (k) => rowKeys.has(k)
+  const preserveStatic = options.preserveStaticFieldsFromJobly === true
 
   // Общие поля
-  if (!has('name')) data.value.name = ''
-  if (!has('description')) data.value.description = ''
+  if (!has('name') && !preserveStatic) data.value.name = ''
+  if (!has('description') && !preserveStatic) data.value.description = ''
 
   // Специализация (в нашей форме: industry + professional_roles[0])
   const professionConnected =
@@ -6819,11 +7217,19 @@ function applyConnectedExportMapToForm(rowKeys, platform) {
   if (!has('education')) data.value.education_level = null
 
   // Локация
-  if (!has('area')) data.value.area = null
-  if (!has('address')) data.value.address = null
+  if (!preserveStatic) {
+    if (!has('area')) data.value.area = null
+    if (!has('address')) data.value.address = null
+  }
 
   // Зарплата (в форме HH — salary_range, для rabota сейчас переиспользуем ту же структуру, если она есть)
-  if (!has('salary_amounts') && !has('currency') && !has('salary_mode') && !has('salary_payment_freq')) {
+  if (
+    !preserveStatic &&
+    !has('salary_amounts') &&
+    !has('currency') &&
+    !has('salary_mode') &&
+    !has('salary_payment_freq')
+  ) {
     if ('salary_range' in (data.value || {})) {
       data.value.salary_range = null
     }
@@ -6838,33 +7244,6 @@ function applyConnectedExportMapToForm(rowKeys, platform) {
 // debug: avoid `alert` here — component can execute during SSR/hydration
 if (import.meta.client) {
   //console.log('AddPublication init:', { targetPlatformFromProps, isNewPublicationFromCard })
-}
-// rabota.ru: при открытии модалки «Опубликовать» подгружаем маппинг полей (аналог hh-export-map)
-if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
-  try {
-    rabotaExportMapRows.value = await getRabotaVacancyExportMap()
-  } catch (e) {
-    rabotaExportMapRows.value = []
-    console.warn('Не удалось загрузить маппинг полей rabota.ru:', e)
-  }
-}
-
-// Применяем маппинг после заполнения формы значениями из вакансии
-if (isNewPublicationFromCard && targetPlatformFromProps === 'rabota') {
-  const rows = Array.isArray(rabotaExportMapRows.value) ? rabotaExportMapRows.value : []
-  const connectedKeys = new Set(
-    rows
-      .filter((r) => r?.connected === true && typeof r?.row_key === 'string' && r.row_key.trim() !== '')
-      .map((r) => String(r.row_key).trim())
-  )
-  if (connectedKeys.size > 0) {
-    applyConnectedExportMapToForm(connectedKeys, 'rabota')
-  }
-  const vacancyForRabota = resolveCurrentJoblyVacancy()
-  if (vacancyForRabota) {
-    rabotaActivePublicationApplied.value = false
-    await applyRabotaActivePublicationToForm()
-  }
 }
 
 /** Режим «Активные размещения» → редактирование: одна платформа строки, без перебора hh → avito (лишние запросы и задержка). */
@@ -6940,25 +7319,21 @@ if (isEditingMode.value && !props.selectedPlatform) {
     applyEditingVacancyPlatformShell()
 
     if (props.editPublicationLightShell) {
-      if (plat === 'avito') {
-        await loadDictionaries('avito', { skipAvitoAddressHints: true })
-      } else if (plat === 'rabota') {
-        await loadDictionaries('rabota')
-      } else if (plat === 'superjob' || plat === 'superjob.ru') {
-        await loadDictionaries('superjob')
-      } else if (plat === 'hh') {
-        await ensurePlatformAuthForEditingMode()
-      }
       if (import.meta.client) {
         void nextTick(() => emit('form-ready'))
       }
-      void (async () => {
-        try {
-          await ensurePlatformAuthForEditingModeDeferred()
-        } catch (e) {
-          console.warn('AddPublication: ensurePlatformAuthForEditingModeDeferred:', e)
+      void runReferenceDataLoad(getReferenceDataLoadMessage(plat), async () => {
+        if (plat === 'avito') {
+          await loadDictionaries('avito', { skipAvitoAddressHints: true })
+        } else if (plat === 'rabota') {
+          await loadDictionaries('rabota')
+        } else if (plat === 'superjob' || plat === 'superjob.ru') {
+          await loadDictionaries('superjob')
+        } else if (plat === 'hh') {
+          await ensurePlatformAuthForEditingMode()
         }
-      })()
+        await ensurePlatformAuthForEditingModeDeferred()
+      })
     } else if (plat === 'hh') {
       await ensurePlatformAuthForEditingMode()
     } else if (plat === 'avito') {
@@ -6972,13 +7347,10 @@ if (isEditingMode.value && !props.selectedPlatform) {
     }
 
     if (!props.editPublicationLightShell) {
-      void (async () => {
-        try {
-          await ensurePlatformAuthForEditingModeDeferred()
-        } catch (e) {
-          console.warn('AddPublication: ensurePlatformAuthForEditingModeDeferred:', e)
-        }
-      })()
+      void runReferenceDataLoad(
+        'Догружаем подсказки и данные площадки. Поля можно редактировать.',
+        () => ensurePlatformAuthForEditingModeDeferred(),
+      )
     }
   } catch (e) {
     console.warn('AddPublication: init редактирования размещения:', e)
@@ -7099,7 +7471,7 @@ if (isEditingMode.value && !props.selectedPlatform) {
   }
 }
 
-if (isNewHhPublicationFromCard || isNewAvitoPublicationFromCard) {
+if (isNewHhPublicationFromCard || isNewAvitoPublicationFromCard || isNewRabotaPublicationFromCard) {
   void nextTick(() => emit('form-ready'))
 }
 
@@ -7588,7 +7960,7 @@ const savePublication = async () => {
           if (areaId != null && !isNaN(Number(areaId))) {
             payloadFormData = { ...payloadFormData, superjob_town_id: Number(areaId) };
           }
-          const payload = mapVacancyToSuperjobPayload(payloadFormData, currentSuperjobVacancy ?? undefined);
+          const payload = await mapVacancyToSuperjobPayload(payloadFormData, currentSuperjobVacancy ?? undefined);
           platformResponse = await updatePublicationSuperjob(vacancyPlatformId, payload);
         }
         if (platformResponse?.error || platformResponse?.errorDraft) {
@@ -7799,6 +8171,10 @@ onMounted(() => {
     void bootstrapAvitoPublishCardForm()
     return
   }
+  if (isNewRabotaPublicationFromCard) {
+    void bootstrapRabotaPublishCardForm()
+    return
+  }
   if (!isNewHhPublicationFromCard) {
     // Режим редактирования: form-ready уже отправлен в конце async setup выше.
     if (!isEditingMode.value) {
@@ -7806,29 +8182,32 @@ onMounted(() => {
     }
     return
   }
-  void (async () => {
-    try {
-      await loadDictionaries('hh')
-      const profile = await profileHh()
-      if (profile.error || !profile.data?.data) return
-      const pdata = profile.data.data
-      const employerId = pdata.employer?.id
-      const managerId = pdata.manager?.id
-      const hhKey = platforms.value?.find((p) => p.platform === 'hh')
-      if (employerId && managerId && platforms.value[0]) {
-        const { types, errorTypes } = await typesHh(employerId, managerId)
-        if (!errorTypes) platforms.value[0].types = types
-      }
-      if (employerId && hhKey) {
-        await loadTariffsForHh(employerId)
-        hhKey.data = pdata
-      }
-      updateComputedValues()
-      await applyComputedValues()
-    } catch (e) {
-      console.warn('Отложенная загрузка HH после показа формы размещения:', e)
+  void runReferenceDataLoad(getReferenceDataLoadMessage('hh'), async () => {
+    await loadDictionaries('hh')
+    const profile = await profileHh()
+    if (profile.error || !profile.data?.data) return
+    const pdata = profile.data.data
+    const employerId = pdata.employer?.id
+    const managerId = pdata.manager?.id
+    const hhKey = platforms.value?.find((p) => p.platform === 'hh')
+    if (employerId && managerId && platforms.value[0]) {
+      const { types, errorTypes } = await typesHh(employerId, managerId)
+      if (!errorTypes) platforms.value[0].types = types
     }
-  })()
+    if (employerId && hhKey) {
+      await loadTariffsForHh(employerId)
+      hhKey.data = pdata
+    }
+    updateComputedValues()
+    await applyComputedValues()
+  })
+})
+
+onBeforeUnmount(() => {
+  if (referenceDataHideReadyTimer) {
+    clearTimeout(referenceDataHideReadyTimer)
+    referenceDataHideReadyTimer = null
+  }
 })
 
 </script>

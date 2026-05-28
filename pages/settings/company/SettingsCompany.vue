@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import MyInput from '~/components/custom/MyInput.vue'
 import MyTooltip from '~/components/custom/MyTooltip.vue'
-import TiptapEditor from '~/components/TiptapEditor.vue'
+import { LazyTiptapEditor as TiptapEditor } from '~/utils/lazyTiptapEditor'
 import { getCompanyProfile, updateCompanyProfile } from '~/utils/companyProfile'
 
   definePageMeta({

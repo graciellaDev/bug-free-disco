@@ -1,6 +1,6 @@
 <script setup>
   import { ref } from 'vue'
-  import debounce from 'lodash/debounce'
+  import { debounce } from '@/utils/debounce'
 
   const currentVacancy = ref('')
   const filteredVacancies = ref([])
