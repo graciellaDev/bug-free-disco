@@ -1,6 +1,6 @@
 <script setup>
   import { ref, watch, onMounted } from 'vue'
-  import debounce from 'lodash/debounce'
+  import { debounce } from '@/utils/debounce'
   import { getAreas } from '@/utils/hhAccount'
 
   const props = defineProps({

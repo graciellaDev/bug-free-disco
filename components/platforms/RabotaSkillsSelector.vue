@@ -59,7 +59,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import debounce from 'lodash/debounce'
+import { debounce } from '@/utils/debounce'
 import { suggestRabotaSkills } from '@/utils/rabotaAccount'
 
 const props = defineProps({

@@ -2,7 +2,6 @@
 import Autocomplete from '~/components/custom/Autocomplete.vue'
 import MyInput from '~/components/custom/MyInput.vue'
 import MyTooltip from '~/components/custom/MyTooltip.vue'
-import TiptapEditor from '~/components/TiptapEditor.vue'
 import MyDropdown from '~/components/custom/MyDropdown.vue'
 import MyAccordion from '~/components/custom/MyAccordion.vue'
 import MyCheckbox from '~/components/custom/MyCheckbox.vue'
@@ -36,7 +35,9 @@ import MoreOptions from '~/src/data/more-options.json'
 import industry from '~/src/data/industry.json'
 import specialization from '~/src/data/specialization.json'
 
-import { ref, computed, watch, onBeforeMount, onMounted, onActivated, onUnmounted, nextTick, inject, isRef } from 'vue'
+import { ref, computed, watch, onMounted, onActivated, onUnmounted, nextTick, inject, isRef } from 'vue'
+
+import { LazyTiptapEditor as TiptapEditor } from '~/utils/lazyTiptapEditor'
 import { createVacancy } from '~/utils/createVacancy'
 import { getPhrases, getVacancy } from '@/utils/getVacancies'
 import { updateVacancy } from '~/utils/updateVacancy'
@@ -124,6 +125,8 @@ function showHintDescription() { isHintDescriptionVisible.value = true }
 function hideHintDescription() { isHintDescriptionVisible.value = false }
 
 const executors = ref([])
+const tags = ref([])
+const departments = ref([])
 
 const handleCheck = id => {
   selectedCard.value = id
@@ -131,82 +134,6 @@ const handleCheck = id => {
 }
 
 
-
-onBeforeMount(async () => {
-  try {
-    const list = await employeesList();
-    executors.value = Array.isArray(list) ? list : []
-  } catch (e) {
-    console.warn('employeesList:', e?.message || e)
-    executors.value = []
-  }
-  // Специализации из локальной БД (бэкенд GET /api/specializations)
-  try {
-    const config = useRuntimeConfig()
-    const baseURL = String(config.public.apiBase || '/api')
-    const res = await $fetch('/specializations', { baseURL })
-    const categories = res?.data?.categories
-    if (categories && Array.isArray(categories) && categories.length > 0) {
-      hhRolesData.value = { categories }
-      hhIndustries.value = categories
-    }
-  } catch (e) {
-    console.warn('getSpecializations (DB):', e?.message || e)
-  }
-  // Запасной вариант: публичный справочник hh.ru (если в БД ещё пусто)
-  if (!hhIndustries.value || hhIndustries.value.length === 0) {
-    try {
-      const config = useRuntimeConfig()
-      const baseURL = String(config.public.apiBase || '/api')
-      const fallback = await $fetch('/hh/professional-roles', { baseURL })
-      const categories = fallback?.data?.categories
-      if (categories && Array.isArray(categories) && categories.length > 0) {
-        hhRolesData.value = { categories }
-        hhIndustries.value = categories
-      }
-    } catch (e) {
-      console.warn('getRoles fallback (professional-roles):', e?.message || e)
-    }
-  }
-  try {
-    const res = await getLanguages()
-    const langs = res?.data
-    languagesOptions.value = Array.isArray(langs) && langs.length > 0
-      ? langs.map((l) => ({ id: l.id, value: l.id, name: l.name, is_popular: !!l.is_popular }))
-      : [
-          { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
-          { id: 'deu', value: 'deu', name: 'Немецкий', is_popular: true },
-          { id: 'fra', value: 'fra', name: 'Французский', is_popular: true },
-          { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
-        ]
-  } catch (e) {
-    console.warn('getLanguages:', e?.message || e)
-    languagesOptions.value = [
-      { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
-      { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
-    ]
-  }
-  try {
-    const res = await getLanguageLevels()
-    const levels = res?.data
-    languageLevelOptions.value = Array.isArray(levels) && levels.length > 0
-      ? levels.map((l) => ({ id: l.id, value: l.id, name: l.name }))
-      : [
-          { id: 'a1', value: 'a1', name: 'A1 — Начальный' },
-          { id: 'a2', value: 'a2', name: 'A2 — Элементарный' },
-          { id: 'b1', value: 'b1', name: 'B1 — Средний' },
-          { id: 'b2', value: 'b2', name: 'B2 — Средне-продвинутый' },
-          { id: 'c1', value: 'c1', name: 'C1 — Продвинутый' },
-          { id: 'c2', value: 'c2', name: 'C2 — В совершенстве' },
-        ]
-  } catch (e) {
-    console.warn('getLanguageLevels:', e?.message || e)
-    languageLevelOptions.value = [
-      { id: 'a1', value: 'a1', name: 'A1 — Начальный' },
-      { id: 'b2', value: 'b2', name: 'B2 — Средне-продвинутый' },
-    ]
-  }
-})
 
 const handleHover = id => {
   hoveredCard.value = id
@@ -269,6 +196,123 @@ const languageDropdownOptions = computed(() => {
 })
 const languageLevelDropdownOptions = computed(() => Array.isArray(languageLevelOptions.value) ? languageLevelOptions.value : [])
 
+const defaultLanguagesOptions = [
+  { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
+  { id: 'deu', value: 'deu', name: 'Немецкий', is_popular: true },
+  { id: 'fra', value: 'fra', name: 'Французский', is_popular: true },
+  { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
+]
+const fallbackLanguagesOptions = [
+  { id: 'eng', value: 'eng', name: 'Английский', is_popular: true },
+  { id: 'rus', value: 'rus', name: 'Русский', is_popular: false },
+]
+const defaultLanguageLevelOptions = [
+  { id: 'a1', value: 'a1', name: 'A1 — Начальный' },
+  { id: 'a2', value: 'a2', name: 'A2 — Элементарный' },
+  { id: 'b1', value: 'b1', name: 'B1 — Средний' },
+  { id: 'b2', value: 'b2', name: 'B2 — Средне-продвинутый' },
+  { id: 'c1', value: 'c1', name: 'C1 — Продвинутый' },
+  { id: 'c2', value: 'c2', name: 'C2 — В совершенстве' },
+]
+const fallbackLanguageLevelOptions = [
+  { id: 'a1', value: 'a1', name: 'A1 — Начальный' },
+  { id: 'b2', value: 'b2', name: 'B2 — Средне-продвинутый' },
+]
+
+/** Справочники формы — параллельно, без последовательной цепочки await. */
+async function loadInfoTabReferenceData() {
+  const config = useRuntimeConfig()
+  const baseURL = String(config.public.apiBase || '/api')
+
+  const [
+    employeesResult,
+    phrasesResult,
+    departmentsResult,
+    specializationsResult,
+    languagesResult,
+    languageLevelsResult,
+  ] = await Promise.all([
+    employeesList().catch((e) => ({ __error: e })),
+    getPhrases().catch((e) => ({ __error: e })),
+    getDepartments().catch((e) => ({ __error: e })),
+    $fetch('/specializations', { baseURL }).catch((e) => ({ __error: e })),
+    getLanguages().catch((e) => ({ __error: e })),
+    getLanguageLevels().catch((e) => ({ __error: e })),
+  ])
+
+  if (employeesResult?.__error) {
+    console.warn('employeesList:', employeesResult.__error?.message || employeesResult.__error)
+    executors.value = []
+  } else {
+    executors.value = Array.isArray(employeesResult) ? employeesResult : []
+  }
+
+  if (phrasesResult?.__error) {
+    console.warn('getPhrases:', phrasesResult.__error?.message || phrasesResult.__error)
+    tags.value = []
+  } else {
+    tags.value = phrasesResult?.data || []
+  }
+
+  if (departmentsResult?.__error) {
+    console.warn('getDepartments:', departmentsResult.__error?.message || departmentsResult.__error)
+    departments.value = []
+  } else {
+    departments.value = departmentsResult || []
+  }
+
+  if (!specializationsResult?.__error) {
+    const categories = specializationsResult?.data?.categories
+    if (categories && Array.isArray(categories) && categories.length > 0) {
+      hhRolesData.value = { categories }
+      hhIndustries.value = categories
+    }
+  } else {
+    console.warn('getSpecializations (DB):', specializationsResult.__error?.message || specializationsResult.__error)
+  }
+
+  if (!hhIndustries.value || hhIndustries.value.length === 0) {
+    try {
+      const fallback = await $fetch('/hh/professional-roles', { baseURL })
+      const categories = fallback?.data?.categories
+      if (categories && Array.isArray(categories) && categories.length > 0) {
+        hhRolesData.value = { categories }
+        hhIndustries.value = categories
+      }
+    } catch (e) {
+      console.warn('getRoles fallback (professional-roles):', e?.message || e)
+    }
+  }
+
+  if (languagesResult?.__error) {
+    console.warn('getLanguages:', languagesResult.__error?.message || languagesResult.__error)
+    languagesOptions.value = fallbackLanguagesOptions
+  } else {
+    const langs = languagesResult?.data
+    languagesOptions.value = Array.isArray(langs) && langs.length > 0
+      ? langs.map((l) => ({ id: l.id, value: l.id, name: l.name, is_popular: !!l.is_popular }))
+      : defaultLanguagesOptions
+  }
+
+  if (languageLevelsResult?.__error) {
+    console.warn('getLanguageLevels:', languageLevelsResult.__error?.message || languageLevelsResult.__error)
+    languageLevelOptions.value = fallbackLanguageLevelOptions
+  } else {
+    const levels = languageLevelsResult?.data
+    languageLevelOptions.value = Array.isArray(levels) && levels.length > 0
+      ? levels.map((l) => ({ id: l.id, value: l.id, name: l.name }))
+      : defaultLanguageLevelOptions
+  }
+}
+
+/** Справочники подгружаются в фоне — форма с данными вакансии показывается сразу. */
+const referenceDataReady = ref(false)
+const referenceFieldsPending = computed(() => !referenceDataReady.value)
+
+const referenceDataPromise = loadInfoTabReferenceData().finally(() => {
+  referenceDataReady.value = true
+})
+
 const headerVacancyStatus = inject('headerVacancyStatus', null)
 const vacancyIdRef = inject('vacancyIdRef', null)
 const isSavingVacancy = ref(false)
@@ -304,8 +348,21 @@ watch(salaryType, (value) => {
 const originalVacancyRaw = ref(null) // Исходные сырые данные с сервера
 const originalVacancyData = ref(null) // Отформатированные исходные данные для сравнения
 
+const initialVacancyData = inject('initialVacancyData', null)
+
+function getInjectedVacancyForId(id) {
+  if (!id || initialVacancyData == null) return null
+  const data = isRef(initialVacancyData) ? initialVacancyData.value : initialVacancyData
+  if (!data || typeof data !== 'object') return null
+  if (String(data.id ?? '') !== String(id)) return null
+  return data
+}
+
 if (props.id) {
-  const currectVacancy = await getVacancy(props.id)
+  let currectVacancy = getInjectedVacancyForId(props.id)
+  if (!currectVacancy) {
+    currectVacancy = await getVacancy(props.id)
+  }
   if (currectVacancy) {
     const placeVal = currectVacancy.place
     const placeId = placeVal && typeof placeVal === 'object' ? placeVal.id : placeVal
@@ -460,28 +517,13 @@ if (props.application) {
     newVacancy.value.location = applicationResponse.data.city
   }
 }
-const tags = ref([])
+
 const salary = ref({
   from: newVacancy.value.salary_from != null && newVacancy.value.salary_from !== '' ? Number(newVacancy.value.salary_from) : null,
   to: newVacancy.value.salary_to != null && newVacancy.value.salary_to !== '' ? Number(newVacancy.value.salary_to) : null
 })
 const errors = ref({})
 const isOpenDateTo = ref(false)
-const departments = ref([])
-let phrasesResult = { data: null }
-try {
-  phrasesResult = await getPhrases() || { data: null }
-} catch (e) {
-  console.warn('getPhrases:', e?.message || e)
-}
-tags.value = phrasesResult?.data || []
-
-try {
-  departments.value = await getDepartments() || []
-} catch (e) {
-  console.warn('getDepartments:', e?.message || e)
-  departments.value = []
-}
 const route = useRoute();
 
 // Функция для преобразования phrases в массив названий
@@ -1366,6 +1408,9 @@ function cleanDataForSending(data) {
 }
 
 async function saveVacancy(opt) {
+  if (!referenceDataReady.value) {
+    await referenceDataPromise
+  }
   if (isSavingVacancy.value) {
     const fromRef =
       vacancyIdRef && isRef(vacancyIdRef) ? vacancyIdRef.value : vacancyIdRef
@@ -1644,15 +1689,23 @@ const updateExecutor = (value, id) => {
                 <p class="text-sm font-medium text-space leading-normal mb-15px">
                   Отдел
                 </p>
-                <ResponseInput
-                class="w-full"
-                :responses="departments"
-                :model-value="newVacancy.department ? newVacancy.department : ''"
-                :showRoles="true"
-                notFound="Отдел не найден"
-                placeholder="Название отдела"
-                @update:modelValue="newVacancy.department = $event"
-              />
+                <div class="info-tab-ref-field" :class="{ 'info-tab-ref-field--pending': referenceFieldsPending }">
+                  <ResponseInput
+                    v-if="referenceDataReady"
+                    class="w-full"
+                    :responses="departments"
+                    :model-value="newVacancy.department ? newVacancy.department : ''"
+                    :showRoles="true"
+                    notFound="Отдел не найден"
+                    placeholder="Название отдела"
+                    @update:modelValue="newVacancy.department = $event"
+                  />
+                  <div
+                    v-else
+                    class="w-full min-h-10 rounded-ten border border-athens bg-athens-gray animate-pulse"
+                    aria-hidden="true"
+                  />
+                </div>
               </div>
         </div>
         <div class="w-full mb-6" data-error-field="specializations">
@@ -1668,6 +1721,7 @@ const updateExecutor = (value, id) => {
           </div>
           <ClientOnly>
             <SpecializationSelector
+              v-if="referenceDataReady"
               :options="professionsOptions"
               :full-catalog="hhIndustries && hhIndustries.length ? hhIndustries : []"
               :model-value="newVacancy.specializations && typeof newVacancy.specializations === 'object' ? newVacancy.specializations : (newVacancy.specializations ? { name: newVacancy.specializations } : null)"
@@ -1676,6 +1730,11 @@ const updateExecutor = (value, id) => {
               @update:model-value="($event) => { updateEvent($event, 'specializations'); specializationsFieldEmptyError.value = false }"
               @focus="onSpecializationsFocus"
               @blur="onSpecializationsBlur"
+            />
+            <div
+              v-else
+              class="w-full h-11 rounded-ten border border-athens bg-athens-gray animate-pulse"
+              aria-hidden="true"
             />
             <template #fallback>
               <div class="w-full h-11 rounded-ten border border-athens bg-athens-gray animate-pulse" />
@@ -2037,12 +2096,20 @@ const updateExecutor = (value, id) => {
           class="mt-15px mb-11px rounded-fifteen border transition-colors"
           :class="!!errors.description ? 'border-red-500' : 'border-transparent'"
         >
-          <TiptapEditor
-            :model-value="newVacancy.description ? newVacancy.description : ''"
-            @update:model-value="(value) => { updateEvent(value, 'description'); if (getDescriptionTextLength(value) >= DESCRIPTION_MIN_LENGTH && errors.description) delete errors.description }"
-            @blur="onDescriptionBlur"
-            :newVacancy="true"
-          />
+          <ClientOnly>
+            <TiptapEditor
+              :model-value="newVacancy.description ? newVacancy.description : ''"
+              @update:model-value="(value) => { updateEvent(value, 'description'); if (getDescriptionTextLength(value) >= DESCRIPTION_MIN_LENGTH && errors.description) delete errors.description }"
+              @blur="onDescriptionBlur"
+              :newVacancy="true"
+            />
+            <template #fallback>
+              <div class="overflow-hidden rounded-fifteen border border-athens bg-athens-gray" aria-hidden="true">
+                <div class="h-[62px] animate-pulse border-b border-athens bg-athens-gray" />
+                <div class="min-h-[180px] animate-pulse bg-athens-gray/80" />
+              </div>
+            </template>
+          </ClientOnly>
         </div>
         <p class="text-xs font-normal mb-6 mt-1" :class="errors.description ? 'text-red-500' : 'text-bali'">
           {{ errors.description || `Максимум 700 символов. Использовано ${descriptionCharCount} символов.` }}
@@ -2051,10 +2118,16 @@ const updateExecutor = (value, id) => {
           <p class="text-sm font-medium text-space mb-13px">Навыки</p>
           <ClientOnly>
             <SkillsDropdown
+              v-if="referenceDataReady"
               :options="tags"
               :model-value="newVacancy.phrases || []"
               placeholder="Найдите или напишите свой вариант"
               @update:model-value="(data) => updateTags(Array.isArray(data) ? data : [])"
+            />
+            <div
+              v-else
+              class="min-h-[42px] w-full rounded-ten border border-athens bg-athens-gray animate-pulse"
+              aria-hidden="true"
             />
             <template #fallback>
               <div class="min-h-[42px] w-full py-9px px-15px border border-athens rounded-ten bg-athens-gray text-sm text-bali flex items-center">
@@ -2065,43 +2138,53 @@ const updateExecutor = (value, id) => {
         </div>
         <div class="w-full mb-6">
           <MyAccordion ref="languagesAccordionRef" title="Языки" class="mb-0 w-full">
-            <div class="flex flex-col gap-15px w-full">
-              <div
-                v-for="(item, index) in (newVacancy.languages || [])"
-                :key="index"
-                class="flex flex-row flex-wrap items-center gap-x-25px gap-y-15px w-full"
-              >
-                <MyDropdown
-                  class="min-w-[180px] flex-1 w-full"
-                  :options="languageDropdownOptions"
-                  :model-value="item.language"
-                  placeholder="Выберите язык"
-                  @update:model-value="(v) => updateLanguageAt(index, v)"
-                  @open="() => { if (index === 0) onFirstLanguageDropdownOpen() }"
-                />
-                <MyDropdown
-                  class="min-w-[200px] flex-1 w-full"
-                  :options="languageLevelDropdownOptions"
-                  :model-value="item.languageLevel"
-                  placeholder="Выберите уровень"
-                  @update:model-value="(v) => updateLanguageLevelAt(index, v)"
-                />
+            <div
+              class="info-tab-ref-field flex flex-col gap-15px w-full"
+              :class="{ 'info-tab-ref-field--pending': referenceFieldsPending }"
+            >
+              <template v-if="referenceDataReady">
+                <div
+                  v-for="(item, index) in (newVacancy.languages || [])"
+                  :key="index"
+                  class="flex flex-row flex-wrap items-center gap-x-25px gap-y-15px w-full"
+                >
+                  <MyDropdown
+                    class="min-w-[180px] flex-1 w-full"
+                    :options="languageDropdownOptions"
+                    :model-value="item.language"
+                    placeholder="Выберите язык"
+                    @update:model-value="(v) => updateLanguageAt(index, v)"
+                    @open="() => { if (index === 0) onFirstLanguageDropdownOpen() }"
+                  />
+                  <MyDropdown
+                    class="min-w-[200px] flex-1 w-full"
+                    :options="languageLevelDropdownOptions"
+                    :model-value="item.languageLevel"
+                    placeholder="Выберите уровень"
+                    @update:model-value="(v) => updateLanguageLevelAt(index, v)"
+                  />
+                  <button
+                    type="button"
+                    class="p-1 text-bali hover:text-space transition-colors shrink-0"
+                    aria-label="Удалить"
+                    @click="removeLanguageRow(index)"
+                  >
+                    <svg-icon name="dropdown-cross" width="20" height="20" />
+                  </button>
+                </div>
                 <button
                   type="button"
-                  class="p-1 text-bali hover:text-space transition-colors shrink-0"
-                  aria-label="Удалить"
-                  @click="removeLanguageRow(index)"
+                  class="text-sm text-dodger font-medium hover:underline w-fit"
+                  @click="addLanguageRow"
                 >
-                  <svg-icon name="dropdown-cross" width="20" height="20" />
+                  Добавить ещё один язык
                 </button>
-              </div>
-              <button
-                type="button"
-                class="text-sm text-dodger font-medium hover:underline w-fit"
-                @click="addLanguageRow"
-              >
-                Добавить ещё один язык
-              </button>
+              </template>
+              <div
+                v-else
+                class="w-full min-h-[42px] rounded-ten border border-athens bg-athens-gray animate-pulse"
+                aria-hidden="true"
+              />
             </div>
           </MyAccordion>
         </div>
@@ -2169,17 +2252,25 @@ const updateExecutor = (value, id) => {
           <span class="text-red-custom">*</span>
           Контактное лицо
         </p>
-        <ResponseInput 
-          class="mb-11px w-full" 
-          :show-search-icon="false"
-          placeholder="Имя ответственного за вакансию или собеседования"
-          :responses="executors"
-          :error="executorNameFieldEmptyError"
-          :model-value="newVacancy.executor_name ? newVacancy.executor_name : ''"
-          @input:modelValue="(e) => { updateEvent(e, 'executor_name'); clearExecutorNameError() }"
-          @update:modelValue="(e) => { updateEvent(e, 'executor_name'); clearExecutorNameError() }"
-          @blur="onExecutorNameBlur"
-        />
+        <div class="info-tab-ref-field mb-11px" :class="{ 'info-tab-ref-field--pending': referenceFieldsPending }">
+          <ResponseInput
+            v-if="referenceDataReady"
+            class="w-full"
+            :show-search-icon="false"
+            placeholder="Имя ответственного за вакансию или собеседования"
+            :responses="executors"
+            :error="executorNameFieldEmptyError"
+            :model-value="newVacancy.executor_name ? newVacancy.executor_name : ''"
+            @input:modelValue="(e) => { updateEvent(e, 'executor_name'); clearExecutorNameError() }"
+            @update:modelValue="(e) => { updateEvent(e, 'executor_name'); clearExecutorNameError() }"
+            @blur="onExecutorNameBlur"
+          />
+          <div
+            v-else
+            class="w-full min-h-10 rounded-ten border border-athens bg-athens-gray animate-pulse"
+            aria-hidden="true"
+          />
+        </div>
         <p v-if="executorNameFieldEmptyError" class="text-xs text-red-500 mt-1">
           Укажите, к кому кандидаты могут обращаться
         </p>
@@ -2253,6 +2344,9 @@ const updateExecutor = (value, id) => {
   border-right: 10px solid white;
   filter: drop-shadow(-1px 0 0 #edeff5);
   z-index: 1;
+}
+.info-tab-ref-field--pending {
+  pointer-events: none;
 }
 </style>
 

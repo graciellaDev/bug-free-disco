@@ -563,7 +563,7 @@ import MyDropdown from '~/components/custom/MyDropdown.vue';
 import MultiSelect from '~/components/custom/MultiSelect.vue';
 import DropDownTypes from '~/components/platforms/DropDownTypes.vue';
 import TagSelect from '~/components/custom/TagSelect.vue';
-import TiptapEditor from '~/components/TiptapEditor.vue';
+import { LazyTiptapEditor as TiptapEditor } from '~/utils/lazyTiptapEditor';
 import GeoInput from '~/components/custom/GeoInput.vue';
 import AddressMapInput from '~/components/custom/AddressMapInput.vue';
 import MyAccordion from '~/components/custom/MyAccordion.vue';
@@ -1725,34 +1725,61 @@ function initStaticLayoutPreview() {
   hhContactEmail.value = '';
 }
 
+function applyIncomingJoblyHhDraft(incoming: unknown) {
+  const payload =
+    incoming && typeof incoming === 'object'
+      ? (JSON.parse(JSON.stringify(incoming)) as Record<string, unknown>)
+      : {};
+  normalizeOformlenieFieldsForPopupDraft(payload);
+  draftPayload.value = payload;
+  baselineJson.value = JSON.stringify(draftPayload.value);
+  jsonErrors.value = {};
+  formRemountKey.value += 1;
+  languageFormRows.value = hhPayloadToLanguageRows(draftPayload.value.languages);
+  syncHhContactFormFromDraft();
+}
+
 async function initJoblyPublishDraft() {
-  loading.value = true;
   saving.value = false;
   savingDraft.value = false;
   errorMessage.value = null;
   apiData.value = null;
+
+  const incoming = props.initialHhDraftFromJobly;
+  const waitingPrefill =
+    joblyPublishPrefill.value && props.initialHhDraftFromJobly === undefined;
+  const hasStaticDraft =
+    incoming != null &&
+    typeof incoming === 'object' &&
+    Object.keys(incoming as object).length > 0;
+
+  if (waitingPrefill && !hasStaticDraft) {
+    loading.value = true;
+    return;
+  }
+
+  if (hasStaticDraft) {
+    applyIncomingJoblyHhDraft(incoming);
+    loading.value = false;
+  } else {
+    loading.value = true;
+  }
+
   try {
     await loadHhDictionaries();
     buildJoblyTariffsFromLocalBundle();
-    if (joblyPublishPrefill.value && props.initialHhDraftFromJobly === undefined) {
+    if (waitingPrefill) {
       return;
     }
-    const incoming = props.initialHhDraftFromJobly;
-    const payload =
-      incoming && typeof incoming === 'object'
-        ? (JSON.parse(JSON.stringify(incoming)) as Record<string, unknown>)
-        : {};
-    normalizeOformlenieFieldsForPopupDraft(payload);
-    draftPayload.value = payload;
-    baselineJson.value = JSON.stringify(draftPayload.value);
-    jsonErrors.value = {};
-    formRemountKey.value += 1;
-    languageFormRows.value = hhPayloadToLanguageRows(draftPayload.value.languages);
-    syncHhContactFormFromDraft();
+    if (!hasStaticDraft) {
+      applyIncomingJoblyHhDraft(incoming);
+    }
   } catch (e) {
     errorMessage.value =
       e instanceof Error ? e.message : 'Не удалось загрузить справочники для формы';
-    loading.value = false;
+    if (!hasStaticDraft) {
+      loading.value = false;
+    }
     return;
   } finally {
     const stillWaitingPrefill =

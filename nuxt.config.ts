@@ -77,7 +77,35 @@ function patchTailwindConfig(rootDir: string) {
 export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
-    components: true,
+    /**
+     * Селективный auto-import: не сканируем `components/platforms/**` (~330KB AddPublication и др.)
+     * и TiptapEditor — они подключаются только явным import / defineAsyncComponent.
+     * UI (shadcn) — через модуль shadcn-nuxt (`componentDir: ./components/ui`).
+     */
+    components: {
+        dirs: [
+            { path: '~/components/custom', pathPrefix: false },
+            { path: '~/components/funnel', pathPrefix: false },
+            { path: '~/components/settings', pathPrefix: false },
+            { path: '~/components/chat', pathPrefix: false },
+            { path: '~/components/timeline', pathPrefix: false },
+            {
+                path: '~/components',
+                pathPrefix: false,
+                extensions: ['.vue'],
+                ignore: [
+                    'custom/**',
+                    'ui/**',
+                    'platforms/**',
+                    'funnel/**',
+                    'settings/**',
+                    'chat/**',
+                    'timeline/**',
+                    'TiptapEditor.vue',
+                ],
+            },
+        ],
+    },
     ssr: true,
     hooks: {
         'ready'(nuxt) {
@@ -120,8 +148,11 @@ export default defineNuxtConfig({
     },
     modules: [['@nuxtjs/google-fonts', {
         families: {
-            Inter: [300, 400, 500, 600, 700],
-        }
+            Inter: [400, 600],
+        },
+        display: 'swap',
+        preload: true,
+        download: true,
     }], '@nuxtjs/tailwindcss', 'shadcn-nuxt', '@nuxtjs/svg-sprite', '@pinia/nuxt', 'pinia-plugin-persistedstate/nuxt'],
     postcss: {
         plugins: {
@@ -169,6 +200,26 @@ export default defineNuxtConfig({
                     api: 'modern-compiler' // or "modern"
                 }
             }
+        },
+        build: {
+            rollupOptions: {
+                output: {
+                    manualChunks(id) {
+                        if (id.includes('utils/addPublication/bundles/avito')) {
+                            return 'publication-platform-avito'
+                        }
+                        if (id.includes('utils/addPublication/bundles/rabota')) {
+                            return 'publication-platform-rabota'
+                        }
+                        if (id.includes('utils/addPublication/bundles/superjob')) {
+                            return 'publication-platform-superjob'
+                        }
+                        if (id.includes('utils/addPublication/bundles/hh')) {
+                            return 'publication-platform-hh'
+                        }
+                    },
+                },
+            },
         },
         ...(process.env.NUXT_DOCKER === '1'
             ? {

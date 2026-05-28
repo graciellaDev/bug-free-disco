@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick, provide, reactive } from 'vue';
+import { REPORTS_CONTEXT_KEY } from '@/composables/reports/reportsContext';
+import ReportsMetricRouter from '@/components/reports/ReportsMetricRouter.vue';
+import { debounce } from '@/utils/debounce';
 import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
 import MyDropdown from '~/components/custom/MyDropdown.vue';
 import MultiSelect from '~/components/custom/MultiSelect.vue';
@@ -34,6 +37,21 @@ const metricOptions = [
   'Источники',
   'Поток кандидатов',
 ];
+
+/** Метрики, для которых нужен полный список кандидатов (остальные — только report API). */
+const METRICS_NEEDING_ALL_CANDIDATES = new Set([
+  'Воронка статусов по вакансии',
+  'Источники',
+]);
+
+function metricNeedsAllCandidates(m: string) {
+  return METRICS_NEEDING_ALL_CANDIDATES.has(m);
+}
+
+const VACANCY_OPTIONS_PAGE_SIZE = 100;
+let vacancyContextRequestId = 0;
+let vacancyCandidatesRequestId = 0;
+const vacancyOptionsFullyLoaded = ref(false);
 
 const segment = ref('Сотрудники');
 const metric = ref('Воронка статусов по вакансии');
@@ -82,21 +100,49 @@ function handleFiltersClickOutside(event: MouseEvent) {
   isActiveFunnel.value = false;
 }
 
+function mapVacancyListToOptions(items: { id: number; name?: string; title?: string }[]) {
+  return items.map((v) => ({
+    value: v.id,
+    name: (v.name ?? v.title ?? '').trim() || `Вакансия #${v.id}`,
+  }));
+}
+
+function applyVacancyListItems(items: Array<Record<string, unknown>>) {
+  vacancyMetaById.value = buildVacancyMetaById(items);
+  vacancyOptions.value = mapVacancyListToOptions(items as { id: number; name?: string; title?: string }[]);
+}
+
+async function ensureSelectedVacancyInOptions() {
+  const id = selectedVacancy.value;
+  if (id == null) return;
+  if (vacancyOptions.value.some((o) => o.value === id)) return;
+  const vacancy = await getVacancyById(String(id));
+  if (!vacancy?.id) return;
+  const name = (vacancy.name ?? vacancy.title ?? '').trim() || `Вакансия #${vacancy.id}`;
+  vacancyOptions.value = [{ value: vacancy.id, name }, ...vacancyOptions.value];
+}
+
+async function loadVacancyFilterOptions(loadAll = false) {
+  const query = loadAll
+    ? 'per_page=all'
+    : `per_page=${VACANCY_OPTIONS_PAGE_SIZE}&filters[status]=active&sort=-updated_at`;
+  const list = await getVacancies(query);
+  const items = Array.isArray(list) ? list : [];
+  applyVacancyListItems(items as Array<Record<string, unknown>>);
+  vacancyOptionsFullyLoaded.value = loadAll;
+  await ensureSelectedVacancyInOptions();
+  return items;
+}
+
 onMounted(async () => {
   document.addEventListener('click', handleFiltersClickOutside);
   try {
-    const [list, { clients: employees }, citiesList, deptsRaw] = await Promise.all([
-      getVacancies('per_page=all'),
+    const [items, { clients: employees }, citiesList, deptsRaw] = await Promise.all([
+      loadVacancyFilterOptions(false),
       clientsList('employees'),
       getVacancyCities(),
       getDepartments(true).catch(() => null),
     ]);
-    const items = Array.isArray(list) ? list : [];
-    vacancyMetaById.value = buildVacancyMetaById(items as Array<Record<string, unknown>>);
-    vacancyOptions.value = items.map((v: { id: number; name?: string; title?: string }) => ({
-      value: v.id,
-      name: (v.name ?? v.title ?? '').trim() || `Вакансия #${v.id}`,
-    }));
     if (items.length > 0 && selectedVacancy.value === null) {
       selectedVacancy.value = pickDefaultVacancyId(items);
     }
@@ -125,6 +171,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleFiltersClickOutside);
+  debouncedLoadReportData.cancel();
   funnelMetricsAbort?.abort();
   stageAvgAbort?.abort();
   rejectionReportAbort?.abort();
@@ -334,54 +381,123 @@ function buildCandidateFilters() {
   return filters;
 }
 
-watch(
-  [selectedVacancy, dateRange],
-  async ([vacancyId]) => {
-    if (vacancyId) {
-      candidatesLoading.value = true;
-      try {
-        const candidateFilters = {
-          vacancy_id: vacancyId,
-          per_page: 'all',
-          ...buildCandidateFilters(),
-        };
-        const [vacancy, allCandidates] = await Promise.all([
-          getVacancyById(String(vacancyId)),
-          getCandidatesAllPages(candidateFilters),
-        ]);
-      selectedVacancyRaw.value = vacancy ?? null;
-      void hydrateVacancyPlatformViews(vacancyId);
-      const stagesRaw = vacancy?.stages;
-      if (Array.isArray(stagesRaw) && stagesRaw.length > 0) {
-        vacancyStages.value = stagesRaw
-          .filter((s: { id?: number }) => s.id != null)
-          .map((s: { id: number; name: string; count?: number }) => ({
-            id: s.id,
-            name: s.name,
-            count: typeof s.count === 'number' ? s.count : 0,
-          }));
-      } else {
-        vacancyStages.value = [];
-      }
-      vacancyCandidates.value = allCandidates as Candidate[];
-      possibleSourcesRadialAnimKey.value += 1;
-    } catch {
-      selectedVacancyRaw.value = null;
-      vacancyPlatformViewsBySourceKey.value = {};
-      vacancyStages.value = [];
-      vacancyCandidates.value = [];
-    } finally {
-      candidatesLoading.value = false;
-    }
+function applyVacancyStagesFromRaw(vacancy: { stages?: Array<{ id?: number; name: string; count?: number }> } | null) {
+  const stagesRaw = vacancy?.stages;
+  if (Array.isArray(stagesRaw) && stagesRaw.length > 0) {
+    vacancyStages.value = stagesRaw
+      .filter((s) => s.id != null)
+      .map((s) => ({
+        id: s.id as number,
+        name: s.name,
+        count: typeof s.count === 'number' ? s.count : 0,
+      }));
   } else {
+    vacancyStages.value = [];
+  }
+}
+
+async function loadVacancyBaseContext(vacancyId: number) {
+  const reqId = ++vacancyContextRequestId;
+  candidatesLoading.value = true;
+  try {
+    const vacancy = await getVacancyById(String(vacancyId));
+    if (reqId !== vacancyContextRequestId) return;
+    selectedVacancyRaw.value = vacancy ?? null;
+    void hydrateVacancyPlatformViews(vacancyId);
+    applyVacancyStagesFromRaw(vacancy);
+  } catch {
+    if (reqId !== vacancyContextRequestId) return;
     selectedVacancyRaw.value = null;
     vacancyPlatformViewsBySourceKey.value = {};
     vacancyStages.value = [];
-    vacancyCandidates.value = [];
-    candidatesLoading.value = false;
+  } finally {
+    if (reqId === vacancyContextRequestId && !metricNeedsAllCandidates(metric.value)) {
+      candidatesLoading.value = false;
+    }
   }
-},
-  { deep: true }
+}
+
+async function loadVacancyCandidatesIfNeeded() {
+  if (!metricNeedsAllCandidates(metric.value)) {
+    vacancyCandidates.value = [];
+    return;
+  }
+  const vacancyId = selectedVacancy.value;
+  if (!vacancyId) {
+    vacancyCandidates.value = [];
+    return;
+  }
+  const reqId = ++vacancyCandidatesRequestId;
+  candidatesLoading.value = true;
+  try {
+    const candidateFilters = {
+      vacancy_id: vacancyId,
+      per_page: 'all',
+      ...buildCandidateFilters(),
+    };
+    const allCandidates = await getCandidatesAllPages(candidateFilters);
+    if (reqId !== vacancyCandidatesRequestId) return;
+    vacancyCandidates.value = allCandidates as Candidate[];
+    possibleSourcesRadialAnimKey.value += 1;
+  } catch {
+    if (reqId !== vacancyCandidatesRequestId) return;
+    vacancyCandidates.value = [];
+  } finally {
+    if (reqId === vacancyCandidatesRequestId) candidatesLoading.value = false;
+  }
+}
+
+function resetVacancyContext() {
+  vacancyContextRequestId += 1;
+  vacancyCandidatesRequestId += 1;
+  selectedVacancyRaw.value = null;
+  vacancyPlatformViewsBySourceKey.value = {};
+  vacancyStages.value = [];
+  vacancyCandidates.value = [];
+  candidatesLoading.value = false;
+}
+
+watch(
+  selectedVacancy,
+  (vacancyId) => {
+    if (!vacancyId) {
+      resetVacancyContext();
+      return;
+    }
+    void (async () => {
+      await loadVacancyBaseContext(vacancyId);
+      await loadVacancyCandidatesIfNeeded();
+    })();
+  },
+);
+
+watch(
+  [dateRange, () => metric.value],
+  () => {
+    void loadVacancyCandidatesIfNeeded();
+  },
+  { deep: true },
+);
+
+watch(
+  () => metric.value,
+  async (m, prev) => {
+    if (m === 'Отчет по рекрутерам' && !vacancyOptionsFullyLoaded.value) {
+      try {
+        const items = await loadVacancyFilterOptions(true);
+        if (items.length > 0) ensureRecruiterVacanciesSelectedByDefault();
+      } catch (e) {
+        console.warn('Ошибка загрузки полного списка вакансий для отчёта по рекрутерам:', e);
+      }
+    }
+    if (metricNeedsAllCandidates(m) && !metricNeedsAllCandidates(prev ?? '')) {
+      void loadVacancyCandidatesIfNeeded();
+    } else if (!metricNeedsAllCandidates(m) && metricNeedsAllCandidates(prev ?? '')) {
+      vacancyCandidatesRequestId += 1;
+      vacancyCandidates.value = [];
+      candidatesLoading.value = false;
+    }
+  },
 );
 
 /** Заглушка для отчётов без своей логики (не «Источники»). */
@@ -884,20 +1000,26 @@ function toggleFunnelSort(column: FunnelMetricsSort) {
   }
 }
 
-function applyReportsFilters() {
+function loadReportData() {
   void fetchFunnelMetrics();
   void fetchStageAverageDuration();
   void fetchRejectionByStageReport();
   void fetchRecruitersReport();
 }
 
+const debouncedLoadReportData = debounce(loadReportData, 300);
+
+function applyReportsFilters() {
+  debouncedLoadReportData.cancel();
+  loadReportData();
+}
+
 watch(
-  // Сортировка меняет только порядок отображения (без перезагрузки данных).
-  [metric, selectedVacancy, dateRange],
+  [metric, selectedVacancy, selectedRecruiterVacancies, dateRange, selectedParticipants, filterCity, filterDepartment],
   () => {
-    void fetchFunnelMetrics();
+    debouncedLoadReportData();
   },
-  { deep: true }
+  { deep: true },
 );
 
 /** Отчёт «Среднее время на этапе» */
@@ -1005,16 +1127,6 @@ function stageAvgBarWidthPct(days: number) {
   if (max <= 0) return '0%';
   return `${(days / max) * 100}%`;
 }
-
-watch(
-  [metric, selectedVacancy, selectedRecruiterVacancies, dateRange, selectedParticipants, filterCity, filterDepartment],
-  () => {
-    void fetchStageAverageDuration();
-    void fetchRejectionByStageReport();
-    void fetchRecruitersReport();
-  },
-  { deep: true }
-);
 
 // Данные для отчёта «Воронка статусов по вакансии»: источники и сегменты из реальных кандидатов
 /** Разбивка по этапам и источникам: stageId -> { sourceName -> count } */
@@ -1910,6 +2022,196 @@ function exportReportsCsv() {
   downloadUtf8Csv(exportCsvFilename(), body);
 }
 
+
+import { provide, reactive } from 'vue';
+import { REPORTS_CONTEXT_KEY } from '@/composables/reports/reportsContext';
+
+provide(
+  REPORTS_CONTEXT_KEY,
+  reactive({
+  CLOSED_STAGE_NAMES,
+  METRICS_NEEDING_ALL_CANDIDATES,
+  PLATFORM_SOURCE_LABEL,
+  REJECTION_REASON_PALETTE,
+  REJECTION_STAGE_NAME,
+  STAGE_AVG_DEMO,
+  VACANCY_OPTIONS_PAGE_SIZE,
+  activeSortColumn,
+  allRecruiterVacancyIds,
+  applyReportsFilters,
+  applyVacancyListItems,
+  applyVacancyStagesFromRaw,
+  barStyle,
+  buildCandidateFilters,
+  buildCsvFallback,
+  buildCsvFunnelFlow,
+  buildCsvFunnelStatus,
+  buildCsvPossibleSources,
+  buildCsvRecruiters,
+  buildCsvRejections,
+  buildCsvStageAverage,
+  buildCurrentReportCsv,
+  buildStageAvgFallback,
+  buildTenBuckets,
+  buildVacancyMetaById,
+  candidateStageId,
+  candidatesLoading,
+  citiesFilterOptions,
+  colorForSourceLabel,
+  conicGradientFromPlatformSegments,
+  csvEscapeCell,
+  datePickerToYmd,
+  dateRange,
+  daysWord,
+  debouncedLoadReportData,
+  departmentsFilterOptions,
+  downloadUtf8Csv,
+  enrichRejectionReportStageIds,
+  ensureRecruiterVacanciesSelectedByDefault,
+  ensureSelectedVacancyInOptions,
+  exportCsvFilename,
+  exportReportsCsv,
+  fallbackChartData,
+  fallbackTableData,
+  fetchFunnelMetrics,
+  fetchRecruitersReport,
+  fetchRejectionByStageReport,
+  fetchStageAverageDuration,
+  filterCity,
+  filterDepartment,
+  filtersPanelRef,
+  firstNumber,
+  firstString,
+  firstVacancyStageId,
+  formatAvgDaysDays,
+  formatDaysInWork,
+  formatOpenedAtDate,
+  formatYmdDdMmSlash,
+  formatYmdDot,
+  funnelAggRows,
+  funnelAsc,
+  funnelBarAnimKey,
+  funnelBarHeightPct,
+  funnelBarTotals,
+  funnelBarsAnimActive,
+  funnelButtonRef,
+  funnelChartYTicks,
+  funnelError,
+  funnelLoading,
+  funnelMetrics,
+  funnelRows,
+  funnelSort,
+  funnelStageSegmentTooltip,
+  funnelToggleActive,
+  getStageSegments,
+  handleFiltersClickOutside,
+  hashSourceToHslColor,
+  hideFunnelStageSegmentTooltip,
+  hideRejectionReasonSegmentTooltip,
+  hiredProgressPercent,
+  hydrateVacancyPlatformViews,
+  isActiveFunnel,
+  isHoveredFunnel,
+  loadReportData,
+  loadVacancyBaseContext,
+  loadVacancyCandidatesIfNeeded,
+  loadVacancyFilterOptions,
+  mapVacancyListToOptions,
+  maxFunnelChartValue,
+  maxFunnelTotal,
+  maxPassedThrough,
+  metric,
+  metricNeedsAllCandidates,
+  metricOptions,
+  moveFunnelStageSegmentTooltip,
+  moveRejectionReasonSegmentTooltip,
+  normalizeDotDateForApi,
+  normalizeSourceColorKey,
+  parseOpenedAtToUtcDate,
+  participantOptions,
+  participantsFilterLabel,
+  peopleCountWord,
+  periodLabelForExport,
+  pickDefaultVacancyId,
+  possibleSourcesRadialAnimKey,
+  possibleSourcesRadialCharts,
+  possibleSourcesTableRows,
+  pushExportMetaRows,
+  recruiterVacancyDaysInWork,
+  recruiterVacancyOpenedAt,
+  recruitersReportData,
+  recruitersReportError,
+  recruitersReportHasRows,
+  recruitersReportLoading,
+  rejectionReasonColor,
+  rejectionReasonSegmentTooltip,
+  rejectionReasonsForExport,
+  rejectionReasonsLegendItems,
+  rejectionReasonsLegendPct,
+  rejectionReasonsLegendTotal,
+  rejectionReportAnimActive,
+  rejectionReportBarTrackStyle,
+  rejectionReportData,
+  rejectionReportDisplayRows,
+  rejectionReportError,
+  rejectionReportLoading,
+  rejectionReportMaxRejections,
+  rejectionReportRowPct,
+  rejectionReportRowSegments,
+  rejectionReportTrackWidthPct,
+  rejectionStageId,
+  rejectionsRatePercent,
+  resetVacancyContext,
+  rowsToCsvContent,
+  safeFilenamePart,
+  scaleDesignTicks,
+  segment,
+  segmentOptions,
+  selectedParticipants,
+  selectedRecruiterVacancies,
+  selectedRecruiterVacancyIds,
+  selectedRecruiterVacancyTitlesForExport,
+  selectedVacancy,
+  selectedVacancyRaw,
+  selectedVacancyTitleForExport,
+  showFunnelStageSegmentTooltip,
+  showRejectionReasonSegmentTooltip,
+  sortRejectionReportRows,
+  sortedFallbackRows,
+  sortedPossibleSourcesRows,
+  stageAvgBarAnimKey,
+  stageAvgBarMax,
+  stageAvgBarWidthPct,
+  stageAvgEffective,
+  stageAvgLoading,
+  stageAvgReport,
+  stageDisplayCounts,
+  stageNameById,
+  stagePassedThroughCounts,
+  stagePercentOfTotal,
+  stageSourceBreakdown,
+  stageSourcesSummaryForExport,
+  stagesLegendSources,
+  stagesLegendTotal,
+  tableColumns,
+  tableSortAsc,
+  toggleFunnelSort,
+  toggleTableSort,
+  triggerFunnelBarAnimation,
+  triggerRejectionReportAnimation,
+  vacanciesCountWord,
+  vacancyCandidates,
+  vacancyIsOnPause,
+  vacancyListItemCandidatesCount,
+  vacancyMetaById,
+  vacancyOptions,
+  vacancyOptionsFullyLoaded,
+  vacancyPlatformViewsBySourceKey,
+  vacancyStages,
+  viewsForSourceFromVacancy,
+  ymdToUtcDate,
+  }),
+);
 </script>
 
 <template>
@@ -2058,818 +2360,7 @@ function exportReportsCsv() {
       </transition>
     </div>
 
-    <!-- Контент зависит от выбранного отчёта -->
-    <template v-if="metric === 'Воронка статусов по вакансии'">
-      <!-- Отчёт «Воронка статусов по вакансии»: этапы и полосы по выбранной вакансии -->
-      <div class="rounded-fifteen bg-white p-25px shadow-sm sm:px-[50px]">
-        <template v-if="!selectedVacancy">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Выберите вакансию"
-            description="Выберите вакансию в фильтрах выше, чтобы отобразить этапы и воронку кандидатов."
-          />
-        </template>
-        <template v-else-if="vacancyStages.length === 0">
-          <ListSectionPlaceholder
-            variant="reports"
-            loading
-            loading-title="Загрузка этапов вакансии…"
-          />
-        </template>
-        <template v-else-if="!candidatesLoading && stagesLegendTotal === 0">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Нет данных по вакансии"
-            description="По выбранной вакансии и фильтрам пока нет кандидатов. Измените период или выберите другую вакансию."
-          />
-        </template>
-        <div v-else class="flex gap-8">
-          <!-- Воронка кандидатов: название этапа напротив полосы, в скобках — накопительное количество (прошло через этап) -->
-          <div class="min-w-0 flex-1">
-            <p class="mb-3 text-sm font-bold text-space">Воронка кандидатов</p>
-            <div class="flex flex-col gap-4">
-              <div
-                v-for="(stage, rowIndex) in vacancyStages"
-                :key="'funnel-' + stage.id"
-                class="flex h-[40px] items-center gap-4"
-              >
-                <div class="flex w-48 min-w-0 flex-shrink-0 items-center gap-1 text-sm font-medium text-space">
-                  <span class="min-w-0 truncate" :title="stage.name">{{ stage.name }}</span>
-                  <span class="flex-shrink-0">({{ stageDisplayCounts[rowIndex] ?? 0 }})</span>
-                </div>
-                <div class="flex h-[40px] min-w-0 flex-1 overflow-hidden rounded-[10px] bg-athens-gray/40">
-                  <div
-                    class="flex h-[40px] overflow-hidden rounded-[10px] transition-[width] duration-700 ease-out will-change-[width]"
-                    :style="barStyle(rowIndex)"
-                  >
-                    <template v-if="(stageDisplayCounts[rowIndex] ?? 0) > 0">
-                      <div
-                        v-for="(seg, segIndex) in getStageSegments(stage.id)"
-                        :key="segIndex"
-                        class="transition-[width] duration-700 ease-out"
-                        @mouseenter="showFunnelStageSegmentTooltip($event, seg)"
-                        @mousemove="moveFunnelStageSegmentTooltip($event)"
-                        @mouseleave="hideFunnelStageSegmentTooltip"
-                        :style="{
-                          width: `${seg.share * 100}%`,
-                          backgroundColor: seg.color,
-                          minWidth: seg.count > 0 ? '2px' : '0',
-                        }"
-                      />
-                    </template>
-                  </div>
-                </div>
-                <span class="flex-shrink-0 text-sm text-slate-custom">
-                  {{ stagePercentOfTotal[rowIndex] ?? 0 }}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Правая колонка: источники кандидатов с цветами и количеством -->
-          <div class="w-56 flex-shrink-0">
-            <p class="mb-2 text-sm font-bold text-space">Источники кандидатов</p>
-            <p class="mb-3 text-lg font-bold text-dodger">{{ stagesLegendTotal }}</p>
-            <ul class="space-y-1.5 text-sm text-slate-custom">
-              <li
-                v-for="item in stagesLegendSources"
-                :key="item.name"
-                class="flex items-center gap-2"
-              >
-                <span
-                  class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                  :style="{ backgroundColor: item.color }"
-                />
-                <span class="min-w-0 truncate">{{ item.name }}</span>
-                <span class="flex-shrink-0">{{ item.count }}</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </template>
-
-    <template v-else-if="metric === 'Отчет по отказам'">
-      <div class="rounded-fifteen bg-white p-25px shadow-sm sm:px-[50px]">
-        <p class="mb-6 text-lg font-bold text-space">
-          Отчет по отказам
-        </p>
-        <template v-if="!selectedVacancy">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Выберите вакансию"
-            description="Выберите вакансию в фильтрах выше, чтобы открыть отчёт."
-          />
-        </template>
-        <template v-else-if="rejectionReportLoading">
-          <ListSectionPlaceholder variant="reports" loading loading-title="Загрузка данных…" />
-        </template>
-        <template v-else-if="rejectionReportError">
-          <p class="py-8 text-center text-red-custom">{{ rejectionReportError }}</p>
-        </template>
-        <template v-else-if="!rejectionReportDisplayRows.length">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Нет данных за период"
-            description="За выбранный период нет отказов по этапам. Измените фильтры и нажмите «Применить»."
-          />
-        </template>
-        <template v-else>
-          <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-            <div class="min-w-0 flex-1 overflow-x-auto">
-              <table class="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr class="border-b border-athens">
-                  <th colspan="2" class="pb-2 pr-4 text-xs font-normal text-bali">
-                    Статус и кол-во кандидатов
-                  </th>
-                  <th colspan="2" class="pb-2 text-xs font-normal text-bali">
-                    Отказы
-                  </th>
-                </tr>
-                <tr class="border-b border-athens">
-                  <th class="py-3 pr-4 font-medium text-space">Этап</th>
-                  <th class="w-24 py-3 pr-4 text-right font-medium text-space">
-                    Кандидатов
-                  </th>
-                  <th class="w-36 py-3 pr-4 text-right font-medium text-space">
-                    Отказы
-                  </th>
-                  <th class="min-w-[200px] py-3 font-medium text-space" />
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(row, ri) in rejectionReportDisplayRows"
-                  :key="'rejrep-' + (row.stage_id || row.stage_name) + '-' + ri"
-                  class="align-middle"
-                >
-                  <td class="py-3 pr-4 font-medium text-space">
-                    {{ row.stage_name }}
-                  </td>
-                  <td class="py-3 pr-4 text-right tabular-nums text-slate-custom">
-                    {{ row.candidates_count }}
-                  </td>
-                  <td class="py-3 pr-4 text-right tabular-nums text-slate-custom">
-                    {{ row.rejections_count }} ({{ rejectionReportRowPct(row) }}%)
-                  </td>
-                  <td class="py-3">
-                    <div class="flex min-h-7 min-w-0 items-center">
-                      <template v-if="rejectionReportRowSegments(row).length > 0">
-                        <div
-                          class="flex h-7 overflow-hidden rounded-full bg-athens"
-                          :style="rejectionReportBarTrackStyle(row)"
-                        >
-                          <div class="flex h-full min-w-0 flex-1">
-                            <div
-                              v-for="(seg, si) in rejectionReportRowSegments(row)"
-                              :key="si"
-                              class="h-full min-w-0"
-                              @mouseenter="showRejectionReasonSegmentTooltip($event, seg)"
-                              @mousemove="moveRejectionReasonSegmentTooltip($event)"
-                              @mouseleave="hideRejectionReasonSegmentTooltip"
-                              :style="{
-                                width: `${seg.share * 100}%`,
-                                backgroundColor: seg.color,
-                                minWidth: seg.share > 0 ? '2px' : '0',
-                              }"
-                            />
-                          </div>
-                        </div>
-                      </template>
-                      <div
-                        v-else
-                        class="h-7 rounded-full bg-[#e5e7eb] transition-[width] duration-700 ease-out"
-                        :style="{
-                          width: rejectionReportAnimActive ? '48px' : '0',
-                          minWidth: rejectionReportAnimActive ? '48px' : '0',
-                        }"
-                      />
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-              </table>
-            </div>
-            <div class="w-full lg:w-64 lg:flex-shrink-0">
-              <p class="mb-2 text-sm font-bold text-space">Причины отказов</p>
-              <p class="mb-3 text-lg font-bold text-dodger">{{ rejectionReasonsLegendTotal }}</p>
-              <ul class="space-y-1.5 text-sm text-slate-custom">
-                <li
-                  v-for="item in rejectionReasonsLegendItems"
-                  :key="item.label"
-                  class="flex items-center gap-2"
-                >
-                  <span
-                    class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                    :style="{ backgroundColor: item.color }"
-                  />
-                  <span class="min-w-0 truncate">{{ item.label }}</span>
-                  <span class="flex-shrink-0">{{ item.count }} ({{ rejectionReasonsLegendPct(item.count) }}%)</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </template>
-      </div>
-    </template>
-
-    <template v-else-if="metric === 'Поток кандидатов'">
-      <div class="flex flex-col gap-[25px] rounded-fifteen bg-white p-25px shadow-sm">
-        <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Выберите вакансию и период"
-            description="Укажите вакансию и период в фильтрах выше, затем нажмите «Применить»."
-          />
-        </template>
-        <template v-else-if="funnelLoading">
-          <ListSectionPlaceholder variant="reports" loading />
-        </template>
-        <template v-else-if="funnelError">
-          <p class="py-8 text-center text-red-custom">{{ funnelError }}</p>
-        </template>
-        <template v-else>
-          <p class="mb-4 text-sm font-bold text-space">Поток кандидатов</p>
-
-          <div class="mb-2 flex flex-wrap items-center gap-6 text-sm">
-            <span class="inline-flex items-center gap-2 text-slate-custom">
-              <span class="h-3 w-3 rounded-sm bg-space" />
-              Отклики
-            </span>
-              <span class="inline-flex items-center gap-2 text-slate-custom">
-              <span class="h-3 w-3 rounded-sm bg-dodger" />
-              Движение по воронке
-            </span>
-          </div>
-
-          <div class="flex gap-3 overflow-x-auto pb-2 sm:pl-[0] md:overflow-x-visible">
-            <div
-              class="flex shrink-0 flex-col justify-between py-1 text-right text-xs text-slate-custom"
-              :style="{ height: '220px' }"
-            >
-              <span v-for="tick in [...funnelChartYTicks].reverse()" :key="'y-' + tick">{{ tick }}</span>
-            </div>
-            <div
-              class="relative min-h-[220px] min-w-0 flex-1 border-b border-athens bg-[length:100%_20%] bg-[linear-gradient(to_bottom,#edeff5_1px,transparent_1px)]"
-            >
-              <!-- key нужен только чтобы переиграть анимацию столбиков после загрузки данных -->
-              <TransitionGroup
-                :key="funnelBarAnimKey"
-                name="reorder"
-                tag="div"
-                class="flex h-[220px] items-end gap-2 px-1"
-              >
-                <div
-                  v-for="(row, ri) in funnelRows"
-                  :key="row.period_from + '-' + row.period_to"
-                  class="flex min-w-[82px] flex-1 flex-col items-center justify-end gap-2 md:min-w-0"
-                >
-                  <div class="flex h-[200px] w-full items-end justify-center gap-1">
-                    <div
-                      class="funnel-bar-fill w-[42px] max-w-[42px] shrink-0 rounded-[5px] bg-space md:w-[49px] md:max-w-[49px]"
-                      :style="{
-                        height: funnelBarHeightPct(row.responses),
-                        animationDelay: `${ri * 45}ms`,
-                      }"
-                      :title="'Отклики: ' + row.responses"
-                    />
-                    <div
-                      class="funnel-bar-fill w-[42px] max-w-[42px] shrink-0 rounded-[5px] bg-dodger md:w-[49px] md:max-w-[49px]"
-                      :style="{
-                        height: funnelBarHeightPct(row.funnel_movements),
-                        animationDelay: `${ri * 45 + 55}ms`,
-                      }"
-                      :title="'Движение: ' + row.funnel_movements"
-                    />
-                  </div>
-                  <span
-                    class="max-w-[84px] text-center text-[10px] leading-tight text-slate-custom sm:text-xs md:max-w-none"
-                    :title="row.period_label"
-                  >{{ row.period_label }}</span>
-                </div>
-              </TransitionGroup>
-            </div>
-          </div>
-
-          <div class="mt-[25px] overflow-hidden overflow-x-auto rounded-fifteen bg-athens">
-            <table class="w-full min-w-[480px] text-left text-sm">
-              <thead>
-                <tr class="bg-catskill">
-                  <th class="py-3 pl-15px pr-25px font-medium text-space">
-                    <button
-                      type="button"
-                      class="inline-flex items-center gap-1 hover:text-dodger"
-                      :class="{ 'text-dodger': funnelSort === 'period' }"
-                      @click="toggleFunnelSort('period')"
-                    >
-                      Период
-                      <svg-icon
-                        name="dropdown-arrow"
-                        width="16"
-                        height="16"
-                        class="text-slate-custom transition-transform"
-                        :class="[
-                          funnelSort === 'period'
-                            ? funnelAsc === 1
-                              ? 'rotate-180'
-                              : 'rotate-0'
-                            : 'rotate-0 opacity-40',
-                        ]"
-                      />
-                    </button>
-                  </th>
-                  <th class="py-3 pl-15px pr-25px text-right font-medium text-space">
-                    <button
-                      type="button"
-                      class="inline-flex w-full items-center justify-end gap-1 hover:text-dodger"
-                      :class="{ 'text-dodger': funnelSort === 'responses' }"
-                      @click="toggleFunnelSort('responses')"
-                    >
-                      Отклики
-                      <svg-icon
-                        name="dropdown-arrow"
-                        width="16"
-                        height="16"
-                        class="text-slate-custom transition-transform"
-                        :class="[
-                          funnelSort === 'responses'
-                            ? funnelAsc === 1
-                              ? 'rotate-180'
-                              : 'rotate-0'
-                            : 'rotate-0 opacity-40',
-                        ]"
-                      />
-                    </button>
-                  </th>
-                  <th class="py-3 pl-15px pr-25px text-right font-medium text-space">
-                    <button
-                      type="button"
-                      class="inline-flex w-full items-center justify-end gap-1 hover:text-dodger"
-                      :class="{ 'text-dodger': funnelSort === 'funnel_movements' }"
-                      @click="toggleFunnelSort('funnel_movements')"
-                    >
-                      Движение по воронке
-                      <svg-icon
-                        name="dropdown-arrow"
-                        width="16"
-                        height="16"
-                        class="text-slate-custom transition-transform"
-                        :class="[
-                          funnelSort === 'funnel_movements'
-                            ? funnelAsc === 1
-                              ? 'rotate-180'
-                              : 'rotate-0'
-                            : 'rotate-0 opacity-40',
-                        ]"
-                      />
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <TransitionGroup name="reorder" tag="tbody" class="bg-white">
-                <tr
-                  v-for="(row, idx) in funnelRows"
-                  :key="row.period_from + '-' + row.period_to + '-tbl'"
-                  class="border-b border-athens last:border-0"
-                >
-                  <td class="py-3 pl-15px pr-25px text-space">{{ row.period_label }}</td>
-                  <td class="py-3 pl-15px pr-25px text-right text-slate-custom">{{ row.responses }}</td>
-                  <td class="py-3 pl-15px pr-25px text-right text-slate-custom">{{ row.funnel_movements }}</td>
-                </tr>
-              </TransitionGroup>
-            </table>
-          </div>
-        </template>
-      </div>
-    </template>
-
-    <template v-else-if="metric === 'Среднее время на этапе'">
-      <div class="flex flex-col gap-[15px]">
-        <template v-if="!selectedVacancy || !dateRange?.from || !dateRange?.to">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Выберите вакансию и период"
-            description="Укажите вакансию и период в фильтрах выше, затем нажмите «Применить»."
-            class="shadow-sm"
-          />
-        </template>
-        <template v-else-if="stageAvgLoading">
-          <ListSectionPlaceholder variant="reports" loading class="shadow-sm" />
-        </template>
-        <template v-else-if="stageAvgEffective">
-          <!-- Верхняя карточка: сводка + баннер (Figma Variant3) -->
-          <div class="flex flex-col gap-[15px] rounded-fifteen bg-white p-25px shadow-sm">
-            <div class="grid grid-cols-1 gap-[15px] sm:grid-cols-3">
-              <div class="flex flex-col gap-2.5 rounded-fifteen bg-chilean p-25px">
-                <p class="text-3xl font-bold leading-tight text-space">
-                  {{ stageAvgEffective.avg_close_days }}
-                </p>
-                <p class="text-sm leading-snug text-slate-custom">
-                  Средний срок закрытия (дни)
-                </p>
-              </div>
-              <div class="flex flex-col gap-2.5 rounded-fifteen bg-pink p-25px">
-                <p class="text-3xl font-bold leading-tight text-red-custom">
-                  {{ stageAvgEffective.avg_overdue_days }}
-                </p>
-                <p class="text-sm leading-snug text-slate-custom">
-                  Средний срок просрочки (дни)
-                </p>
-              </div>
-              <div class="flex flex-col gap-2.5 rounded-fifteen bg-zumthor p-25px">
-                <p class="text-3xl font-bold leading-tight text-dodger">
-                  {{ stageAvgEffective.hired_count }} из {{ stageAvgEffective.hired_total }}
-                </p>
-                <p class="text-sm leading-snug text-slate-custom">
-                  Нанято кандидатов
-                </p>
-              </div>
-            </div>
-
-            <div class="rounded-fifteen bg-athens-gray p-25px">
-              <p class="text-base font-medium text-space">
-                Из закрытых позиций {{ stageAvgEffective.closure_on_time_percent }}% закрыты в срок
-              </p>
-              <p class="mt-1.5 text-sm leading-snug text-slate-custom">
-                {{ stageAvgEffective.closure_on_time }} позиций закрыты в срок,
-                {{ stageAvgEffective.closure_overdue }} просрочены
-              </p>
-            </div>
-          </div>
-
-          <!-- Нижняя карточка: горизонтальные бары -->
-          <div class="rounded-fifteen bg-white p-25px shadow-sm">
-            <p class="mb-4 text-sm font-bold text-space">
-              Среднее время на этапе
-            </p>
-            <div :key="stageAvgBarAnimKey" class="flex flex-col gap-2">
-              <div
-                v-for="(row, si) in stageAvgEffective.stages"
-                :key="(row.stage_id ?? row.stage_name) + '-' + si"
-                class="flex min-h-10 items-center gap-4"
-              >
-                <div class="w-44 min-w-0 flex-shrink-0 text-sm font-medium text-space sm:w-52">
-                  <span class="truncate" :title="row.stage_name">{{ row.stage_name }}</span>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="h-3 w-full overflow-hidden rounded-full bg-athens">
-                    <div
-                      class="stage-avg-bar-fill h-full rounded-full bg-[#052137]"
-                      :style="{
-                        width: stageAvgBarWidthPct(row.avg_days),
-                        animationDelay: `${si * 48}ms`,
-                      }"
-                    />
-                  </div>
-                </div>
-                <div class="w-10 flex-shrink-0 text-right text-sm font-medium tabular-nums text-space">
-                  {{ row.avg_days }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Нет данных для отображения"
-            description="За выбранные фильтры нет показателей. Измените период или вакансию и нажмите «Применить»."
-            class="shadow-sm"
-          />
-        </template>
-      </div>
-    </template>
-
-    <template v-else-if="metric === 'Отчет по рекрутерам'">
-      <div class="rounded-fifteen bg-white p-25px shadow-sm sm:px-[50px]">
-        <p class="mb-6 text-lg font-bold text-space">
-          Отчет по рекрутерам
-        </p>
-        <template v-if="recruitersReportLoading">
-          <ListSectionPlaceholder variant="reports" loading loading-title="Загрузка данных…" />
-        </template>
-        <template v-else-if="recruitersReportError">
-          <p class="py-8 text-center text-red-custom">{{ recruitersReportError }}</p>
-        </template>
-        <template v-else-if="!(recruitersReportData?.recruiters?.length)">
-          <ListSectionPlaceholder
-            variant="reports"
-            title="Нет данных"
-            description="За выбранные фильтры нет строк отчёта. Измените период или фильтры и нажмите «Применить»."
-          />
-        </template>
-        <template v-else>
-          <div class="overflow-x-auto rounded-fifteen border border-athens bg-white">
-            <table class="w-full min-w-[720px] table-fixed text-left text-sm">
-              <thead>
-                <tr class="bg-catskill">
-                  <th class="w-[30%] py-3 pl-15px pr-4 font-medium text-space">
-                    Сотрудники и их вакансии
-                  </th>
-                  <th class="w-[12%] py-3 pr-4 text-right font-medium text-space">
-                    Добавленные кандидаты
-                  </th>
-                  <th class="w-[12%] py-3 pr-4 text-right font-medium text-space">
-                    Нанятые
-                  </th>
-                  <th class="w-[10%] py-3 pr-4 text-right font-medium text-space">
-                    Отказы
-                  </th>
-                  <th class="w-[12%] py-3 pr-4 pl-4 text-right font-medium text-space">
-                    Срок найма
-                  </th>
-                  <th class="w-[12%] py-3 pr-4 pl-2 text-right font-medium text-space">
-                    Планируемый срок закрытия
-                  </th>
-                  <th class="w-[12%] py-3 pr-15px pl-2 text-right font-medium text-space">
-                    Дата открытия и дней в работе
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="bg-white">
-                <template
-                  v-for="rec in recruitersReportData?.recruiters ?? []"
-                  :key="'recruiter-' + rec.recruiter_id"
-                >
-                  <tr class="border-y border-athens bg-zumthor/60">
-                    <td colspan="4" class="py-3 pl-15px pr-4 align-middle">
-                      <span class="font-bold text-space">{{ rec.name }}</span>
-                      <span v-if="rec.position_title" class="font-bold text-space">
-                        ({{ rec.position_title }})
-                      </span>
-                      <span class="font-normal text-slate-custom">
-                        • {{ rec.vacancies_count }} {{ vacanciesCountWord(rec.vacancies_count) }}: нужно нанять
-                        {{ rec.target_headcount }} {{ peopleCountWord(rec.target_headcount) }}
-                      </span>
-                    </td>
-                    <td colspan="3" class="bg-zumthor/60 py-3 pr-15px pl-4" />
-                  </tr>
-                  <tr
-                    v-for="vac in rec.vacancies"
-                    :key="'vac-' + rec.recruiter_id + '-' + vac.vacancy_id"
-                    class="border-b border-athens last:border-0"
-                  >
-                    <td class="py-3 pl-15px pr-4 align-top">
-                      <NuxtLink
-                        :to="`/vacancies/${vac.vacancy_id}`"
-                        class="font-medium text-space transition-colors hover:text-dodger"
-                        :title="`Открыть страницу вакансии «${vac.title}»`"
-                      >
-                        {{ vac.title }}
-                      </NuxtLink>
-                      <div
-                        v-if="vacancyIsOnPause(vac.status)"
-                        class="mt-0.5 text-xs font-medium text-amber-600"
-                      >
-                        На паузе
-                      </div>
-                    </td>
-                    <td class="py-3 pr-4 text-right tabular-nums text-space">
-                      {{ vac.candidates_added_count }}
-                    </td>
-                    <td class="py-3 pr-4 text-right align-top tabular-nums">
-                      <div class="text-space">
-                        {{ vac.hired_count }} из {{ vac.hired_target }}
-                      </div>
-                      <div class="mt-0.5 text-xs text-slate-custom">
-                        {{ hiredProgressPercent(vac) ?? '—' }}
-                      </div>
-                    </td>
-                    <td class="py-3 pr-4 text-right align-top tabular-nums">
-                      <div class="text-space">
-                        {{ vac.rejections_count }}
-                      </div>
-                      <div class="mt-0.5 text-xs text-slate-custom">
-                        {{ rejectionsRatePercent(vac) ?? '—' }}
-                      </div>
-                    </td>
-                    <td class="py-3 pr-4 pl-4 text-right align-top tabular-nums text-space">
-                      <span class="inline-block min-w-[3.5rem] text-right">{{
-                        formatAvgDaysDays(vac.avg_days_to_hire)
-                      }}</span>
-                    </td>
-                    <td class="py-3 pr-4 pl-2 text-right align-top tabular-nums text-space">
-                      <span class="inline-block min-w-[3.5rem] text-right">{{
-                        formatAvgDaysDays(vac.planned_close_days ?? vac.avg_days_to_close)
-                      }}</span>
-                    </td>
-                    <td class="py-3 pr-15px pl-2 text-right align-top tabular-nums text-space">
-                      <div>{{ formatOpenedAtDate(recruiterVacancyOpenedAt(vac)) }}</div>
-                      <div class="mt-0.5 text-xs text-slate-custom">{{ formatDaysInWork(recruiterVacancyDaysInWork(vac)) }}</div>
-                    </td>
-                  </tr>
-                </template>
-                <tr v-if="!recruitersReportHasRows">
-                  <td colspan="7" class="py-6 text-center text-slate-custom">
-                    В ответе нет строк по вакансиям — проверьте фильтры или настройку эндпоинта.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </template>
-      </div>
-    </template>
-
-    <template v-else-if="metric === 'Источники'">
-      <template v-if="!selectedVacancy">
-        <ListSectionPlaceholder
-          variant="reports"
-          title="Выберите вакансию"
-          description="Данные подтягиваются из списка кандидатов по выбранной вакансии и периоду."
-          class="shadow-sm"
-        />
-      </template>
-      <template v-else-if="candidatesLoading">
-        <ListSectionPlaceholder
-          variant="reports"
-          loading
-          loading-title="Загрузка кандидатов…"
-          class="shadow-sm"
-        />
-      </template>
-      <template v-else>
-        <div
-          class="mb-[46px] flex flex-wrap items-center justify-between gap-[35px] rounded-fifteen bg-white px-6 py-6 shadow-sm sm:px-[50px]"
-        >
-          <div
-            v-for="(item, index) in possibleSourcesRadialCharts"
-            :key="'ps-' + possibleSourcesRadialAnimKey + '-' + index"
-            class="possible-sources-donut relative flex h-[200px] w-[200px] flex-shrink-0 flex-col items-center justify-center"
-            :style="{ animationDelay: `${index * 70}ms` }"
-          >
-            <div
-              class="absolute inset-0 rounded-full bg-athens"
-              aria-hidden="true"
-            />
-            <div
-              class="possible-sources-donut-ring absolute inset-0 rounded-full"
-              :style="{
-                background: item.gradient,
-                animationDelay: `${index * 70}ms`,
-              }"
-              aria-hidden="true"
-            />
-            <div class="absolute flex h-32 w-32 items-center justify-center rounded-full bg-white" />
-            <div class="relative z-10 max-w-[140px] text-center">
-              <span class="block text-xl font-bold text-space">{{ item.value }}</span>
-              <span class="mt-1 block text-xs font-normal leading-tight text-slate-custom">{{ item.label }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="overflow-hidden rounded-fifteen bg-athens shadow-sm">
-      
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[600px] text-left text-sm">
-              <thead>
-                <tr class="bg-catskill">
-                  <th class="py-3 pl-15px pr-25px font-medium text-space">
-                    {{ tableColumns[0].label }}
-                  </th>
-                  <th
-                    v-for="col in tableColumns.slice(1)"
-                    :key="col.key"
-                    class="cursor-pointer py-3 pl-15px pr-25px font-medium text-space hover:text-dodger"
-                    :class="{ 'text-dodger': activeSortColumn === col.key }"
-                    @click="toggleTableSort(col.key)"
-                  >
-                    <span class="inline-flex items-center gap-1">
-                      {{ col.label }}
-                      <svg-icon
-                        name="dropdown-arrow"
-                        width="16"
-                        height="16"
-                        class="text-slate-custom transition-transform"
-                        :class="[
-                          activeSortColumn === col.key
-                            ? (tableSortAsc === 1 ? 'rotate-180' : 'rotate-0')
-                            : 'rotate-0 opacity-40',
-                        ]"
-                      />
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <TransitionGroup name="reorder" tag="tbody" class="bg-white">
-                <tr v-if="sortedPossibleSourcesRows.length === 0" :key="'empty-possible-sources'">
-                  <td colspan="5" class="py-8 text-center text-slate-custom">
-                    Нет кандидатов за выбранные фильтры.
-                  </td>
-                </tr>
-                <tr
-                  v-for="(row, idx) in sortedPossibleSourcesRows"
-                  :key="row.source"
-                  class="border-b border-athens last:border-0"
-                >
-                  <td class="py-3 pl-15px pr-25px">
-                    <span class="inline-flex items-center gap-2">
-                      <span
-                        v-if="row.sourceIcon"
-                        class="h-3 w-3 flex-shrink-0 rounded-full"
-                        :style="{ backgroundColor: row.colorDot }"
-                      />
-                      {{ row.source }}
-                    </span>
-                  </td>
-                  <td class="py-3 pl-15px pr-25px text-slate-custom test">{{ row.views }}</td>
-                  <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.responses }}</td>
-                  <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.funnel }}</td>
-                  <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.rejections }}</td>
-                </tr>
-              </TransitionGroup>
-            </table>
-          </div>
-        </div>
-      </template>
-    </template>
-
-    <template v-else>
-      <!-- Остальные отчёты: блок донатов + таблица (Figma Default: gap 35px в ряду, 200×200, до таблицы 46px) -->
-      <div
-        class="mb-[46px] flex flex-wrap items-center justify-between gap-[35px] rounded-fifteen bg-white px-6 py-6 shadow-sm sm:px-[50px]"
-      >
-        <div
-          v-for="(item, index) in fallbackChartData"
-          :key="index"
-          class="relative flex h-[200px] w-[200px] flex-shrink-0 flex-col items-center justify-center"
-        >
-          <div
-            class="absolute inset-0 rounded-full"
-            style="
-              background: conic-gradient(
-                #f59e0b 0deg 300deg,
-                #ec4899 300deg 330deg,
-                #a855f7 330deg 360deg
-              );
-            "
-          />
-          <div class="absolute flex h-32 w-32 items-center justify-center rounded-full bg-white" />
-          <div class="relative z-10 max-w-[140px] text-center">
-            <span class="block text-xl font-bold text-space">{{ item.value }}</span>
-            <span class="mt-1 block text-xs font-normal leading-tight text-slate-custom">{{ item.label }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="overflow-hidden rounded-fifteen bg-athens shadow-sm">
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[600px] text-left text-sm">
-            <thead>
-              <tr class="bg-catskill">
-                <th class="py-3 pl-15px pr-25px font-medium text-space">
-                  {{ tableColumns[0].label }}
-                </th>
-                <th
-                  v-for="col in tableColumns.slice(1)"
-                  :key="col.key"
-                  class="cursor-pointer py-3 pl-15px pr-25px font-medium text-space hover:text-dodger"
-                  :class="{ 'text-dodger': activeSortColumn === col.key }"
-                  @click="toggleTableSort(col.key)"
-                >
-                  <span class="inline-flex items-center gap-1">
-                    {{ col.label }}
-                    <svg-icon
-                      name="dropdown-arrow"
-                      width="16"
-                      height="16"
-                      class="text-slate-custom transition-transform"
-                      :class="[
-                        activeSortColumn === col.key
-                          ? (tableSortAsc === 1 ? 'rotate-180' : 'rotate-0')
-                          : 'rotate-0 opacity-40',
-                      ]"
-                    />
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <TransitionGroup name="reorder" tag="tbody" class="bg-white">
-              <tr
-                v-for="(row, idx) in sortedFallbackRows"
-                :key="row.source"
-                class="border-b border-athens last:border-0"
-              >
-                <td class="py-3 pl-15px pr-25px">
-                  <span class="inline-flex items-center gap-2">
-                    <span
-                      v-if="row.sourceIcon"
-                      class="h-3 w-3 flex-shrink-0 rounded-full bg-amber-400"
-                    />
-                    {{ row.source }}
-                  </span>
-                </td>
-                <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.views }}</td>
-                <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.responses }}</td>
-                <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.funnel }}</td>
-                <td class="py-3 pl-15px pr-25px text-slate-custom">{{ row.rejections }}</td>
-              </tr>
-            </TransitionGroup>
-          </table>
-        </div>
-      </div>
-    </template>
+    <ReportsMetricRouter />
 
     <div
       v-if="funnelStageSegmentTooltip.visible"

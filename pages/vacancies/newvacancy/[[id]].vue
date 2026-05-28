@@ -34,9 +34,7 @@
   import { useNuxtApp } from '#app';
   import UiLoader from '~/components/UiLoader.vue';
   import { useRoute, useRouter } from 'vue-router';
-  import { loadScript } from '@/plugins/loader';
   import { getVacancy } from '@/utils/getVacancies';
-  import { API_YANDEX_KEY, API_YANDEX_SUGGEST } from '@/src/constants';
 
   const { $loader } = useNuxtApp();
 
@@ -48,6 +46,10 @@
     route.params.id ? String(route.params.id) : (route.query.id ? String(route.query.id) : (route.query._vid ? String(route.query._vid) : null))
   );
   const vacancyName = ref('Новая вакансия');
+  /** Данные вакансии с API — один запрос на страницу, InfoTab читает через inject. */
+  const initialVacancyData = ref<Record<string, unknown> | null>(null);
+  provide('initialVacancyData', initialVacancyData);
+
   const application = ref(
     route.query.application ? route.query.application : null
   );
@@ -56,27 +58,47 @@
   const headerStatus = ref('Открыта');
   provide('headerVacancyStatus', headerStatus);
 
-  async function loadVacancyName() {
-    if (!vacancyId.value) return;
+  function resolveVacancyIdFromRoute(): string | null {
+    const id = route.params.id;
+    return id
+      ? String(id)
+      : (route.query.id ? String(route.query.id) : (route.query._vid ? String(route.query._vid) : null));
+  }
+
+  async function loadVacancy() {
+    if (!vacancyId.value) {
+      initialVacancyData.value = null;
+      vacancyName.value = 'Новая вакансия';
+      return;
+    }
+    initialVacancyData.value = null;
     try {
       const currectVacancy = await getVacancy(String(vacancyId.value));
+      initialVacancyData.value = currectVacancy ?? null;
       vacancyName.value = 'Редактирование вакансии';
       if (currectVacancy?.name) vacancyName.value += `: ${currectVacancy.name}`;
     } catch {
+      initialVacancyData.value = null;
       vacancyName.value = 'Редактирование вакансии';
     }
   }
 
-  watch(() => route.params.id, (id) => {
-    const nextId = id ? String(id) : (route.query.id ? String(route.query.id) : (route.query._vid ? String(route.query._vid) : null));
-    vacancyId.value = nextId;
-    typeSave.value = nextId ? 'edit' : 'create';
-    loadVacancyName();
-  }, { immediate: true });
+  provide('reloadInitialVacancyData', loadVacancy);
 
   if (vacancyId.value) {
-    await loadVacancyName();
+    await loadVacancy();
   }
+
+  watch(
+    () => [route.params.id, route.query.id, route.query._vid] as const,
+    async () => {
+      const nextId = resolveVacancyIdFromRoute();
+      if (nextId === vacancyId.value) return;
+      vacancyId.value = nextId;
+      typeSave.value = nextId ? 'edit' : 'create';
+      await loadVacancy();
+    },
+  );
 
   useSeoMeta({
     title: vacancyId.value ? 'Редактирование вакансии — Jobly' : 'Создание вакансии — Jobly',
@@ -215,14 +237,4 @@
   const onFallback = () => {
     console.log('Suspense: Showing fallback');
   };
-
-  onMounted(async () => {
-    try {
-      await loadScript(
-        `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}&results=10`
-      );
-    } catch (error) {
-      console.error('Ошибка загрузки Yandex Maps:', error);
-    }
-  });
 </script>

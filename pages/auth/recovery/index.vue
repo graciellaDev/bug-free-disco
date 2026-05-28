@@ -32,17 +32,16 @@
             </div>
         </div>
         <div class="video-block overflow-hidden">
-            <video-player src="/assets/demo1.mp4" poster="/assets/cover3.png" controls :loop="false" :volume="0.6"
-              :width="442.5" style="height: 100%;" />
+            <AuthDemoVideoPlayer />
         </div>
     </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, defineAsyncComponent } from 'vue';
 import { useNuxtApp } from '#app';
-import { VideoPlayer } from '@videojs-player/vue'
-import 'video.js/dist/video-js.css'
+
+const AuthDemoVideoPlayer = defineAsyncComponent(() => import('~/components/auth/AuthDemoVideoPlayer.vue'))
 
 const newPassword = ref('');
 const repeatPassword = ref('');

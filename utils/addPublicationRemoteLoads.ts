@@ -4,6 +4,10 @@
  *
  * Порядок и наличие запросов зависят от режима и платформы; после оптимизаций часть
  * вызовов пропускается или выполняется один раз / в фоне.
+ *
+ * Справочники платформ (кроме export-map и контактов Avito) кэшируются in-memory
+ * в `utils/publicationDictionariesCache.ts` (TTL 30 мин) — повторное открытие модалки
+ * не дергает API, префилл с карточки выполняется как обычно.
  */
 export const ADD_PUBLICATION_REMOTE_LOADS = [
   {
@@ -41,17 +45,17 @@ export const ADD_PUBLICATION_REMOTE_LOADS = [
   {
     id: 'avito_profile_dicts',
     description: 'Профиль Avito + loadDictionaries(\'avito\').',
-    when: 'Платформа Avito.',
+    when: 'Карточка «Опубликовать» Avito: в onMounted (bootstrapAvitoPublishCardForm), не блокирует form-ready.',
   },
   {
     id: 'rabota_profile_dicts',
-    description: 'Профиль Rabota + loadDictionaries(\'rabota\').',
-    when: 'Платформа Rabota.',
+    description: 'Профиль Rabota + loadDictionaries(\'rabota\') + export-map.',
+    when: 'Карточка «Опубликовать» Rabota: в onMounted (bootstrapRabotaPublishCardForm), не блокирует form-ready.',
   },
   {
     id: 'superjob_catalogues_towns',
     description: 'Каталоги/города SuperJob + при редактировании getSuperjobVacancy.',
-    when: 'Платформа SuperJob или редактирование SJ-публикации.',
+    when: 'Карточка «Опубликовать» SuperJob: в onMounted (bootstrapSuperjobPublishCardForm), не блокирует form-ready.',
   },
   {
     id: 'vacancy_fields_drivers',
