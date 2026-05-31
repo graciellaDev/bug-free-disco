@@ -665,7 +665,7 @@
               </div>
             </div>
           </template>
-          <div class="w-full justify-between flex gap-25px mb-6">
+          <div v-if="currentPlatform !== 'rabota'" class="w-full justify-between flex gap-25px mb-6">
             <div class="w-full">
               <MyCheckbox :id="'evening-night-shifts'" :label="'Есть вечерние или ночные смены'"
                 v-model="data.has_evening_night_shifts" />
@@ -802,7 +802,7 @@
             </div>
           </div>
         </template>
-        <div v-if="currentPlatform !== 'hh'" class="w-full justify-between flex gap-25px mb-6">
+        <div v-if="currentPlatform !== 'hh' && currentPlatform !== 'rabota'" class="w-full justify-between flex gap-25px mb-6">
           <div class="w-full">
             <MyCheckbox :id="'show_metro_only'" :label="'Показывать только станцию метро в вакансии'"
               :model-value="data.address?.show_metro_only ?? false"
@@ -843,7 +843,7 @@
                 </DropDownTypes>
               </div>
             </div>
-            <div class="w-full  items-end justify-between flex mb-6 gap-25px">
+            <div v-if="currentPlatform !== 'rabota'" class="w-full  items-end justify-between flex mb-6 gap-25px">
               <RadioGroup default-value="past-cash" class="w-full flex gap-[18px]"
                 :model-value="data.salary_range?.gross === true ? 'full-cash' : 'past-cash'"
                 @update:model-value="(value) => (data.salary_range = { ...(data.salary_range || {}), gross: value === 'full-cash' })">
