@@ -15,7 +15,7 @@
       </NuxtLink>
       <ul class="flex gap-x-5px items-center">
         <li>
-          <NuxtLink to="/applications" exact-active-class="active-link">
+          <NuxtLink to="/applications" exact-active-class="active-link" prefetch>
             <p
               class="page-name leading-normal text-white opacity-50 px-3 py-2 hover:opacity-100 transition-all rounded-lg hover:bg-hoverbtn text-15px font-semibold">
               Заявки
@@ -130,10 +130,13 @@
 <script setup>
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ref, computed } from 'vue'
+import { ref, computed, defineAsyncComponent, onMounted } from 'vue'
 import { logout } from '~/utils/logout'
+import { preloadRouteComponents } from '#app'
 
-import PopupNotification from '~/components/custom/PopupNotification.vue'
+const PopupNotification = defineAsyncComponent(
+  () => import('~/components/custom/PopupNotification.vue'),
+)
 
 const route = useRoute()
 const isVacanciesActive = computed(() => route.path.startsWith('/vacancies'))
@@ -151,6 +154,16 @@ const toggleNotification = () => {
 const handleLogout = () => {
   logout()
 }
+
+onMounted(() => {
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(() => {
+      void preloadRouteComponents('/applications')
+    })
+  } else {
+    setTimeout(() => void preloadRouteComponents('/applications'), 1500)
+  }
+})
 </script>
 
 <style lang="scss" scoped>

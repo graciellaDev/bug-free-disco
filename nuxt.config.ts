@@ -272,6 +272,12 @@ export default defineNuxtConfig({
     pinia: {
         storesDirs: ['~/stores'],
     },
+    nitro: {
+        compressPublicAssets: {
+            gzip: true,
+            brotli: true,
+        },
+    },
     routeRules: {
         '/auth': { ssr: false },
         // Все защищённые разделы кабинета: SSR не нужен (требуют авторизации)

@@ -1,7 +1,7 @@
 <template>
   <div class="container pb-72 pt-[34px]">
     <div
-      v-if="showListPageHeader"
+      v-if="showPageHeader"
       class="mb-3.5 flex items-center justify-between rounded-fifteen bg-white p-25px"
     >
       <div>
@@ -17,7 +17,7 @@
           v-if="userRole === 'admin'"
           size="semiaction"
           variant="action"
-          @click="isNewAppPopupAdmin = true"
+          @click="openNewApplicationPopupForRole()"
         >
           Новая заявка
         </UiButton>
@@ -25,7 +25,7 @@
           v-else-if="userRole === 'responsible'"
           size="semiaction"
           variant="action"
-          @click="isNewAppPopupResponsible = true"
+          @click="openNewApplicationPopupForRole()"
         >
           Новая заявка
         </UiButton>
@@ -33,7 +33,7 @@
           v-else-if="userRole === 'customer'"
           size="semiaction"
           variant="action"
-          @click="isNewAppPopupCustomer = true"
+          @click="openNewApplicationPopupForRole()"
         >
           Новая заявка
         </UiButton>
@@ -199,16 +199,6 @@
       />
     </template>
     <template v-else-if="data.length === 0">
-      <div
-        class="mb-3.5 rounded-fifteen bg-white px-25px pb-20px pt-25px"
-      >
-        <p class="mb-2.5 text-xl font-semibold leading-normal text-space">
-          Заявки
-        </p>
-        <p class="text-sm font-normal leading-normal text-slate-custom">
-          Отправьте приглашение заказчику и управляйте доступом
-        </p>
-      </div>
       <ListSectionPlaceholder
         variant="applications"
         class="rounded-fifteen"
@@ -219,7 +209,7 @@
         v-if="userRole === 'admin'"
         size="semiaction"
         variant="action"
-        @click="isNewAppPopupAdmin = true"
+        @click="openNewApplicationPopupForRole()"
       >
         Новая заявка
       </UiButton>
@@ -227,7 +217,7 @@
         v-else-if="userRole === 'responsible'"
         size="semiaction"
         variant="action"
-        @click="isNewAppPopupResponsible = true"
+        @click="openNewApplicationPopupForRole()"
       >
         Новая заявка
       </UiButton>
@@ -235,7 +225,7 @@
         v-else-if="userRole === 'customer'"
         size="semiaction"
         variant="action"
-        @click="isNewAppPopupCustomer = true"
+        @click="openNewApplicationPopupForRole()"
       >
         Новая заявка
       </UiButton>
@@ -1481,23 +1471,34 @@
     onBeforeUnmount,
     nextTick,
     watch,
+    defineAsyncComponent,
   } from 'vue';
   import { useJoblyToastTopStyle } from '@/composables/useJoblyToastTopStyle';
   import dayjs from 'dayjs';
   import ResponseInput from '~/components/custom/ResponseInput.vue';
   import DotsDropdown from '~/components/custom/DotsDropdown.vue';
-  import Popup from '~/components/custom/Popup.vue';
+  const Popup = defineAsyncComponent(
+    () => import('~/components/custom/Popup.vue'),
+  );
   import SimpleInput from '~/components/custom/SimpleInput.vue';
-  import InputCalendar from '~/components/custom/InputCalendar.vue';
+  const InputCalendar = defineAsyncComponent(
+    () => import('~/components/custom/InputCalendar.vue'),
+  );
   import BtnResponseInput from '~/components/custom/BtnResponseInput.vue';
   import MyInput from '~/components/custom/MyInput.vue';
-  import GeoInput from '~/components/custom/GeoInput.vue';
-  import SalaryRange from '~/components/custom/SalaryRange.vue';
+  const GeoInput = defineAsyncComponent(
+    () => import('~/components/custom/GeoInput.vue'),
+  );
+  const SalaryRange = defineAsyncComponent(
+    () => import('~/components/custom/SalaryRange.vue'),
+  );
   import MyTextarea from '~/components/custom/MyTextarea.vue';
   import MyDropdown from '~/components/custom/MyDropdown.vue';
   import ListSectionPlaceholder from '~/components/custom/ListSectionPlaceholder.vue';
   import Pagination from '~/components/custom/Pagination.vue';
-  import DropdownCalendarStatic from '~/components/custom/DropdownCalendarStatic.vue';
+  const DropdownCalendarStatic = defineAsyncComponent(
+    () => import('~/components/custom/DropdownCalendarStatic.vue'),
+  );
   import responses from '~/src/data/responses.json';
   import currency from '~/src/data/currency.json';
 
@@ -1505,12 +1506,11 @@
   import { fetchApplicationDetail, approve } from '~/utils/applicationItem';
   import { createApplication } from '~/utils/applicationCreate';
   import { deleteApplication } from '~/utils/applicationRemove';
-  import { clientsList } from '~/utils/clientsList';
   import {
     approversList,
-    executorsList,
     getDepartments,
   } from '~/utils/executorsList';
+  import { useUserStore } from '@/stores/user';
   import { fetchVacancyOpeningReasons } from '~/utils/vacancyOpeningReasonsList';
   import {
     applicationStatusBadgeClass,
@@ -1530,6 +1530,7 @@
   import { useRouter } from 'vue-router';
 
   const router = useRouter();
+  const userStore = useUserStore();
 
   const applications = ref([]);
   const data = ref([]);
@@ -1543,9 +1544,7 @@
   const error = ref(null);
   const loading = ref(true);
 
-  const showListPageHeader = computed(
-    () => !error.value && !loading.value && data.value.length > 0
-  );
+  const showPageHeader = computed(() => !error.value);
 
   const applicationsEmptyTitle = computed(() => 'Пока нет заявок');
 
@@ -1583,7 +1582,7 @@
 
   const sortKey = ref('');
   const sortOrder = ref('asc');
-  const userRole = ref('admin');
+  const userRole = ref(mapProfileRoleToApplicationsUserRole(userStore.role));
 
   function mapProfileRoleToApplicationsUserRole(roleName) {
     const name = String(roleName ?? '')
@@ -1670,10 +1669,9 @@
   const rejectReason = ref('');
 
   const ArrayCurrency = currency;
-  const clients = ref([]);
-  const executors = ref([]);
   const approvers = ref([]);
   const departments = ref([]);
+  const reasonseForOpenVacancy = ref([]);
   let resizeObserver = null;
   const errors = ref({});
   const updateData = ref({});
@@ -1687,12 +1685,46 @@
   const isApprove = ref(false);
   const isNotApprove = ref(false);
 
-  const { data: profileCustomer, error: errorProfile } = await profile();
-  if (!errorProfile && profileCustomer?.data?.role?.name) {
-    userRole.value = mapProfileRoleToApplicationsUserRole(
-      profileCustomer.data.role.name
-    );
+  let formDictionariesLoaded = false;
+  let formDictionariesLoading = null;
+  let yandexMapsLoadPromise = null;
+
+  function ensureYandexMapsScript() {
+    if (yandexMapsLoadPromise) return yandexMapsLoadPromise;
+    yandexMapsLoadPromise = loadScript(
+      `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}`,
+    ).catch((err) => {
+      yandexMapsLoadPromise = null;
+      console.warn('Yandex Maps script failed to load:', err);
+    });
+    return yandexMapsLoadPromise;
   }
+
+  async function ensureFormDictionaries() {
+    if (formDictionariesLoaded) return;
+    if (formDictionariesLoading) return formDictionariesLoading;
+
+    formDictionariesLoading = Promise.all([
+      getDepartments().then((items) => {
+        departments.value = items;
+      }),
+      approversList().then(({ approvers: approverData }) => {
+        approvers.value = approverData;
+      }),
+      fetchVacancyOpeningReasons().then((items) => {
+        reasonseForOpenVacancy.value = items;
+      }),
+    ])
+      .then(() => {
+        formDictionariesLoaded = true;
+      })
+      .finally(() => {
+        formDictionariesLoading = null;
+      });
+
+    return formDictionariesLoading;
+  }
+
   // Функция обновления высоты контента
   const updateTabHeight = () => {
     nextTick(() => {
@@ -1873,8 +1905,8 @@
   };
 
   const loadApplications = async (page = 1, params = '') => {
-    // load data applications
     loading.value = true;
+    error.value = null;
     try {
       const {
         applications: fetchedApplications,
@@ -1883,55 +1915,39 @@
       applications.value = fetchedApplications;
       data.value = applications.value.map(vacancy => ({
         ...vacancy,
-        responsible: vacancy.responsible, // TODO: Заменить на данные из API
-        candidates: 0, // TODO: Заменить на данные из API
+        responsible: vacancy.responsible,
+        candidates: 0,
         showResponseInput: false,
         responseChoose: '',
         approvals: vacancy.approvals,
       }));
       pagination.value = fetchedPagination;
-
-      // получаем динамический список клиентов
-      const { clients: clientData } = await clientsList();
-      clients.value = clientData;
-    } catch (error) {
+    } catch (err) {
       error.value = 'Ошибка загрузки заявок.';
-      console.error(error);
+      console.error(err);
     } finally {
       loading.value = false;
     }
-
-    // исполнители (рекрутеры) и согласующие (рекрутеры + администраторы)
-    const [{ executors: executorData }, { approvers: approverData }] =
-      await Promise.all([executorsList(), approversList()]);
-    executors.value = executorData;
-    approvers.value = approverData;
   };
-
-  // Получаем динамический список отделов
-  departments.value = await getDepartments();
 
   const handlePageChange = async page => {
     pagination.value.current_page = page;
     await loadApplications(page);
   };
 
-  const getClients = async () => {
-    const { clients } = await clientsList();
-
-    return clients;
-  };
-
-  const getExecutors = async () => {
-    const { executors } = await executorsList();
-
-    return executors;
-  };
-
   onMounted(async () => {
-    await loadScript(
-      `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${API_YANDEX_KEY}&suggest_apikey=${API_YANDEX_SUGGEST}`
-    );
+    if (!userStore.role) {
+      const { data, error: profileError } = await profile();
+      if (!profileError && data?.data?.role?.name) {
+        userStore.setUserData({
+          name: data.data.name ?? userStore.name,
+          email: data.data.email ?? userStore.email,
+          role: data.data.role.name,
+        });
+        userRole.value = mapProfileRoleToApplicationsUserRole(data.data.role.name);
+      }
+    }
+
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('click', handleClickOutsideNewAppPopup);
     document.addEventListener(
@@ -1941,7 +1957,6 @@
     document.addEventListener('click', handleClickOutsideNewAppPopupExecutor);
     document.addEventListener('click', handleClickOutsideNewAppPopupCustomer);
     loadApplications();
-    reasonseForOpenVacancy.value = await fetchVacancyOpeningReasons();
   });
 
   onBeforeUnmount(() => {
@@ -2137,7 +2152,7 @@
       const fullData = await fetchApplicationDetail(vacancy.id);
 
       detailedVacancy.value = fullData.data;
-      const profileRoleName = profileCustomer?.data?.role?.name ?? '';
+      const profileRoleName = userStore.role ?? '';
       isDelete.value = false;
       isAddApprove.value = false;
       if (isDeleteApplication.value) {
@@ -2164,8 +2179,6 @@
     selectedVacancy.value = null;
     detailedVacancy.value = null;
   };
-
-  const reasonseForOpenVacancy = ref([]);
 
   const historyTabEvents = computed(() =>
     applicationHistoryFromDetail(detailedVacancy.value)
@@ -2438,8 +2451,10 @@
     closePopup();
   };
 
-  function openNewApplicationPopupForRole() {
+  async function openNewApplicationPopupForRole() {
+    await ensureFormDictionaries();
     if (userRole.value === 'admin') {
+      void ensureYandexMapsScript();
       isNewAppPopupAdmin.value = true;
     } else if (userRole.value === 'responsible') {
       isNewAppPopupResponsible.value = true;
@@ -2449,6 +2464,7 @@
   }
 
   async function copyApplicationFromDetailById(applicationId) {
+    await ensureFormDictionaries();
     const response = await fetchApplicationDetail(applicationId);
     const app = response?.data;
     if (!app) {
@@ -2467,6 +2483,7 @@
 
   async function copyApplicationFromDetail() {
     if (!detailedVacancy.value) return;
+    await ensureFormDictionaries();
     newApplication.value = mapApplicationDetailToNewForm(
       detailedVacancy.value,
       reasonseForOpenVacancy.value
