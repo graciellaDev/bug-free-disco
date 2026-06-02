@@ -24,6 +24,12 @@ export const searchRabotaRegions = (...args: Parameters<RabotaMod['searchRabotaR
   rabota().then((m) => m.searchRabotaRegions(...args))
 export const getEmploymentTypesRabota = (...args: Parameters<RabotaMod['getEmploymentTypes']>) =>
   rabota().then((m) => m.getEmploymentTypes(...args))
+export const getRabotaEmploymentByEmploymentId = (
+  ...args: Parameters<RabotaMod['getRabotaEmploymentByEmploymentId']>
+) => rabota().then((m) => m.getRabotaEmploymentByEmploymentId(...args))
+export const getRabotaExperienceByExperienceId = (
+  ...args: Parameters<RabotaMod['getRabotaExperienceByExperienceId']>
+) => rabota().then((m) => m.getRabotaExperienceByExperienceId(...args))
 export const getExperienceLevelsRabota = (...args: Parameters<RabotaMod['getExperienceLevels']>) =>
   rabota().then((m) => m.getExperienceLevels(...args))
 export const getEducationsRabota = (...args: Parameters<RabotaMod['getEducations']>) =>

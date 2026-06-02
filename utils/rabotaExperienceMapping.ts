@@ -1,4 +1,4 @@
-import { resolveJoblyExperienceId } from '@/utils/avitoExperienceMapping'
+import { resolveJoblyExperienceId, JOBLY_EXPERIENCE_OPTIONS } from '@/utils/avitoExperienceMapping'
 
 export type RabotaExperienceLevel = {
   id?: number | string
@@ -40,6 +40,116 @@ function formatRabotaExperienceMatch(match: RabotaExperienceLevel): RabotaExperi
     id,
     name,
     value: match.value ?? id,
+  }
+}
+
+/** id из таблицы Jobly `experiences`: 1 Не имеет значения, 2 От 1 до 3 лет, 3 От 3 до 6 лет, 4 От 6 лет */
+const JOBLY_EXPERIENCE_DB_ID_TO_NAME: Record<string, string> = {
+  '1': 'Не имеет значения',
+  '2': 'От 1 до 3 лет',
+  '3': 'От 3 до 6 лет',
+  '4': 'От 6 лет',
+}
+
+/** UI / HH id опыта → id в таблице Jobly `experiences` */
+const JOBLY_EXPERIENCE_UI_ID_TO_DB_ID: Record<string, string> = {
+  noExperience: '1',
+  between1And3: '2',
+  between3And6: '3',
+  moreThan6: '4',
+}
+
+function mapExperienceLabelToJoblyDbId(label: unknown): string | null {
+  const raw = String(label ?? '').trim()
+  if (!raw) return null
+  if (/^[1-4]$/.test(raw)) return raw
+
+  const joblyUiId = resolveJoblyExperienceId(raw)
+  if (joblyUiId && JOBLY_EXPERIENCE_UI_ID_TO_DB_ID[joblyUiId]) {
+    return JOBLY_EXPERIENCE_UI_ID_TO_DB_ID[joblyUiId]
+  }
+
+  if (/^[0-3]$/.test(raw)) {
+    const opt = JOBLY_EXPERIENCE_OPTIONS.find((o) => String(o.value) === raw)
+    if (opt && JOBLY_EXPERIENCE_UI_ID_TO_DB_ID[opt.id]) {
+      return JOBLY_EXPERIENCE_UI_ID_TO_DB_ID[opt.id]
+    }
+  }
+
+  const norm = normText(raw)
+  for (const [id, name] of Object.entries(JOBLY_EXPERIENCE_DB_ID_TO_NAME)) {
+    if (normText(name) === norm) return id
+  }
+
+  if (norm.includes('нет опыт') || norm.includes('без опыт') || norm.includes('не имеет')) return '1'
+  if (norm.includes('1 до 3') || norm.includes('1-3')) return '2'
+  if (norm.includes('3 до 6') || norm.includes('3-6')) return '3'
+  if (norm.includes('6 лет') || norm.includes('более 6') || norm.includes('от 6')) return '4'
+
+  return null
+}
+
+/** id опыта Jobly (`experiences.id`) из полей вакансии. */
+export function resolveJoblyExperienceDbIdFromVacancy(
+  vacancy: Record<string, unknown> | null | undefined,
+): number | string | null {
+  if (!vacancy || typeof vacancy !== 'object') return null
+
+  const direct = vacancy.experience_id ?? vacancy.experienceId
+  if (direct != null && String(direct).trim() !== '') {
+    return direct as number | string
+  }
+
+  const nested =
+    (vacancy.experiences as { id?: unknown } | null | undefined)?.id ??
+    (typeof vacancy.experience === 'object' && vacancy.experience != null
+      ? ((vacancy.experience as { experience_id?: unknown; id?: unknown }).experience_id ??
+        (vacancy.experience as { id?: unknown }).id)
+      : null)
+  if (nested != null && String(nested).trim() !== '') {
+    const nestedStr = String(nested).trim()
+    if (/^[1-4]$/.test(nestedStr)) return nestedStr
+    const fromUi = JOBLY_EXPERIENCE_UI_ID_TO_DB_ID[nestedStr]
+    if (fromUi) return fromUi
+  }
+
+  const raw = vacancy.experience
+  if (raw == null || raw === '') return null
+
+  if (typeof raw === 'object') {
+    const obj = raw as { experience_id?: unknown; id?: unknown; name?: unknown; value?: unknown }
+    if (obj.experience_id != null && String(obj.experience_id).trim() !== '') {
+      return obj.experience_id as number | string
+    }
+    const fromId = mapExperienceLabelToJoblyDbId(obj.id)
+    if (fromId) return fromId
+    const fromValue = mapExperienceLabelToJoblyDbId(obj.value)
+    if (fromValue) return fromValue
+    const fromName = mapExperienceLabelToJoblyDbId(obj.name)
+    if (fromName) return fromName
+    return null
+  }
+
+  return mapExperienceLabelToJoblyDbId(raw)
+}
+
+/** Пункт справочника rabota.ru из ответа GET /rabota/dictionaries/experiences/by-experience/{id}. */
+export function mapRabotaExperienceByExperienceItem(
+  item: Record<string, unknown> | null | undefined,
+): RabotaExperienceFormValue | null {
+  if (!item || typeof item !== 'object') return null
+  const id =
+    item.rabota_experience_id ??
+    item.experience_level_id ??
+    item.experience_id ??
+    item.id
+  if (id == null || String(id).trim() === '') return null
+  const name = String(item.name ?? item.title ?? '').trim()
+  const value = item.value ?? id
+  return {
+    id,
+    name: name || String(id),
+    value,
   }
 }
 
