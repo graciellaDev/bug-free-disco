@@ -555,7 +555,7 @@
             <div class="w-full justify-between flex gap-25px mb-6">
               <div class="w-full">
                 <p class="text-sm font-medium mb-4 leading-normal text-space">
-                  Формат работы
+                  {{ currentPlatform === 'rabota' ? 'Режим работы' : 'Формат работы' }}
                 </p>
                 <DropDownTypes
                   v-if="currentPlatform === 'rabota'"
@@ -1421,7 +1421,9 @@ import {
   getRabotaProfessionsByProfessionalRole,
   searchRabotaRegions,
   getEmploymentTypesRabota,
+  getRabotaEmploymentByEmploymentId,
   getExperienceLevelsRabota,
+  getRabotaExperienceByExperienceId,
   getEducationsRabota,
   getWorkCategoriesRabota,
   getWorkSchedulesRabota,
@@ -1451,8 +1453,14 @@ import {
 } from '@/utils/avitoExperienceMapping'
 import {
   extractRabotaPublicationExperienceRaw,
+  mapRabotaExperienceByExperienceItem,
+  resolveJoblyExperienceDbIdFromVacancy,
   resolveRabotaExperienceOption,
 } from '@/utils/rabotaExperienceMapping'
+import {
+  mapRabotaEmploymentByEmploymentItem,
+  resolveJoblyEmploymentDbIdFromVacancy,
+} from '@/utils/rabotaEmploymentMapping'
 import {
   AVITO_POPUP_EMPLOYMENT_OPTIONS,
   normalizeAvitoEmploymentMappedId,
@@ -1850,17 +1858,15 @@ async function applyJoblyVacancyToRabotaForm(vacancy) {
     }
   }
 
-  // Тип занятости: vacancy.employment (Jobly) → rabota.ru по правилам маппинга
-  if (vacancy.employment) {
-    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
-  }
+  // Тип занятости: vacancy.employment_id → GET /rabota/dictionaries/employment/by-employment/{id}
+  await applyRabotaEmploymentFromVacancy(vacancy)
 
   // График: vacancy.schedule (Jobly) → rabota.ru по правилам маппинга
   if (vacancy.schedule) {
     applyRabotaScheduleFromVacancySchedule(vacancy.schedule)
   }
 
-  applyRabotaExperienceFromVacancy(vacancy)
+  await applyRabotaExperienceFromVacancy(vacancy)
 
   // Образование: vacancy.education (строка) -> справочник educations
   if (vacancy.education) {
@@ -2001,17 +2007,40 @@ function applyRabotaSalaryFromVacancy(vacancy) {
   }
 }
 
-function applyRabotaExperienceFromVacancy(vacancy) {
+async function applyRabotaExperienceFromVacancy(vacancy) {
   if (!vacancy || currentPlatform.value !== 'rabota') return
-  if (!rabotaExperienceLevels.value.length) return
 
-  const raw = vacancy.experience
-  if (raw == null || raw === '') return
+  const experienceId = resolveJoblyExperienceDbIdFromVacancy(vacancy)
+  if (experienceId == null) return
 
-  const hit = resolveRabotaExperienceOption(rabotaExperienceLevels.value, raw)
-  if (hit) {
-    data.value.experience = hit
+  const result = await getRabotaExperienceByExperienceId(experienceId)
+  if (result?.error) {
+    console.warn('getRabotaExperienceByExperienceId:', result.error, { experienceId })
+    return
   }
+
+  const payload = result?.data
+  const item = Array.isArray(payload) ? payload[0] : payload
+  const mapped = mapRabotaExperienceByExperienceItem(
+    item && typeof item === 'object' ? item : null,
+  )
+  if (!mapped) return
+
+  if (rabotaExperienceLevels.value.length > 0) {
+    const hit = rabotaExperienceLevels.value.find(
+      (x) => String(x.id ?? x.experience_id) === String(mapped.id),
+    )
+    if (hit) {
+      data.value.experience = {
+        id: hit.id ?? hit.experience_id,
+        name: hit.name ?? hit.title ?? mapped.name,
+        value: hit.value ?? hit.id ?? hit.experience_id ?? mapped.value,
+      }
+      return
+    }
+  }
+
+  data.value.experience = mapped
 }
 
 function applyRabotaDefaultContactFromProfile(profilePayload) {
@@ -3934,17 +3963,6 @@ const employmentSelectedOption = computed(() => {
     if (form?.id != null) {
       return opts.find((o) => String(o.id) === String(form.id)) ?? form
     }
-    const raw = globCurrentVacancy.value?.employment
-    if (raw) {
-      const mappedName = mapJoblyEmploymentToRabotaOptionName(raw)
-      const match = findByNameLoose(rabotaEmploymentTypes.value, mappedName)
-      if (match) {
-        return opts.find((o) => String(o.id) === String(match.id ?? match.employment_type_id)) ?? {
-          id: match.id ?? match.employment_type_id,
-          name: match.name ?? match.title,
-        }
-      }
-    }
     return null
   }
   const raw = globCurrentVacancy.value?.employment
@@ -4938,23 +4956,39 @@ function applyRabotaScheduleFromVacancySchedule(schedule) {
   }
 }
 
-/** Маппинг типа занятости вакансии Jobly → пункт справочника rabota.ru */
-function mapJoblyEmploymentToRabotaOptionName(employment) {
-  if (normText(employment) === normText('Вахта')) return 'Полная занятость'
-  return String(employment ?? '').trim()
-}
+async function applyRabotaEmploymentFromVacancy(vacancy) {
+  if (!vacancy || currentPlatform.value !== 'rabota') return
 
-function applyRabotaEmploymentFromVacancyEmployment(employment) {
-  if (employment == null || employment === '') return
-  if (!rabotaEmploymentTypes.value.length) return
-  const rabotaName = mapJoblyEmploymentToRabotaOptionName(employment)
-  const match = findByNameLoose(rabotaEmploymentTypes.value, rabotaName)
-  if (match) {
-    data.value.employment_form = {
-      id: match.id ?? match.employment_type_id,
-      name: match.name ?? match.title ?? rabotaName,
+  const employmentId = resolveJoblyEmploymentDbIdFromVacancy(vacancy)
+  if (employmentId == null) return
+
+  const result = await getRabotaEmploymentByEmploymentId(employmentId)
+  if (result?.error) {
+    console.warn('getRabotaEmploymentByEmploymentId:', result.error, { employmentId })
+    return
+  }
+
+  const payload = result?.data
+  const item = Array.isArray(payload) ? payload[0] : payload
+  const mapped = mapRabotaEmploymentByEmploymentItem(
+    item && typeof item === 'object' ? item : null,
+  )
+  if (!mapped) return
+
+  if (rabotaEmploymentTypes.value.length > 0) {
+    const hit = rabotaEmploymentTypes.value.find(
+      (x) => String(x.id ?? x.employment_type_id) === String(mapped.id),
+    )
+    if (hit) {
+      data.value.employment_form = {
+        id: hit.id ?? hit.employment_type_id,
+        name: hit.name ?? hit.title ?? mapped.name,
+      }
+      return
     }
   }
+
+  data.value.employment_form = mapped
 }
 
 /** Ключевые слова для поиска пункта справочника rabota.ru по значению place вакансии Jobly */
@@ -5207,13 +5241,11 @@ function hasAvitoSecondaryDictionariesLoaded() {
 }
 
 /** После восстановления справочников rabota из кэша — префилл полей, зависящих от списков. */
-function applyRabotaPrefillAfterDictionariesLoaded() {
+async function applyRabotaPrefillAfterDictionariesLoaded() {
   const vacancy = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
-  if (vacancy?.employment) {
-    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
-  }
   if (vacancy) {
-    applyRabotaExperienceFromVacancy(vacancy)
+    await applyRabotaEmploymentFromVacancy(vacancy)
+    await applyRabotaExperienceFromVacancy(vacancy)
   }
   const pubForExp = rabotaActivePublication.value
   if (pubForExp) applyRabotaExperienceFromPublication(pubForExp)
@@ -5251,7 +5283,7 @@ const loadDictionaries = async (platform, opts = {}) => {
     const rabotaCached = readPublicationDictCache(PUBLICATION_DICT_CACHE_KEYS.rabota)
     if (rabotaCached) {
       restoreRabotaDictionaries(rabotaCached)
-      applyRabotaPrefillAfterDictionariesLoaded()
+      await applyRabotaPrefillAfterDictionariesLoaded()
     } else {
     // Загружаем справочники rabota.ru
     const [professionsResult, regionsResult, employmentResult, schedulesResult, experienceResult, educationResult, workCategoriesResult, workingHoursResult] = await Promise.all([
@@ -5284,9 +5316,9 @@ const loadDictionaries = async (platform, opts = {}) => {
       rabotaEmploymentTypes.value = Array.isArray(employmentResult.data)
         ? employmentResult.data
         : (employmentResult.data.items || [])
-      const vacancy = globCurrentVacancy.value
-      if (vacancy?.employment) {
-        applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
+      const vacancy = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
+      if (vacancy) {
+        await applyRabotaEmploymentFromVacancy(vacancy)
       }
     }
     if (schedulesResult?.data) {
@@ -5305,7 +5337,7 @@ const loadDictionaries = async (platform, opts = {}) => {
     if (experienceResult?.data) {
       rabotaExperienceLevels.value = Array.isArray(experienceResult.data) ? experienceResult.data : (experienceResult.data.items || [])
       const vacancyForExp = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
-      if (vacancyForExp) applyRabotaExperienceFromVacancy(vacancyForExp)
+      if (vacancyForExp) await applyRabotaExperienceFromVacancy(vacancyForExp)
       const pubForExp = rabotaActivePublication.value
       if (pubForExp) applyRabotaExperienceFromPublication(pubForExp)
     }
@@ -5653,6 +5685,10 @@ const loadRabotaCatalogsMinimalWithApplyForEdit = async () => {
       rabotaEmploymentTypes.value = Array.isArray(employmentResult.data)
         ? employmentResult.data
         : (employmentResult.data.items || [])
+      const vacancyForEmployment = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
+      if (vacancyForEmployment) {
+        await applyRabotaEmploymentFromVacancy(vacancyForEmployment)
+      }
     }
     if (schedulesResult?.data) {
       rabotaWorkSchedules.value = Array.isArray(schedulesResult.data)
@@ -5664,7 +5700,7 @@ const loadRabotaCatalogsMinimalWithApplyForEdit = async () => {
         ? experienceResult.data
         : (experienceResult.data.items || [])
       const vacancyForExp = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
-      if (vacancyForExp) applyRabotaExperienceFromVacancy(vacancyForExp)
+      if (vacancyForExp) await applyRabotaExperienceFromVacancy(vacancyForExp)
       const pubForExp = rabotaActivePublication.value
       if (pubForExp) applyRabotaExperienceFromPublication(pubForExp)
     }
@@ -5902,10 +5938,8 @@ async function fillFormFromCurrentVacancy() {
   if (currentPlatform.value === 'rabota') {
     applyRabotaVacancyNameToForm(vacancy)
     applyRabotaSalaryFromVacancy(vacancy)
-    applyRabotaExperienceFromVacancy(vacancy)
-  }
-  if (currentPlatform.value === 'rabota' && vacancy.employment) {
-    applyRabotaEmploymentFromVacancyEmployment(vacancy.employment)
+    await applyRabotaEmploymentFromVacancy(vacancy)
+    await applyRabotaExperienceFromVacancy(vacancy)
   }
   if (currentPlatform.value === 'rabota' && vacancy.place != null && vacancy.place !== '') {
     applyRabotaWorkFormatFromVacancyPlace(vacancy.place)
@@ -6646,7 +6680,7 @@ watch(
   (len) => {
     if (currentPlatform.value !== 'rabota' || len === 0) return
     const vacancy = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
-    if (vacancy) applyRabotaExperienceFromVacancy(vacancy)
+    if (vacancy) void applyRabotaExperienceFromVacancy(vacancy)
     const pub = rabotaActivePublication.value
     if (pub) applyRabotaExperienceFromPublication(pub)
   },

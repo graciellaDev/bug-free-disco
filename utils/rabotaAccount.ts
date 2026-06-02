@@ -779,6 +779,49 @@ export const searchRabotaRegions = async (params: RabotaRegionsSearchParams = {}
 export const getRegions = async () => searchRabotaRegions({ limit: 100 });
 
 /**
+ * Сопоставление типа занятости Jobly (employments.id) с пунктом справочника rabota.ru
+ * GET /api/rabota/dictionaries/employment/by-employment/{employment_id}
+ */
+export const getRabotaEmploymentByEmploymentId = async (employmentId: number | string) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+  const id = String(employmentId ?? '').trim();
+  if (!id) {
+    return { data: null, error: 'Не указан employment_id' };
+  }
+
+  try {
+    const response = await $fetch<PlatformHhResponse>(
+      `/rabota/dictionaries/employment/by-employment/${encodeURIComponent(id)}`,
+      {
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+      },
+    );
+
+    result.value.data = response.data;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error =
+        err.response?._data?.message ||
+        'Ошибка при получении типа занятости rabota.ru по employment_id';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение справочника типов занятости rabota.ru
  * @returns Список типов занятости
  */
@@ -840,6 +883,49 @@ export const getWorkSchedules = async () => {
       handle401Error();
     } else {
       result.value.error = err.response?._data?.message || 'Ошибка при получении графиков работы';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Сопоставление опыта Jobly (experiences.id) с пунктом справочника rabota.ru
+ * GET /api/rabota/dictionaries/experiences/by-experience/{experience_id}
+ */
+export const getRabotaExperienceByExperienceId = async (experienceId: number | string) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+  const id = String(experienceId ?? '').trim();
+  if (!id) {
+    return { data: null, error: 'Не указан experience_id' };
+  }
+
+  try {
+    const response = await $fetch<PlatformHhResponse>(
+      `/rabota/dictionaries/experiences/by-experience/${encodeURIComponent(id)}`,
+      {
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+      },
+    );
+
+    result.value.data = response.data;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error =
+        err.response?._data?.message ||
+        'Ошибка при получении опыта rabota.ru по experience_id';
     }
   } finally {
     return result.value;
