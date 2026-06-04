@@ -1375,6 +1375,11 @@ const mapDataToRabotaFormat = (data: DraftDataHh): RabotaVacancyCreateBody => {
     vacancy.description = String(data.description)
   }
 
+  const shortDescription = (data as Record<string, unknown>).rabota_short_description
+  if (typeof shortDescription === 'string' && shortDescription.trim()) {
+    vacancy.short_description = shortDescription.trim()
+  }
+
   const professions = (data.professional_roles ?? []).filter((role) => role?.id != null)
   if (professions.length > 0) {
     vacancy.professional_areas = professions.map((role) => {
@@ -1515,7 +1520,7 @@ export const addRabotaDraft = async (data: DraftDataHh) => {
       body,
     });
 
-    result.value.draft = response.data;
+    result.value.draft = (response as { data?: unknown })?.data ?? response;
   } catch (err: any) {
     if (err.response?.status !== 401) {
       const errorMessage = err.response?._data?.message || err.response?._data?.error || err.response?._data?.errors;
@@ -1562,7 +1567,7 @@ export const publishRabotaVacancy = async (draftData: DraftDataHh) => {
       body,
     });
 
-    result.value.data = response.data;
+    result.value.data = (response as { data?: unknown })?.data ?? response;
   } catch (err: any) {
     if (err.response?.status === 401) {
       handle401Error();
@@ -1606,4 +1611,313 @@ export const publishRabotaVacancy = async (draftData: DraftDataHh) => {
   } finally {
     return result.value;
   }
+};
+
+const RABOTA_VACANCY_ID_KEYS = ['vacancy_id', 'rabota_vacancy_id', 'rabota_id', 'external_vacancy_id'] as const
+
+function findDeepValueByKeys(obj: unknown, keys: readonly string[], depth = 0): unknown {
+  if (obj == null || depth > 14) return null
+  if (typeof obj !== 'object') return null
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const hit = findDeepValueByKeys(item, keys, depth + 1)
+      if (hit != null && String(hit).trim() !== '') return hit
+    }
+    return null
+  }
+
+  const rec = obj as Record<string, unknown>
+  for (const key of keys) {
+    const v = rec[key]
+    if (v != null && String(v).trim() !== '') return v
+  }
+  for (const v of Object.values(rec)) {
+    if (v != null && typeof v === 'object') {
+      const hit = findDeepValueByKeys(v, keys, depth + 1)
+      if (hit != null && String(hit).trim() !== '') return hit
+    }
+  }
+  return null
+}
+
+/** id вакансии rabota.ru из ответа POST /api/rabota/vacancy */
+export function extractRabotaCreatedVacancyId(payload: unknown): number | string | null {
+  if (payload == null) return null
+
+  if (typeof payload !== 'object') {
+    const s = String(payload).trim()
+    return s && !Number.isNaN(Number(s)) ? (payload as number | string) : null
+  }
+
+  const byVacancyIdKey = findDeepValueByKeys(payload, RABOTA_VACANCY_ID_KEYS)
+  if (byVacancyIdKey != null) return byVacancyIdKey as number | string
+
+  const root = payload as Record<string, unknown>
+  const vacancies = root.vacancies
+  if (Array.isArray(vacancies) && vacancies.length > 0) {
+    const first = vacancies[0]
+    if (first && typeof first === 'object') {
+      const v0 = first as Record<string, unknown>
+      if (v0.vacancy_id != null && String(v0.vacancy_id).trim() !== '') {
+        return v0.vacancy_id as number | string
+      }
+      if (v0.id != null && String(v0.id).trim() !== '') {
+        return v0.id as number | string
+      }
+    }
+  }
+
+  const vacancy = root.vacancy
+  if (vacancy && typeof vacancy === 'object') {
+    const v = vacancy as Record<string, unknown>
+    if (v.vacancy_id != null && String(v.vacancy_id).trim() !== '') {
+      return v.vacancy_id as number | string
+    }
+    if (v.id != null && String(v.id).trim() !== '') {
+      return v.id as number | string
+    }
+  }
+
+  const request = root.request
+  if (request && typeof request === 'object') {
+    const reqVacancy = (request as Record<string, unknown>).vacancy
+    if (reqVacancy && typeof reqVacancy === 'object') {
+      const v = reqVacancy as Record<string, unknown>
+      if (v.vacancy_id != null && String(v.vacancy_id).trim() !== '') {
+        return v.vacancy_id as number | string
+      }
+      if (v.id != null && String(v.id).trim() !== '') {
+        return v.id as number | string
+      }
+    }
+  }
+
+  const genericId = findDeepValueByKeys(payload, ['id'])
+  if (genericId != null && String(genericId).trim() !== '') {
+    return genericId as number | string
+  }
+
+  return null
+}
+
+export function extractRabotaVacancyIdFromFormData(data: DraftDataHh | Record<string, unknown>): number | string | null {
+  const raw = (data as Record<string, unknown>).publication_id
+    ?? (data as Record<string, unknown>).vacancy_platform_id
+  if (raw == null || String(raw).trim() === '') return null
+  const parsed = toPositiveInt(raw)
+  return parsed != null ? parsed : (raw as number | string)
+}
+
+/** Блок тарифов из ответа POST /rabota/vacancies/tariffs. */
+function unwrapRabotaTariffsBlocks(payload: unknown): unknown[] {
+  if (payload == null || typeof payload !== 'object') return [];
+  const root = payload as Record<string, unknown>;
+  const data = root.data != null && typeof root.data === 'object'
+    ? (root.data as Record<string, unknown>)
+    : null;
+  const response = root.response != null && typeof root.response === 'object'
+    ? (root.response as Record<string, unknown>)
+    : data?.response != null && typeof data.response === 'object'
+      ? (data.response as Record<string, unknown>)
+      : null;
+
+  const candidates = [
+    root.tariffs,
+    data?.tariffs,
+    response?.tariffs,
+  ];
+  for (const item of candidates) {
+    if (Array.isArray(item)) return item;
+  }
+  return [];
+}
+
+/** Первый recommended_tariffs → order_item_id или id тарифа. */
+function extractRabotaOrderItemIdFromTariffBlock(block: unknown): number | null {
+  if (block == null || typeof block !== 'object') return null;
+  const recommended = (block as Record<string, unknown>).recommended_tariffs;
+  if (!Array.isArray(recommended) || recommended.length === 0) return null;
+  const first = recommended[0];
+  if (first == null || typeof first !== 'object') return null;
+  const tariff = first as Record<string, unknown>;
+  const raw = tariff.order_item_id ?? tariff.id;
+  return toPositiveInt(raw);
+}
+
+/** order_item_id для вакансии из ответа /rabota/vacancies/tariffs. */
+export function resolveRabotaOrderItemIdFromTariffs(
+  tariffsPayload: unknown,
+  vacancyId: number,
+): number | null {
+  const blocks = unwrapRabotaTariffsBlocks(tariffsPayload);
+  for (const block of blocks) {
+    if (block == null || typeof block !== 'object') continue;
+    const vacancies = (block as Record<string, unknown>).vacancies;
+    if (!Array.isArray(vacancies)) continue;
+    const matchesVacancy = vacancies.some((v) => {
+      if (v == null || typeof v !== 'object') return false;
+      return toPositiveInt((v as Record<string, unknown>).id) === vacancyId;
+    });
+    if (matchesVacancy) {
+      const orderItemId = extractRabotaOrderItemIdFromTariffBlock(block);
+      if (orderItemId != null) return orderItemId;
+    }
+  }
+  for (const block of blocks) {
+    const orderItemId = extractRabotaOrderItemIdFromTariffBlock(block);
+    if (orderItemId != null) return orderItemId;
+  }
+  return null;
+}
+
+/**
+ * Тарифы для публикации вакансий на Rabota.ru
+ * POST /api/rabota/vacancies/tariffs  body: { vacancy_ids: number[] }
+ */
+export const getRabotaVacanciesTariffs = async (vacancyIds: Array<number | string>) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  const vacancy_ids = vacancyIds
+    .map((id) => toPositiveInt(id))
+    .filter((id): id is number => id != null);
+
+  if (!vacancy_ids.length) {
+    return { data: null, error: 'Не указан id вакансии для запроса тарифов' };
+  }
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/rabota/vacancies/tariffs', {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: { vacancy_ids },
+    });
+    result.value.data = response?.data ?? response;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+      result.value.error = 'Требуется повторная авторизация';
+    } else {
+      result.value.error =
+        err.response?._data?.message ||
+        err.response?._data?.error ||
+        'Ошибка при получении тарифов Rabota.ru';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Публикация вакансий на Rabota.ru
+ * POST /api/rabota/vacancies/publish  body: { vacancies: [{ id, order_item_id }] }
+ */
+export const publishRabotaVacancies = async (vacancyIds: Array<number | string>) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  const parsedIds = vacancyIds
+    .map((id) => toPositiveInt(id))
+    .filter((id): id is number => id != null);
+
+  if (!parsedIds.length) {
+    return { data: null, error: 'Не указан id вакансии для публикации' };
+  }
+
+  const tariffsRes = await getRabotaVacanciesTariffs(parsedIds);
+  if (tariffsRes.error) {
+    return { data: tariffsRes.data, error: tariffsRes.error };
+  }
+
+  const vacancies = parsedIds
+    .map((id) => {
+      const order_item_id = resolveRabotaOrderItemIdFromTariffs(tariffsRes.data, id);
+      if (order_item_id == null) return null;
+      return { id, order_item_id };
+    })
+    .filter((item): item is { id: number; order_item_id: number } => item != null);
+
+  if (!vacancies.length) {
+    return {
+      data: tariffsRes.data,
+      error: 'Не удалось определить тариф (order_item_id) для публикации на Rabota.ru',
+    };
+  }
+
+  try {
+    const response = await $fetch<PlatformHhResponse>('/rabota/vacancies/publish', {
+      method: 'POST',
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+      body: { vacancies },
+    });
+
+    result.value.data = response.data;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+      result.value.error = 'Требуется повторная авторизация';
+    } else {
+      result.value.error =
+        err.response?._data?.message ||
+        err.response?._data?.error ||
+        'Ошибка при публикации вакансии на Rabota.ru';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Создание вакансии (POST /rabota/vacancy) и публикация через /rabota/vacancies/publish.
+ */
+export const createAndPublishRabotaVacancy = async (draftData: DraftDataHh) => {
+  const createRes = await publishRabotaVacancy(draftData);
+  if (createRes.error) {
+    return createRes;
+  }
+
+  const vacancyId =
+    extractRabotaCreatedVacancyId(createRes.data) ??
+    extractRabotaVacancyIdFromFormData(draftData);
+  if (vacancyId == null) {
+    console.warn('rabota: vacancy_id не найден в ответе POST /rabota/vacancy', createRes.data);
+    return {
+      data: createRes.data,
+      error: 'Вакансия создана, но не удалось получить id для публикации на Rabota.ru',
+    };
+  }
+
+  const publishRes = await publishRabotaVacancies([vacancyId]);
+  if (publishRes.error) {
+    return {
+      data: createRes.data,
+      error: publishRes.error,
+    };
+  }
+
+  return {
+    data: publishRes.data ?? createRes.data,
+    error: null,
+  };
 };

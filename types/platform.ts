@@ -69,4 +69,6 @@ export interface DraftDataHh extends Record<string, FormDataValue> {
   name?: string;
   code?: string;
   description?: string;
+  /** Краткое описание для карточки вакансии rabota.ru (до 200 символов) */
+  rabota_short_description?: string;
 }
