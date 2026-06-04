@@ -14,6 +14,15 @@ export const addDraftRabota = (...args: Parameters<RabotaMod['addRabotaDraft']>)
   rabota().then((m) => m.addRabotaDraft(...args))
 export const publishVacancyToRabota = (...args: Parameters<RabotaMod['publishRabotaVacancy']>) =>
   rabota().then((m) => m.publishRabotaVacancy(...args))
+export const publishRabotaVacancies = (...args: Parameters<RabotaMod['publishRabotaVacancies']>) =>
+  rabota().then((m) => m.publishRabotaVacancies(...args))
+export const createAndPublishRabotaVacancy = (
+  ...args: Parameters<RabotaMod['createAndPublishRabotaVacancy']>
+) => rabota().then((m) => m.createAndPublishRabotaVacancy(...args))
+export {
+  extractRabotaCreatedVacancyId,
+  extractRabotaVacancyIdFromFormData,
+} from '@/utils/rabotaAccount'
 export const getRabotaProfessionsHierarchy = (
   ...args: Parameters<RabotaMod['getRabotaProfessionsHierarchy']>
 ) => rabota().then((m) => m.getRabotaProfessionsHierarchy(...args))

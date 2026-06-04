@@ -78,8 +78,7 @@
 
           <div id="experience" class="w-full anchor mb-6">
             <p class="text-sm font-medium mb-4 leading-normal" :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'">
-              <span class="text-red-custom">*</span>
-              Опыт работы по профессии
+              <span class="text-red-custom">*</span>Опыт работы по профессии
             </p>
             <div class="flex w-full gap-2">
               <button
@@ -307,9 +306,9 @@
             <p class="text-sm font-medium mb-4 leading-normal"
               :class="validFields.name.status === false ? 'text-red-custom' : 'text-space'">
               <span class="text-red-custom">*</span>
-              <template v-if="currentPlatform === 'hh'">Название</template>
-              <template v-else-if="currentPlatform === 'avito'">Название вакансии</template>
-              <template v-else>Название должности</template>
+              <template v-if="currentPlatform === 'hh'"> Название</template>
+              <template v-else-if="currentPlatform === 'avito'"> Название вакансии</template>
+              <template v-else> Название должности</template>
             </p>
             <MyInput placeholder="Например, Менеджер по продажам" v-model="data.name"
               @update:model-value="($event) => updateValidField('name', $event.trim() !== '')" />
@@ -410,8 +409,8 @@
               <p class="text-sm font-medium leading-normal"
                 :class="validFields.experience.status === false ? 'text-red-custom' : 'text-space'">
                 <span class="text-red-custom">*</span>
-                <template v-if="currentPlatform === 'hh'">Опыт</template>
-                <template v-else>Опыт работы</template>
+                <template v-if="currentPlatform === 'hh'"> Опыт</template>
+                <template v-else> Опыт работы</template>
               </p>
               <span v-if="currentPlatform === 'hh' || hideScheduleBlockForSuperjob" class="inline-flex items-center cursor-help">
                 <svg-icon name="question" width="16" height="16" />
@@ -901,12 +900,72 @@
               </span>
             </p>
           </div>
+          <div
+            v-if="currentPlatform === 'rabota'"
+            id="rabota_short_description"
+            class="w-full anchor mb-6"
+          >
+            <div class="flex flex-wrap items-center gap-2 mb-3.5">
+              <p class="text-sm font-medium text-space">
+                Краткое описание вакансии
+              </p>
+              <span
+                class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-[#ede1ff] text-[#8d47ff]"
+              >
+                Новое!
+              </span>
+            </div>
+            <p class="text-xs font-normal text-bali mb-4 leading-normal">
+              Краткое описание — это небольшой текст (до 200 символов), который соискатели видят на карточке вакансии в поисковой выдаче.
+              <button
+                type="button"
+                class="text-dodger hover:underline ml-1"
+                @click="applyRabotaShortDescriptionExample"
+              >
+                Пример
+              </button>
+            </p>
+            <div
+              class="flex flex-wrap items-center gap-3 rounded-ten border border-athens bg-athens-gray px-4 py-3 mb-4"
+            >
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-ten bg-zumthor text-dodger"
+                aria-hidden="true"
+              >
+                <svg-icon name="flash" width="20" height="20" />
+              </span>
+              <p class="text-sm font-normal text-space flex-1 min-w-[200px] leading-normal">
+                Чтобы сгенерировать текст автоматически, заполните название, навыки и описание вакансии от 200 символов.
+              </p>
+              <button
+                type="button"
+                class="text-sm font-medium shrink-0 transition-colors"
+                :class="canGenerateRabotaShortDescription
+                  ? 'text-dodger hover:underline'
+                  : 'text-bali cursor-not-allowed'"
+                :disabled="!canGenerateRabotaShortDescription"
+                @click="handleRabotaShortDescriptionGenerate"
+              >
+                Сгенерировать
+              </button>
+            </div>
+            <textarea
+              :value="data.rabota_short_description ?? ''"
+              rows="4"
+              placeholder="Например, стабильная компания с официальным оформлением"
+              class="bg-athens-gray w-full p-15px border border-athens rounded-ten text-sm text-space focus:border-dodger focus:outline-none resize-none"
+              @input="handleRabotaShortDescriptionInput"
+            />
+            <p class="text-xs font-normal text-bali text-right mt-1">
+              {{ rabotaShortDescriptionLength }} / {{ RABOTA_SHORT_DESCRIPTION_MAX }}
+            </p>
+          </div>
           <div class="flex gap-25px">
             <div class="w-full">
               <p class="text-sm font-medium text-space mb-13px"
                 :class="currentPlatform === 'rabota' && validFields.key_skills?.status === false ? 'text-red-custom' : 'text-space'">
                 <span v-if="currentPlatform === 'rabota'" class="text-red-custom">*</span>
-                <template v-if="currentPlatform === 'hh' || currentPlatform === 'rabota'">Ключевые навыки</template>
+                <template v-if="currentPlatform === 'hh' || currentPlatform === 'rabota'"> Ключевые навыки</template>
                 <template v-else>Навыки</template>
               </p>
               <RabotaSkillsSelector
@@ -976,7 +1035,7 @@
             <MultiSelect v-else :options="additionalConditionsOptions" defaultValue="Сделайте выбор" :withId="true"
               v-model="data.additional_conditions" />
           </div>
-          <div class="w-full flex justify-between gap-25px mb-6">
+          <div v-if="currentPlatform !== 'rabota'" class="w-full flex justify-between gap-25px mb-6">
             <div class="w-full">
               <p class="text-sm font-medium mb-4 leading-normal text-space">
                 Нужно ли приложить к отклику сопроводительное письмо?
@@ -1023,8 +1082,12 @@
 
           <div class="w-full justify-between flex gap-25px mb-6">
             <div class="w-full">
-              <MyCheckbox id="show-contacts" label="Сохранить в черновике" v-model="isDraft"
-                @update:model-value="$event => (isDraft = $event)" />
+              <MyCheckbox
+                id="show-contacts"
+                :label="currentPlatform === 'rabota' ? 'Не опубликовывать' : 'Сохранить в черновике'"
+                v-model="isDraft"
+                @update:model-value="$event => (isDraft = $event)"
+              />
             </div>
           </div>
           <div
@@ -1417,6 +1480,9 @@ import {
   extractRabotaProfileContactDefaults,
   addDraftRabota,
   publishVacancyToRabota,
+  publishRabotaVacancies,
+  extractRabotaCreatedVacancyId,
+  createAndPublishRabotaVacancy,
   getRabotaProfessionsHierarchy,
   getRabotaProfessionsByProfessionalRole,
   searchRabotaRegions,
@@ -1767,6 +1833,10 @@ const rabotaWorkCategories = ref([])
 /** Опции «Формат работы» для rabota.ru (GET /rabota/dictionaries/working-hours) */
 const rabotaWorkFormatOptions = ref([])
 const rabotaWorkFormatSelectedOption = ref(null)
+
+const RABOTA_SHORT_DESCRIPTION_MAX = 200
+const RABOTA_SHORT_DESCRIPTION_EXAMPLE =
+  'Стабильная компания, официальное оформление, обучение и карьерный рост. Присоединяйтесь к нашей команде!'
 const rabotaExportMapRows = ref([])
 const rabotaActivePublicationApplied = ref(false)
 const rabotaRegionsCitiesModalOpen = ref(false)
@@ -1867,6 +1937,14 @@ async function applyJoblyVacancyToRabotaForm(vacancy) {
   }
 
   await applyRabotaExperienceFromVacancy(vacancy)
+
+  const vacancyShort =
+    vacancy.rabota_short_description ??
+    vacancy.short_description ??
+    vacancy.shortDescription
+  if (typeof vacancyShort === 'string' && vacancyShort.trim()) {
+    data.value.rabota_short_description = vacancyShort.trim().slice(0, RABOTA_SHORT_DESCRIPTION_MAX)
+  }
 
   // Образование: vacancy.education (строка) -> справочник educations
   if (vacancy.education) {
@@ -2151,6 +2229,7 @@ async function applyRabotaActivePublicationToForm() {
   const pub = rabotaActivePublication.value
   if (pub && typeof pub === 'object') {
     applyRabotaExperienceFromPublication(pub)
+    applyRabotaShortDescriptionFromPublication(pub)
   }
 
   if (!vacancy && !pub) return
@@ -6413,6 +6492,7 @@ async function loadInitialFormData() {
               if (rabotaExperienceLevels.value.length > 0) {
                 applyRabotaExperienceFromPublication(poR)
               }
+              applyRabotaShortDescriptionFromPublication(poR)
             }
           }
           if (!filledRabota) {
@@ -6434,6 +6514,9 @@ async function loadInitialFormData() {
           }
           if (rabotaActivePublication.value && rabotaExperienceLevels.value.length > 0) {
             applyRabotaExperienceFromPublication(rabotaActivePublication.value)
+          }
+          if (rabotaActivePublication.value) {
+            applyRabotaShortDescriptionFromPublication(rabotaActivePublication.value)
           }
         } catch (e) {
           console.warn('Не удалось загрузить размещение rabota.ru для префилла формы:', e)
@@ -7703,6 +7786,70 @@ const descriptionLength = computed(() => {
   return getTextLength(data.value.description);
 })
 
+const rabotaShortDescriptionLength = computed(() =>
+  String(data.value.rabota_short_description ?? '').length,
+)
+
+const canGenerateRabotaShortDescription = computed(() => {
+  if (currentPlatform.value !== 'rabota') return false
+  const name = String(data.value.name ?? '').trim()
+  const skills = Array.isArray(data.value.key_skills) ? data.value.key_skills : []
+  const hasSkills = skills.some((s) => {
+    if (typeof s === 'string') return s.trim().length > 0
+    if (s && typeof s === 'object') return String(s.name ?? '').trim().length > 0
+    return false
+  })
+  return Boolean(name && hasSkills && descriptionLength.value >= 200)
+})
+
+function handleRabotaShortDescriptionInput(event) {
+  const raw = event?.target?.value ?? ''
+  data.value.rabota_short_description = String(raw).slice(0, RABOTA_SHORT_DESCRIPTION_MAX)
+}
+
+function applyRabotaShortDescriptionExample() {
+  data.value.rabota_short_description = RABOTA_SHORT_DESCRIPTION_EXAMPLE
+}
+
+function applyRabotaShortDescriptionFromPublication(pub) {
+  if (!pub || typeof pub !== 'object') return false
+  const params =
+    typeof pub.params === 'object' && pub.params != null ? pub.params : null
+  const raw =
+    pub.short_description ??
+    pub.shortDescription ??
+    pub.preview_description ??
+    pub.brief_description ??
+    params?.short_description
+  if (raw == null) return false
+  const text =
+    typeof raw === 'string'
+      ? raw.trim()
+      : String(
+          (typeof raw === 'object' && raw != null ? raw.text ?? raw.name : null) ?? '',
+        ).trim()
+  if (!text) return false
+  data.value.rabota_short_description = text.slice(0, RABOTA_SHORT_DESCRIPTION_MAX)
+  return true
+}
+
+function handleRabotaShortDescriptionGenerate() {
+  if (!canGenerateRabotaShortDescription.value) return
+  const name = String(data.value.name ?? '').trim()
+  const skills = (Array.isArray(data.value.key_skills) ? data.value.key_skills : [])
+    .map((s) => (typeof s === 'string' ? s : String(s?.name ?? '')).trim())
+    .filter(Boolean)
+    .slice(0, 5)
+  let plainDescription = ''
+  if (typeof document !== 'undefined' && data.value.description) {
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = String(data.value.description)
+    plainDescription = (tempDiv.textContent || tempDiv.innerText || '').replace(/\s+/g, ' ').trim()
+  }
+  const parts = [name, skills.length ? `Навыки: ${skills.join(', ')}` : '', plainDescription].filter(Boolean)
+  data.value.rabota_short_description = parts.join('. ').slice(0, RABOTA_SHORT_DESCRIPTION_MAX)
+}
+
 // Функция для валидации description при изменении
 const updateDescriptionValidation = (value) => {
   const length = getTextLength(value);
@@ -7864,9 +8011,11 @@ const updateValidField = (field, value) => {
 const savePublication = async () => {
   const isEditing = props.editingVacancy != null && props.editingVacancy?.id != null;
   let avitoRequestTimedOut = false
-  const currentPlatform = data.value.platform?.platform ?? data.value.platform
+  const platformSlug =
+    currentPlatform.value ||
+    normalizePlatformName(data.value.platform?.platform ?? data.value.platform)
 
-  if (currentPlatform === 'avito') {
+  if (platformSlug === 'avito') {
     await ensureAvitoContactEmployeesLoaded()
     if (!data.value.avito_contact_employee?.phone) {
       status.value = 'Выберите контакт из списка Avito (телефон должен быть в аккаунте)'
@@ -7883,9 +8032,9 @@ const savePublication = async () => {
 
   // Обработка дополнительных условий (актуально для hh.ru)
   if (
-    currentPlatform !== 'rabota' &&
-    currentPlatform !== 'superjob' &&
-    currentPlatform !== 'superjob.ru' &&
+    platformSlug !== 'rabota' &&
+    platformSlug !== 'superjob' &&
+    platformSlug !== 'superjob.ru' &&
     data.value.additional_conditions &&
     data.value.additional_conditions.length > 0
   ) {
@@ -7980,6 +8129,18 @@ const savePublication = async () => {
         } else if (platformId === 3) {
           const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
           platformResponse = await publishVacancyToRabota(payload);
+          if (!isDraft.value && !platformResponse?.error) {
+            const rabotaVacancyId =
+              extractRabotaCreatedVacancyId(platformResponse?.data) ?? vacancyPlatformId;
+            if (rabotaVacancyId != null && String(rabotaVacancyId).trim() !== '') {
+              const publishRes = await publishRabotaVacancies([rabotaVacancyId]);
+              if (publishRes?.error) {
+                platformResponse = { ...platformResponse, error: publishRes.error };
+              } else if (publishRes?.data != null) {
+                platformResponse = { ...platformResponse, data: publishRes.data };
+              }
+            }
+          }
         } else if (platformId === 4) {
           const { data: currentSuperjobVacancy } = await getSuperjobVacancy(vacancyPlatformId);
           // SuperJob ожидает driving_licence: ['A','B',...]. Если в форме числовые id (из нашей БД), конвертируем в названия.
@@ -8017,13 +8178,13 @@ const savePublication = async () => {
 
   // Иначе создаем новую вакансию
   let response;
-  if (currentPlatform !== 'avito' && currentPlatform !== 'hh' && currentPlatform !== 'rabota' && currentPlatform !== 'superjob') {
-    status.value = `Платформа ${currentPlatform} пока не поддерживается`
+  if (platformSlug !== 'avito' && platformSlug !== 'hh' && platformSlug !== 'rabota' && platformSlug !== 'superjob') {
+    status.value = `Платформа ${platformSlug || 'неизвестная'} пока не поддерживается`
     return
   }
 
   // Выбираем функцию в зависимости от платформы и флага isDraft
-  if (currentPlatform === 'superjob') {
+  if (platformSlug === 'superjob') {
     let payloadFormData = data.value;
     if (data.value.driver_license_types?.length && data.value.driver_license_types.some((d) => typeof d?.id === 'number')) {
       try {
@@ -8042,7 +8203,7 @@ const savePublication = async () => {
     }
     const { data: sjData, error: sjError } = await publishVacancyToSuperjob(payloadFormData);
     response = sjError ? { error: sjError } : { data: sjData };
-  } else if (currentPlatform === 'avito') {
+  } else if (platformSlug === 'avito') {
     const joblyVacancyIdForAvito = resolveJoblyVacancyIdForAvitoPublish()
     if (isDraft.value || isDraft.value === 'true') {
       const { timedOut, result } = await runWithSoftTimeout(
@@ -8060,7 +8221,7 @@ const savePublication = async () => {
       response = result
     }
   }
-  if (currentPlatform === 'hh') {
+  if (platformSlug === 'hh') {
     const { code: _omitHhCode, ...hhRest } = data.value;
     const hhForm = { ...hhRest, jobly_vacancy_id: props.editingVacancy?.id };
     if (isDraft.value || isDraft.value === 'true'
@@ -8070,11 +8231,11 @@ const savePublication = async () => {
       response = await publishVacancyToHh(hhForm)
     }
   }
-  if (currentPlatform === 'rabota') {
-    if (isDraft.value) {
+  if (platformSlug === 'rabota') {
+    if (isDraft.value === true) {
       response = await addDraftRabota(data.value)
     } else {
-      response = await publishVacancyToRabota(data.value)
+      response = await createAndPublishRabotaVacancy(data.value)
     }
   }
 
@@ -8082,7 +8243,7 @@ const savePublication = async () => {
   if (response?.error || response?.errorDraft) {
     status.value = response.error || response.errorDraft || 'Ошибка при сохранении вакансии'
   } else {
-    if (currentPlatform === 'avito' && avitoRequestTimedOut) {
+    if (platformSlug === 'avito' && avitoRequestTimedOut) {
       status.value = 'Запрос на размещение отправлен, Avito отвечает дольше обычного. Обновление может появиться в списке с задержкой.'
     } else if (isDraft.value) {
       status.value = 'Вакансия успешно сохранена в черновике'
