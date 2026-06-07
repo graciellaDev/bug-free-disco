@@ -63,6 +63,7 @@
       :contentPadding="false"
       :disableOverflowHidden="true"
       :overflowVisible="true"
+      :allowDropdownOverflow="true"
     >
       <FormAddRecruiter
         v-if="userToEdit"

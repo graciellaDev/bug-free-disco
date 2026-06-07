@@ -1,7 +1,7 @@
 <template>
   <div>
     <section
-      v-if="editor"
+      v-if="editor && props.showToolbar"
       class="buttons flex flex-wrap items-center gap-x-2.5 rounded-t-fifteen border-l border-r border-t border-athens bg-athens-gray px-3.5 py-15px"
     >
       <button
@@ -56,6 +56,7 @@
 
 <script setup>
   import { Editor, EditorContent } from '@tiptap/vue-3';
+  import { Node, mergeAttributes } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
   import Placeholder from '@tiptap/extension-placeholder';
   import Link from '@tiptap/extension-link';
@@ -90,11 +91,120 @@
       type: Boolean,
       default: false,
     },
+    showToolbar: {
+      type: Boolean,
+      default: true,
+    },
+    editorClass: {
+      type: String,
+      default: '',
+    },
+    singleLine: {
+      type: Boolean,
+      default: false,
+    },
   });
 
-  const emit = defineEmits(['update:modelValue', 'blur']);
+  const emit = defineEmits(['update:modelValue', 'blur', 'focus']);
 
   const editor = ref(null);
+  const VariableChip = Node.create({
+    name: 'variableChip',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    selectable: true,
+    addAttributes() {
+      return {
+        token: {
+          default: '',
+          parseHTML: (element) => element.getAttribute('data-var-token') || '',
+          renderHTML: (attributes) => ({
+            'data-var-token': String(attributes.token ?? ''),
+          }),
+        },
+        label: {
+          default: '',
+          parseHTML: (element) =>
+            element.getAttribute('data-var-label') ||
+            element.textContent ||
+            '',
+          renderHTML: (attributes) => ({
+            'data-var-label': String(attributes.label ?? ''),
+          }),
+        },
+      };
+    },
+    parseHTML() {
+      return [{ tag: 'span[data-var-token]' }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      const token = String(HTMLAttributes.token ?? '');
+      const rawLabel = String(HTMLAttributes.label ?? '').trim();
+      const label = rawLabel !== '' ? rawLabel : token;
+      return [
+        'span',
+        mergeAttributes(HTMLAttributes, {
+          class: 'variable-chip',
+          contenteditable: 'false',
+        }),
+        label,
+      ];
+    },
+    renderText({ node }) {
+      return String(node.attrs?.token ?? '');
+    },
+    addNodeView() {
+      return ({ node }) => {
+        const token = String(node.attrs?.token ?? '').trim();
+        const rawLabel = String(node.attrs?.label ?? '').trim();
+        const label = rawLabel !== '' ? rawLabel : token;
+
+        const dom = document.createElement('span');
+        dom.className = 'variable-chip';
+        dom.setAttribute('contenteditable', 'false');
+        dom.setAttribute('data-var-token', token);
+        dom.setAttribute('data-var-label', label);
+        dom.textContent = label;
+
+        return { dom };
+      };
+    },
+  });
+
+  const insertContentAtCursor = (content) => {
+    if (!editor.value) return false;
+    return editor.value.chain().focus().insertContent(content).run();
+  };
+
+  defineExpose({
+    insertText(text) {
+      return insertContentAtCursor(String(text ?? ''));
+    },
+    insertVariable(variable) {
+      const token = typeof variable === 'object'
+        ? String(variable?.key ?? '').trim()
+        : String(variable ?? '').trim();
+      const label = typeof variable === 'object'
+        ? String(variable?.label ?? variable?.key ?? '').trim()
+        : token;
+      if (!token || !label || !editor.value) return false;
+      return editor.value
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'variableChip',
+            attrs: {
+              token,
+              label,
+            },
+          },
+          { type: 'text', text: ' ' },
+        ])
+        .run();
+    },
+  });
 
   watch(
     () => props.newVacancy,
@@ -119,22 +229,36 @@
   );
 
   onMounted(() => {
+    const editorCssClass = props.singleLine
+      ? `popup-scroll border border-athens min-h-10 h-10 max-h-10 overflow-x-auto overflow-y-hidden outline-none max-w-none rounded-ten bg-athens-gray text-sm leading-normal tiptap-single-line ${props.editorClass}`
+      : `popup-scroll border border-athens py-15px px-3.5 min-h-[460px] max-h-[460px] overflow-y-auto outline-none prose max-w-none bg-athens-gray ${props.showToolbar ? 'rounded-b-fifteen' : 'rounded-ten'} ${props.editorClass}`;
+
     editor.value = new Editor({
       editable: !props.disabled,
       editorProps: {
         attributes: {
-          class:
-            'popup-scroll border border-athens py-15px px-3.5 min-h-[460px] max-h-[460px] overflow-y-auto outline-none prose max-w-none rounded-b-fifteen bg-athens-gray',
+          class: editorCssClass,
         },
         handleDOMEvents: {
+          focus: () => {
+            emit('focus');
+          },
           blur: () => {
             emit('blur');
           },
+        },
+        handleKeyDown: (_view, event) => {
+          if (props.singleLine && event.key === 'Enter') {
+            event.preventDefault();
+            return true;
+          }
+          return false;
         },
       },
       content: props.modelValue || defaultContent.value,
       extensions: [
         StarterKit,
+        VariableChip,
         Link.configure({
           openOnClick: true,
           defaultProtocol: 'https',
@@ -184,6 +308,22 @@
     position: absolute;
     top: 17px;
     left: 14px;
+  }
+
+  :deep(.tiptap-single-line p) {
+    margin: 0;
+    display: inline;
+    white-space: nowrap;
+    line-height: 40px;
+  }
+
+  :deep(.tiptap-single-line) {
+    padding: 0 15px;
+    white-space: nowrap;
+  }
+
+  :deep(.tiptap-single-line .variable-chip) {
+    vertical-align: middle;
   }
 
 </style>

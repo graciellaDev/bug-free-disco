@@ -35,16 +35,6 @@
             Справочники
           </NuxtLink>
         </li>
-        <li :class="{ active: isActive('/settings/company/SettingsPayment') }">
-          <NuxtLink to="/settings/company/SettingsPayment">
-            Платежная информация
-          </NuxtLink>
-        </li>
-        <li :class="{ active: isActive('/settings/company/SettingsTariff') }">
-          <NuxtLink to="/settings/company/SettingsTariff">
-            Тарифный план
-          </NuxtLink>
-        </li>
       </ul>
     </div>
 
@@ -52,9 +42,6 @@
     <div class="nav-group">
       <h3 class="text-sm font-medium text-space mb-2.5">Рекрутинг</h3>
       <ul>
-        <li :class="{ active: isActive('/settings/recruiting/SettingsForms') }">
-          <NuxtLink to="/settings/recruiting/SettingsForms">Анкеты</NuxtLink>
-        </li>
         <li :class="{
           active: isActive('/settings/recruiting/SettingsTemplates'),
         }">
@@ -74,13 +61,6 @@
     <div class="nav-group">
       <h3 class="text-sm font-medium text-space mb-2.5">Интеграции</h3>
       <ul>
-        <li :class="{
-          active: isActive('/settings/integrations/SettingsApplications'),
-        }">
-          <NuxtLink to="/settings/integrations/SettingsApplications">
-            Приложения
-          </NuxtLink>
-        </li>
         <li :class="{
           active: isActive('/settings/integrations/SettingsEmail'),
         }">

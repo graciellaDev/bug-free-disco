@@ -66,6 +66,52 @@
         >
           {{ placeholderText }}
         </span>
+        <div
+          v-if="selectedFormat === 'comment'"
+          ref="commentTemplatesDropdownRef"
+          class="relative ml-auto"
+          @mouseenter="handleCommentTemplatesMouseEnter"
+          @mouseleave="handleCommentTemplatesMouseLeave"
+        >
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 text-sm font-normal text-dodger"
+            @mouseenter="handleCommentTemplatesMouseEnter"
+            @mouseleave="handleCommentTemplatesMouseLeave"
+          >
+            <span>Шаблоны комментария</span>
+            <svg-icon
+              name="dropdown-arrow"
+              width="16"
+              height="16"
+              class="shrink-0 transition-transform duration-200"
+              :class="{ 'rotate-180': commentTemplatesOpen }"
+            />
+          </button>
+          <Transition name="slide-fade">
+            <div
+              v-if="commentTemplatesOpen"
+              class="absolute right-0 top-full z-20 mt-1 min-w-[320px] rounded-plus bg-athens py-px shadow-md"
+              @mouseenter="handleCommentTemplatesMouseEnter"
+              @mouseleave="handleCommentTemplatesMouseLeave"
+            >
+              <button
+                v-for="template in commentTemplates"
+                :key="template.id"
+                type="button"
+                class="w-full bg-white px-4 py-2.5 text-left transition-colors first:rounded-t-plus last:rounded-b-plus hover:bg-athens-gray"
+                @click="applyCommentTemplate(template)"
+              >
+                <p class="text-sm font-medium leading-normal text-space">
+                  {{ template.title }}
+                </p>
+                <p class="mt-0.5 line-clamp-2 text-xs font-normal leading-150 text-bali">
+                  {{ template.text }}
+                </p>
+              </button>
+            </div>
+          </Transition>
+        </div>
       </div>
 
       <!-- Блок задачи: под выпадающим списком «Задача» -->
@@ -171,6 +217,7 @@
   import TaskDatePicker from '@/components/chat/components/TaskDatePicker.vue'
   import TaskTimePicker from '@/components/chat/components/TaskTimePicker.vue'
   import { employeesList } from '@/utils/executorsList'
+  import { getCommentTemplatesLibrary } from '@/utils/commentTemplates'
 
   // Store
   const chatStore = useChatStore()
@@ -233,8 +280,12 @@
   const taskFormRef = ref<InstanceType<typeof TaskFormPanel> | null>(null)
   const taskManagerDropdownRef = ref<HTMLElement | null>(null)
   const taskManagerOpen = ref(false)
+  const commentTemplatesDropdownRef = ref<HTMLElement | null>(null)
+  const commentTemplatesOpen = ref(false)
+  let commentTemplatesCloseTimer: ReturnType<typeof setTimeout> | null = null
   /** Флаг сброса: при true watch не раскрывает блок чата/комментария */
   const isResetting = ref(false)
+  const commentTemplates = ref(getCommentTemplatesLibrary())
 
   const selectedTaskManagerName = computed(() => {
     if (taskManagerId.value == null) return 'Выберите'
@@ -351,7 +402,11 @@
     if (taskManagerDropdownRef.value?.contains(e.target as Node)) {
       return
     }
+    if (commentTemplatesDropdownRef.value?.contains(e.target as Node)) {
+      return
+    }
     taskManagerOpen.value = false
+    commentTemplatesOpen.value = false
     if (
       !containerRef.value ||
       containerRef.value.contains(e.target as Node)
@@ -368,12 +423,31 @@
     }
   }
 
+  const handleCommentTemplatesMouseEnter = () => {
+    if (commentTemplatesCloseTimer) {
+      clearTimeout(commentTemplatesCloseTimer)
+      commentTemplatesCloseTimer = null
+    }
+    commentTemplatesOpen.value = true
+  }
+
+  const handleCommentTemplatesMouseLeave = () => {
+    if (commentTemplatesCloseTimer) {
+      clearTimeout(commentTemplatesCloseTimer)
+    }
+    commentTemplatesCloseTimer = setTimeout(() => {
+      commentTemplatesOpen.value = false
+      commentTemplatesCloseTimer = null
+    }, 180)
+  }
+
   function selectTaskManager(id: number) {
     taskManagerId.value = id
     taskManagerOpen.value = false
   }
 
   onMounted(() => {
+    commentTemplates.value = getCommentTemplatesLibrary()
     document.addEventListener('mousedown', handleClickOutside)
     // Не вызывать resetToInitialState, если родитель уже выставил формат
     // (например «Добавить комментарий» → comment, «Новая задача» → task),
@@ -400,6 +474,10 @@
 
   onUnmounted(() => {
     document.removeEventListener('mousedown', handleClickOutside)
+    if (commentTemplatesCloseTimer) {
+      clearTimeout(commentTemplatesCloseTimer)
+      commentTemplatesCloseTimer = null
+    }
   })
 
   const handleInput = (e: Event) => {
@@ -427,6 +505,18 @@
     fileInput.value?.click()
   }
 
+  const applyCommentTemplate = (template: { text: string }) => {
+    const value = String(template?.text ?? '').trim()
+    if (!value) return
+    message.value = message.value.trim()
+      ? `${message.value.trim()}\n${value}`
+      : value
+    commentTemplatesOpen.value = false
+    nextTick(() => {
+      textareaRef.value?.focus()
+    })
+  }
+
   const handleFileSelect = (e: Event) => {
     const input = e.target as HTMLInputElement
     if (input.files) {
@@ -442,6 +532,7 @@
     message.value = ''
     attachments.value = []
     taskDescription.value = ''
+    commentTemplatesOpen.value = false
     textareaHeight.value = 'auto'
     isFocused.value = false
     isExpanded.value = false

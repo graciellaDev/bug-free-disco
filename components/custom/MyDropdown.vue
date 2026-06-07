@@ -86,7 +86,7 @@
       <div
         v-if="isDropDownVisible"
         ref="optionsRef"
-        class="options-wrapper my-dropdown-list absolute w-max min-w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-50"
+        class="options-wrapper my-dropdown-list absolute w-max min-w-full bg-white border border-athens rounded-ten shadow-shadow-droplist top-14 z-[10002]"
       >
         <div
           v-if="searchable"
@@ -323,12 +323,12 @@ const closeDropDown = (event) => {
 const updateTeleportPosition = () => {
   if (!props.teleportToBody || !dropDown.value) return
   const rect = dropDown.value.getBoundingClientRect()
-  teleportStyle.value = {
+    teleportStyle.value = {
     position: 'fixed',
     top: `${Math.round(rect.bottom + 6)}px`,
     left: `${Math.round(rect.left)}px`,
     width: `${Math.round(rect.width)}px`,
-    zIndex: 9999,
+    zIndex: 10002,
   }
 }
 

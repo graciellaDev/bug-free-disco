@@ -1,7 +1,9 @@
 <template>
-  <!-- -mr-[15px] компенсирует pr-[15px] у scrollContainer в Popup, чтобы отступы слева и справа были по 25px -->
-  <div class="invite-recruiter-form flex flex-col max-h-[70vh] overflow-hidden -mr-[15px]">
-    <div class="invite-recruiter-form__content flex flex-col min-h-0 min-w-0 flex-1">
+  <div
+    class="invite-recruiter-form flex flex-col"
+    :class="isEditMode ? 'max-h-[70vh] overflow-hidden -mr-[15px]' : ''"
+  >
+    <div class="invite-recruiter-form__content flex flex-col min-w-0" :class="isEditMode ? 'min-h-0 flex-1' : ''">
       <header class="shrink-0 bg-white pb-4">
         <p class="text-xl font-semibold text-space mb-2.5">
           {{ isEditMode ? 'Редактирование сотрудника' : 'Приглашение сотрудника' }}
@@ -10,8 +12,7 @@
           Приглашенному участнику придет письмо с доступом, которое нужно подтвердить.
         </p>
       </header>
-      <!-- Скролл у правого края окна, контент формы с отступом справа -->
-      <div class="invite-recruiter-form__scroll min-h-0 flex-1 overflow-y-auto -mr-[25px] pr-[25px]">
+      <div :class="isEditMode ? 'invite-recruiter-form__scroll min-h-0 flex-1 overflow-y-auto' : ''">
       <form @submit.prevent="isEditMode ? saveClient() : createClient()" class="pb-2">
         <!-- Основные поля — каждое с новой строки -->
         <div class="w-full mb-4">
@@ -74,7 +75,7 @@
             {{ errors.phone || 'Укажите телефон' }}
           </p>
         </div>
-        <div class="w-full mb-6">
+        <div class="w-full" :class="isEditMode ? 'mb-6' : 'mb-4'">
           <p class="text-sm font-medium text-space mb-3.5">
             Роль <span class="text-red-500">*</span>
           </p>
@@ -84,6 +85,7 @@
             placeholder="Выберите роль"
             class="w-full"
             :error="touched.role && !data.role"
+            teleport-to-body
             @open="touched.role = true"
           />
           <p v-if="(touched.role && !data.role) || errors.role" class="text-red-500 text-xs mt-1">
@@ -91,7 +93,7 @@
           </p>
         </div>
 
-      <!-- Дополнительная информация -->
+      <template v-if="isEditMode">
       <p class="text-space text-xl font-semibold mb-4">
         Дополнительная информация
       </p>
@@ -131,6 +133,7 @@
           @update:model-value="onCitySelect"
         />
       </div>
+      </template>
 
       <!-- Кнопки -->
       <div class="flex gap-x-4 items-center flex-wrap">
@@ -189,7 +192,7 @@ const props = defineProps({
 
 const isEditMode = computed(() => props.mode === 'edit');
 
-const emit = defineEmits(['update', 'close', 'save']);
+const emit = defineEmits(['update', 'close', 'save', 'invited']);
 
 const errors = ref({});
 const touched = ref({
@@ -237,18 +240,21 @@ function onCitySelect(id) {
 }
 
 onMounted(async () => {
+  roleOptions.value = [...ROLE_OPTIONS];
+  if (!isEditMode.value) {
+    return;
+  }
   try {
     departments.value = await getDepartments();
   } catch (e) {
     console.warn('getDepartments:', e?.message || e);
     departments.value = [];
   }
-  roleOptions.value = [...ROLE_OPTIONS];
   const { data: areasData } = await getAreas();
   if (areasData && Array.isArray(areasData)) {
     citiesOptions.value = [...areasData];
   }
-  if (props.mode === 'edit' && props.initialData) {
+  if (props.initialData) {
     fillFromInitialData(props.initialData);
   }
   const name = (data.value.city || '').trim();
@@ -367,7 +373,6 @@ async function createClient() {
   }
 
   const roleId = data.value.role?.id ?? data.value.role?.value ?? data.value.role
-  const divisionId = data.value.division?.id ?? data.value.division
   let phone = (data.value.phone || '').replace(/\D/g, '')
   if (phone.length === 11 && phone.startsWith('8')) {
     phone = '7' + phone.slice(1)
@@ -382,9 +387,6 @@ async function createClient() {
     login: data.value.email.trim(),
     phone: phoneValue ?? null,
     role_id: roleId != null ? Number(roleId) : null,
-    department: divisionId != null ? Number(divisionId) : null,
-    position: (data.value.position?.trim() ?? '') || null,
-    city: (data.value.city?.trim() ?? '') || null,
   };
   if (payload.phone === null) delete payload.phone;
 
@@ -420,6 +422,7 @@ async function createClient() {
   clearErrors();
   success.value.status = true;
   success.value.message = message || 'Приглашение отправлено';
+  emit('invited', { email: payload.email });
   emit('update');
   emit('close');
 }

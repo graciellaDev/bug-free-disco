@@ -49,17 +49,37 @@
               :width="'490px'" 
               :disableOverflowHidden="true" 
               :lgSize="true" :parentRounded="true"
-              :overflowVisible="true">
+              :contentPadding="false"
+              :overflowVisible="true"
+              :allowDropdownOverflow="true">
       <FormAddClient v-if="props.typeUser === 'client'" @update="update('invites')"/>
-      <FormAddRecruiter v-if="props.typeUser === 'recruiter'" @update="update('invites')" @close="handleCloseSettingsPopup"/>
+      <FormAddRecruiter
+        v-if="props.typeUser === 'recruiter'"
+        @update="update('invites')"
+        @close="handleCloseSettingsPopup"
+        @invited="showInviteSuccessToast"
+      />
     </Popup>
   </transition>
+  <Teleport to="body">
+    <Transition name="invite-toast-fade">
+      <div
+        v-if="inviteToast.show"
+        class="fixed right-4 z-[10001] max-w-[min(90vw,420px)] rounded-fifteen px-6 py-3 text-center text-sm font-medium leading-150 text-space shadow-[0_0_15px_rgba(0,0,0,0.15)] sm:right-6 invite-success-toast"
+        :style="inviteToastTopStyle"
+        role="status"
+      >
+        {{ inviteToast.text }}
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
 import Popup from '@/components/custom/Popup.vue';
 import FormAddClient from '@/components/settings/FormAddClient.vue';
 import FormAddRecruiter from './FormAddRecruiter.vue';
+import { useJoblyToastTopStyle } from '@/composables/useJoblyToastTopStyle';
 
 const props = defineProps({
     typeUser: {
@@ -104,6 +124,32 @@ function handleCloseSettingsPopup() {
 function disableBodyScroll() {
     document.body.style.overflow = 'hidden' // Отключаем прокрутку
 }
+function enableBodyScroll() {
+    document.body.style.overflow = ''
+}
+
+const inviteToast = ref({ show: false, text: '' });
+let inviteToastTimer = null;
+const inviteToastTopStyle = useJoblyToastTopStyle(computed(() => inviteToast.value.show));
+
+function showInviteSuccessToast({ email }) {
+    const mail = (email || '').trim();
+    inviteToast.value = {
+        show: true,
+        text: mail
+            ? `Приглашение отправлено сотруднику на почту ${mail}`
+            : 'Приглашение отправлено. Сотруднику на почту придёт письмо с доступом.',
+    };
+    if (inviteToastTimer) clearTimeout(inviteToastTimer);
+    inviteToastTimer = setTimeout(() => {
+        inviteToast.value = { show: false, text: '' };
+        inviteToastTimer = null;
+    }, 4000);
+}
+
+onBeforeUnmount(() => {
+    if (inviteToastTimer) clearTimeout(inviteToastTimer);
+});
 </script>
 
 <style scoped>
@@ -115,5 +161,23 @@ function disableBodyScroll() {
     line-height: 130%;
     letter-spacing: 0;
     color: #2F353D;
+}
+</style>
+
+<style>
+.invite-success-toast {
+    background-color: #ffffff !important;
+    border: none !important;
+    color: #212936 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+.invite-toast-fade-enter-active,
+.invite-toast-fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+.invite-toast-fade-enter-from,
+.invite-toast-fade-leave-to {
+    opacity: 0;
 }
 </style>

@@ -219,7 +219,8 @@
           </UiAvatar>
           <div>
             <p
-              class="mb-5px cursor-pointer text-sm font-medium leading-[170%] text-space"
+              class="cursor-pointer text-sm font-medium leading-150 text-space"
+              :class="{ 'mb-5px': Array.isArray(candidate.tags) && candidate.tags.length > 0 }"
               @click="handlerItemClick(candidate, index)"
             >
               {{ getFullName(candidate) }}
