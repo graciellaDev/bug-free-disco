@@ -1,5 +1,6 @@
 import { createAuthHeaders, getAuthTokens, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
+import { resolveRabotaEmploymentIdFromForm } from '@/utils/rabotaEmploymentMapping';
 
 /**
  * Получение профиля пользователя Rabota.ru
@@ -1403,7 +1404,7 @@ const mapDataToRabotaFormat = (data: DraftDataHh): RabotaVacancyCreateBody => {
     vacancy.places = [{ id: placeId }]
   }
 
-  const employmentId = toPositiveInt(data.employment_form?.id)
+  const employmentId = resolveRabotaEmploymentIdFromForm(data.employment_form)
   if (employmentId != null) {
     vacancy.employment_id = employmentId
   }
@@ -1733,12 +1734,12 @@ function unwrapRabotaTariffsBlocks(payload: unknown): unknown[] {
   return [];
 }
 
-/** Первый recommended_tariffs → order_item_id или id тарифа. */
+/** Первый active_tariffs → order_item_id или id тарифа. */
 function extractRabotaOrderItemIdFromTariffBlock(block: unknown): number | null {
   if (block == null || typeof block !== 'object') return null;
-  const recommended = (block as Record<string, unknown>).recommended_tariffs;
-  if (!Array.isArray(recommended) || recommended.length === 0) return null;
-  const first = recommended[0];
+  const activeTariffs = (block as Record<string, unknown>).active_tariffs;
+  if (!Array.isArray(activeTariffs) || activeTariffs.length === 0) return null;
+  const first = activeTariffs[0];
   if (first == null || typeof first !== 'object') return null;
   const tariff = first as Record<string, unknown>;
   const raw = tariff.order_item_id ?? tariff.id;

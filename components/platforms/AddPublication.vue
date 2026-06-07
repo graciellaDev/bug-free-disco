@@ -2306,6 +2306,31 @@ const validFields = ref({
     name: 'Ключевые навыки',
   },
 });
+
+// Функция для подсчета символов в тексте (без HTML тегов)
+const getTextLength = (htmlString) => {
+  if (!htmlString) return 0;
+  // Проверяем, что мы на клиенте
+  if (typeof document === 'undefined') return 0;
+  // Создаем временный элемент для извлечения текста
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlString;
+  const text = tempDiv.textContent || tempDiv.innerText || '';
+  return text.trim().length;
+}
+
+// Функция для валидации description при изменении
+const updateDescriptionValidation = (value) => {
+  const length = getTextLength(value);
+  if (length < 200) {
+    validFields.value.description.status = false;
+    validFields.value.description.error = `Описание должно содержать минимум 200 символов. Сейчас: ${length} символов.`;
+  } else {
+    validFields.value.description.status = true;
+    validFields.value.description.error = null;
+  }
+}
+
 /**
  * Заголовок для формы: в приоритете `title` из сырого ответа Avito; `name` — только если не похоже на URL/заглушку
  * (см. mapAvitoPublicationToVacancy: там используется title || name).
@@ -4027,7 +4052,7 @@ const applyComputedValues = async () => {
 const employmentTypesOptions = computed(() => {
   if (currentPlatform.value === 'rabota' && rabotaEmploymentTypes.value.length > 0) {
     return rabotaEmploymentTypes.value.map(emp => ({
-      id: emp.id || emp.employment_type_id,
+      id: emp.employment_type_id ?? emp.rabota_employment_id ?? emp.id,
       name: emp.name || emp.title
     }))
   }
@@ -5056,11 +5081,12 @@ async function applyRabotaEmploymentFromVacancy(vacancy) {
 
   if (rabotaEmploymentTypes.value.length > 0) {
     const hit = rabotaEmploymentTypes.value.find(
-      (x) => String(x.id ?? x.employment_type_id) === String(mapped.id),
+      (x) =>
+        String(x.employment_type_id ?? x.rabota_employment_id ?? x.id) === String(mapped.id),
     )
     if (hit) {
       data.value.employment_form = {
-        id: hit.id ?? hit.employment_type_id,
+        id: hit.employment_type_id ?? hit.rabota_employment_id ?? hit.id,
         name: hit.name ?? hit.title ?? mapped.name,
       }
       return
@@ -6663,6 +6689,8 @@ async function loadInitialFormData() {
       if (field === 'experience' && currentPlatform.value === 'rabota') return
       if (field === 'experience' && normalizePlatformName(props.selectedPlatform) === 'rabota') return
       if (field === 'employment_form' && currentPlatform.value === 'avito') return
+      if (field === 'employment_form' && currentPlatform.value === 'rabota') return
+      if (field === 'employment_form' && normalizePlatformName(props.selectedPlatform) === 'rabota') return
       const fieldValue = globCurrentVacancy.value?.[mappingFieldsHH[field]?.field]
       const values = mappingFieldsHH[field].values
       const found = field === 'employment_form'
@@ -6817,8 +6845,7 @@ vacancyIdFields.forEach((field) => {
   }
   if (
     field === 'employment_form' &&
-    isNewPublicationFromCard &&
-    normalizePlatformName(props.selectedPlatform) === 'rabota'
+    (currentPlatform.value === 'rabota' || normalizePlatformName(props.selectedPlatform) === 'rabota')
   ) {
     return
   }
@@ -7769,18 +7796,6 @@ const driverLicenseOptions = computed(() => {
   return driverLicenseOptionsBase
 })
 
-// Функция для подсчета символов в тексте (без HTML тегов)
-const getTextLength = (htmlString) => {
-  if (!htmlString) return 0;
-  // Проверяем, что мы на клиенте
-  if (typeof document === 'undefined') return 0;
-  // Создаем временный элемент для извлечения текста
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = htmlString;
-  const text = tempDiv.textContent || tempDiv.innerText || '';
-  return text.trim().length;
-}
-
 // Computed для подсчета длины description
 const descriptionLength = computed(() => {
   return getTextLength(data.value.description);
@@ -7848,18 +7863,6 @@ function handleRabotaShortDescriptionGenerate() {
   }
   const parts = [name, skills.length ? `Навыки: ${skills.join(', ')}` : '', plainDescription].filter(Boolean)
   data.value.rabota_short_description = parts.join('. ').slice(0, RABOTA_SHORT_DESCRIPTION_MAX)
-}
-
-// Функция для валидации description при изменении
-const updateDescriptionValidation = (value) => {
-  const length = getTextLength(value);
-  if (length < 200) {
-    validFields.value.description.status = false;
-    validFields.value.description.error = `Описание должно содержать минимум 200 символов. Сейчас: ${length} символов.`;
-  } else {
-    validFields.value.description.status = true;
-    validFields.value.description.error = null;
-  }
 }
 
 const validateFields = () => {

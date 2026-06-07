@@ -97,17 +97,41 @@ export function resolveJoblyEmploymentDbIdFromVacancy(
   return mapEmploymentLabelToJoblyDbId(raw)
 }
 
+/** id типа занятости rabota.ru из элемента справочника или ответа by-employment. */
+export function resolveRabotaEmploymentDictionaryId(
+  item: Record<string, unknown> | null | undefined,
+): number | string | null {
+  if (!item || typeof item !== 'object') return null
+  const raw =
+    item.rabota_employment_id ??
+    item.employment_type_id ??
+    item.id
+  if (raw == null || String(raw).trim() === '') return null
+  const str = String(raw).trim()
+  if (!/^\d+$/.test(str)) return null
+  return raw as number | string
+}
+
 /** Пункт справочника rabota.ru из ответа GET /rabota/dictionaries/employment/by-employment/{id}. */
 export function mapRabotaEmploymentByEmploymentItem(
   item: Record<string, unknown> | null | undefined,
 ): RabotaEmploymentFormValue | null {
   if (!item || typeof item !== 'object') return null
-  const id =
-    item.rabota_employment_id ??
-    item.employment_type_id ??
-    item.employment_id ??
-    item.id
-  if (id == null || String(id).trim() === '') return null
+  const id = resolveRabotaEmploymentDictionaryId(item)
+  if (id == null) return null
   const name = String(item.name ?? item.title ?? '').trim()
   return { id, name: name || String(id) }
+}
+
+/** id типа занятости rabota.ru из значения формы (только числовой id справочника). */
+export function resolveRabotaEmploymentIdFromForm(
+  employmentForm: { id?: unknown } | null | undefined,
+): number | null {
+  if (!employmentForm || typeof employmentForm !== 'object') return null
+  const raw = employmentForm.id
+  if (raw == null || String(raw).trim() === '') return null
+  const str = String(raw).trim()
+  if (!/^\d+$/.test(str)) return null
+  const parsed = Number(str)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null
 }
