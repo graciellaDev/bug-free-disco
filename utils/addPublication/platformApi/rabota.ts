@@ -14,6 +14,12 @@ export const addDraftRabota = (...args: Parameters<RabotaMod['addRabotaDraft']>)
   rabota().then((m) => m.addRabotaDraft(...args))
 export const publishVacancyToRabota = (...args: Parameters<RabotaMod['publishRabotaVacancy']>) =>
   rabota().then((m) => m.publishRabotaVacancy(...args))
+export const updateVacancyToRabota = (...args: Parameters<RabotaMod['updateRabotaVacancy']>) =>
+  rabota().then((m) => m.updateRabotaVacancy(...args))
+export const getRabotaVacancyById = (...args: Parameters<RabotaMod['getRabotaVacancy']>) =>
+  rabota().then((m) => m.getRabotaVacancy(...args))
+export const getRabotaPublication = (...args: Parameters<RabotaMod['getRabotaPublication']>) =>
+  rabota().then((m) => m.getRabotaPublication(...args))
 export const publishRabotaVacancies = (...args: Parameters<RabotaMod['publishRabotaVacancies']>) =>
   rabota().then((m) => m.publishRabotaVacancies(...args))
 export const createAndPublishRabotaVacancy = (
@@ -22,6 +28,7 @@ export const createAndPublishRabotaVacancy = (
 export {
   extractRabotaCreatedVacancyId,
   extractRabotaVacancyIdFromFormData,
+  unwrapRabotaPublicationPayload,
 } from '@/utils/rabotaAccount'
 export const getRabotaProfessionsHierarchy = (
   ...args: Parameters<RabotaMod['getRabotaProfessionsHierarchy']>

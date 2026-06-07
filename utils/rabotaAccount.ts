@@ -1,6 +1,7 @@
 import { createAuthHeaders, getAuthTokens, handle401Error, type ApiHhResult } from "@/helpers/authToken";
 import type { PlatformHhResponse, DraftDataHh } from "@/types/platform";
 import { resolveRabotaEmploymentIdFromForm } from '@/utils/rabotaEmploymentMapping';
+import { resolveRabotaProfessionalAreaId } from '@/utils/rabotaProfessionsHierarchy';
 
 /**
  * Получение профиля пользователя Rabota.ru
@@ -58,6 +59,48 @@ export type RabotaProfileContactDefaults = {
   name: string
   email: string
   phone: string
+}
+
+/** Распаковка объекта вакансии из ответа GET /rabota/vacancy/{id} или /rabota/publications/{id}. */
+export function unwrapRabotaPublicationPayload(payload: unknown): Record<string, unknown> | null {
+  if (payload == null || typeof payload !== 'object') return null
+
+  const root = payload as Record<string, unknown>
+  if (root.title != null || root.description != null || root.professional_areas != null) {
+    return root
+  }
+
+  const vacancy = root.vacancy
+  if (vacancy != null && typeof vacancy === 'object') {
+    return vacancy as Record<string, unknown>
+  }
+
+  const response = root.response
+  if (response != null && typeof response === 'object') {
+    const respVacancy = (response as Record<string, unknown>).vacancy
+    if (respVacancy != null && typeof respVacancy === 'object') {
+      return respVacancy as Record<string, unknown>
+    }
+    if ((response as Record<string, unknown>).title != null) {
+      return response as Record<string, unknown>
+    }
+  }
+
+  const data = root.data
+  if (data != null && typeof data === 'object') {
+    const dataObj = data as Record<string, unknown>
+    if (dataObj.vacancy != null && typeof dataObj.vacancy === 'object') {
+      return dataObj.vacancy as Record<string, unknown>
+    }
+    if (dataObj.title != null || dataObj.description != null) {
+      return dataObj
+    }
+    if (dataObj.data != null && typeof dataObj.data === 'object') {
+      return unwrapRabotaPublicationPayload(dataObj.data)
+    }
+  }
+
+  return root
 }
 
 /** Распаковка объекта профиля из ответа GET /rabota/profile. */
@@ -221,6 +264,41 @@ export const unlinkRabotaProfile = async () => {
 };
 
 /**
+ * Получение вакансии Rabota.ru по id (GET /api/rabota/vacancy/{id})
+ */
+export const getRabotaVacancy = async (id: string | number) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const response = await $fetch<any>(`/rabota/vacancy/${encodeURIComponent(String(id))}`, {
+      baseURL: config.public.apiBase as string,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${serverToken}`,
+        'X-Auth-User': userToken,
+      },
+    });
+    const raw = response?.data ?? response;
+    result.value.data = unwrapRabotaPublicationPayload(raw) ?? raw;
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      result.value.error = err.response?._data?.message ?? 'Вакансия не найдена';
+    } else if (err.response?.status === 401) {
+      handle401Error();
+    } else {
+      result.value.error = err.response?._data?.message ?? 'Ошибка при загрузке вакансии';
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
  * Получение одной публикации Rabota.ru по id
  */
 export const getRabotaPublication = async (id: string | number) => {
@@ -241,7 +319,7 @@ export const getRabotaPublication = async (id: string | number) => {
       },
     });
     const publication = response?.data ?? response;
-    result.value.data = publication;
+    result.value.data = unwrapRabotaPublicationPayload(publication) ?? publication;
   } catch (err: any) {
     if (err.response?.status === 404) {
       result.value.error = err.response?._data?.message ?? 'Публикация не найдена';
@@ -1381,13 +1459,15 @@ const mapDataToRabotaFormat = (data: DraftDataHh): RabotaVacancyCreateBody => {
     vacancy.short_description = shortDescription.trim()
   }
 
-  const professions = (data.professional_roles ?? []).filter((role) => role?.id != null)
+  const professions = (data.professional_roles ?? []).filter(
+    (role) => resolveRabotaProfessionalAreaId(role) != null,
+  )
   if (professions.length > 0) {
     vacancy.professional_areas = professions.map((role) => {
-      const id = toPositiveInt(role!.id)
+      const id = resolveRabotaProfessionalAreaId(role)
       const entry: Record<string, unknown> = {}
       if (id != null) entry.id = id
-      if (role!.name) entry.name = String(role!.name)
+      if (role?.name) entry.name = String(role.name)
       return entry
     })
   }
@@ -1482,7 +1562,10 @@ const mapDataToRabotaFormat = (data: DraftDataHh): RabotaVacancyCreateBody => {
       })
       .filter(Boolean)
     if (applicantCategories.length > 0) {
-      vacancy.applicant_categories = applicantCategories
+      // OpenAPI VacancyRecruiterCreate: autofit_settings.applicant_categories
+      vacancy.autofit_settings = {
+        applicant_categories: applicantCategories,
+      }
     }
   }
 
@@ -1533,6 +1616,87 @@ export const addRabotaDraft = async (data: DraftDataHh) => {
       }
     } else {
       handle401Error();
+    }
+  } finally {
+    return result.value;
+  }
+};
+
+/**
+ * Обновление вакансии на Rabota.ru
+ * PUT /api/rabota/vacancy/{id}
+ */
+export const updateRabotaVacancy = async (
+  vacancyId: string | number,
+  draftData: DraftDataHh,
+) => {
+  const authTokens = getAuthTokens();
+  if (!authTokens) {
+    return { data: null, error: 'Токен авторизации не найден' };
+  }
+  const { config, serverToken, userToken } = authTokens;
+  const result = ref<ApiHhResult>({ data: null, error: null });
+
+  try {
+    const body = mapDataToRabotaFormat(draftData);
+    const parsedId = toPositiveInt(vacancyId);
+    if (parsedId != null) {
+      body.request.vacancy.id = parsedId;
+    }
+
+    const response = await $fetch<PlatformHhResponse>(
+      `/rabota/vacancy/${encodeURIComponent(String(vacancyId))}`,
+      {
+        method: 'PUT',
+        baseURL: config.public.apiBase as string,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${serverToken}`,
+          'X-Auth-User': userToken,
+        },
+        body,
+      },
+    );
+
+    result.value.data = (response as { data?: unknown })?.data ?? response;
+  } catch (err: any) {
+    if (err.response?.status === 401) {
+      handle401Error();
+      result.value.error = 'Требуется повторная авторизация';
+    } else if (err.response?.status === 400) {
+      const errorData = err.response?._data;
+      let errorMessage = 'Ошибка валидации данных. Проверьте обязательные поля';
+
+      if (errorData?.message) {
+        errorMessage = errorData.message;
+      } else if (errorData?.error) {
+        errorMessage = errorData.error;
+      } else if (errorData?.errors) {
+        if (Array.isArray(errorData.errors)) {
+          errorMessage = errorData.errors
+            .map((e: any) => (typeof e === 'string' ? e : e.message || e.field || JSON.stringify(e)))
+            .join(', ');
+        } else if (typeof errorData.errors === 'object') {
+          const fieldErrors = Object.entries(errorData.errors)
+            .map(([field, messages]: [string, any]) => {
+              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
+              return `${field}: ${msg}`;
+            })
+            .join('; ');
+          errorMessage = fieldErrors || errorMessage;
+        }
+      }
+
+      result.value.error = errorMessage;
+      console.error('Ошибка обновления вакансии rabota.ru:', errorData);
+    } else if (err.response?.status === 403) {
+      result.value.error = err.response?._data?.message || 'Доступ запрещен';
+    } else {
+      result.value.error =
+        err.response?._data?.message ||
+        err.response?._data?.error ||
+        'Ошибка при обновлении вакансии на Rabota.ru';
     }
   } finally {
     return result.value;

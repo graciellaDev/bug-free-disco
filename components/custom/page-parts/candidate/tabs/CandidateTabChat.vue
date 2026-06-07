@@ -13,10 +13,10 @@ const c = useCandidateCardContext()
   >
     <div class="h-[500px] overflow-hidden border border-athens-gray bg-athens-gray">
       <CandidateLog
-        :candidate-id="c.props.c.props.candidate?.id"
+        :candidate-id="c.props.candidate?.id"
         :refresh-trigger="c.props.logRefreshTrigger"
         :vacancy-id="c.props.vacancyId"
-        :candidate-source="c.props.c.props.candidate?.source ?? null"
+        :candidate-source="c.props.candidate?.source ?? null"
         :feed-active="c.activeTab === 'chat'"
         @delete-request="c.handleDeleteCommentRequest"
         @edit-comment="c.handleEditComment"
@@ -29,7 +29,7 @@ const c = useCandidateCardContext()
     </div>
     <ChatInput
       :ref="(comp) => { c.chatInputRef = comp }"
-      :initial-recipient="`${c.props.c.props.candidate.firstname} ${c.props.c.props.candidate.surname}`"
+      :initial-recipient="`${c.props.candidate.firstname} ${c.props.candidate.surname}`"
       :initial-edit-text="c.editingCommentText"
       :edit-comment-id="c.editingCommentId"
       :initial-edit-task-text="c.editingTaskText"

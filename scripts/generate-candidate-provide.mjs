@@ -9,7 +9,7 @@ const script = fs.readFileSync(
 const m = script.match(/<script setup[^>]*>([\s\S]*?)<\/script>/)
 if (!m) throw new Error('no script')
 const names = [
-  ...m[1].matchAll(/^\s*(?:const|let|function|async function)\s+(\w+)/gm),
+  ...m[1].matchAll(/^  (?:const|let|function|async function)\s+(\w+)/gm),
 ].map((x) => x[1])
 const uniq = [...new Set(names)].sort()
 const snippet = `

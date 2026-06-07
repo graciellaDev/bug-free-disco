@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import TextWithLinks from '~/components/custom/TextWithLinks.vue'
 import { useCandidateCardContext } from '@/components/custom/page-parts/candidate/candidateCardContext'
+import { formatExperienceWorkPeriod } from '@/utils/formatExperienceWorkPeriod'
+
 const c = useCandidateCardContext()
 </script>
 
