@@ -1480,9 +1480,13 @@ import {
   extractRabotaProfileContactDefaults,
   addDraftRabota,
   publishVacancyToRabota,
+  updateVacancyToRabota,
+  getRabotaVacancyById,
+  getRabotaPublication,
   publishRabotaVacancies,
   extractRabotaCreatedVacancyId,
   createAndPublishRabotaVacancy,
+  unwrapRabotaPublicationPayload,
   getRabotaProfessionsHierarchy,
   getRabotaProfessionsByProfessionalRole,
   searchRabotaRegions,
@@ -1510,6 +1514,7 @@ import {
   resolveProfessionalRoleIdFromVacancy,
   resolveProfessionalRoleIdForRabotaFromSpecializationByHh,
   mapRabotaProfessionByRoleItem,
+  resolveRabotaProfessionalAreaId,
 } from '@/utils/rabotaProfessionsHierarchy'
 import {
   AVITO_EXPERIENCE_OPTIONS,
@@ -2207,9 +2212,222 @@ function applyRabotaExperienceFromPublication(pub) {
   return true
 }
 
+function findRabotaDictionaryOption(list, id) {
+  if (id == null || id === '' || !Array.isArray(list)) return null
+  return (
+    list.find((o) => String(o.id ?? o.employment_type_id ?? o.rabota_employment_id ?? o.work_schedule_id ?? o.work_hour_id) === String(id)) ??
+    null
+  )
+}
+
+function applyRabotaSalaryFromPublication(pub) {
+  if (!pub || typeof pub !== 'object') return false
+  const salary = pub.salary
+  if (!salary || typeof salary !== 'object') return false
+
+  ensureSalaryRangeObject()
+
+  if (salary.from != null && salary.from !== '') {
+    const from = Number(salary.from)
+    if (!Number.isNaN(from)) data.value.salary_range.from = from
+  }
+  if (salary.to != null && salary.to !== '') {
+    const to = Number(salary.to)
+    if (!Number.isNaN(to)) data.value.salary_range.to = to
+  }
+
+  const currencyRaw = salary.currency ?? salary.currency_sign
+  if (currencyRaw != null && String(currencyRaw).trim() !== '') {
+    const cur = String(currencyRaw).trim()
+    const byId = ArrayCurrency.value?.find((c) => String(c.id).toUpperCase() === cur.toUpperCase())
+    const byRubAlias =
+      cur.toUpperCase() === 'RUB' || cur.includes('руб')
+        ? ArrayCurrency.value?.find((c) => String(c.id).toUpperCase() === 'RUR')
+        : null
+    const hit = byId || byRubAlias
+    if (hit) data.value.salary_range.currency = hit.id
+  }
+
+  if (salary.pay_type != null) {
+    data.value.salary_range.gross = String(salary.pay_type).toLowerCase() === 'gross'
+  } else if (salary.gross != null) {
+    data.value.salary_range.gross = !!salary.gross
+  }
+
+  return true
+}
+
+function applyRabotaContactFromPublication(pub) {
+  if (!pub || typeof pub !== 'object') return false
+  const cp = pub.contact_person
+  if (!cp || typeof cp !== 'object') return false
+
+  if (cp.name != null && String(cp.name).trim()) {
+    data.value.executor_name = String(cp.name).trim()
+  }
+  if (cp.email != null && String(cp.email).trim()) {
+    data.value.executor_email = String(cp.email).trim()
+  }
+
+  const phones = cp.phones
+  if (Array.isArray(phones) && phones.length > 0) {
+    const p = phones[0]
+    const number =
+      (typeof p === 'object' && p != null
+        ? p.number_international ?? p.formatted ?? p.number
+        : p) ?? ''
+    if (String(number).trim()) {
+      data.value.executor_phone = String(number).trim()
+    }
+  }
+
+  return true
+}
+
+/** Подстановка полей формы из снимка / GET вакансии rabota.ru (режим редактирования). */
+function applyRabotaPublicationToForm(rawPub) {
+  if (currentPlatform.value !== 'rabota') return false
+  const pub = unwrapRabotaPublicationPayload(rawPub)
+  if (!pub) return false
+
+  const title = pub.title ?? pub.name
+  if (title != null && String(title).trim()) {
+    data.value.name = String(title).trim()
+    if (validFields.value?.name) validFields.value.name.status = true
+  }
+
+  if (pub.description != null && String(pub.description).trim()) {
+    data.value.description = String(pub.description)
+    updateDescriptionValidation(data.value.description)
+  }
+
+  applyRabotaShortDescriptionFromPublication(pub)
+  applyRabotaSalaryFromPublication(pub)
+  applyRabotaExperienceFromPublication(pub)
+  applyRabotaContactFromPublication(pub)
+
+  const areas = pub.professional_areas
+  if (Array.isArray(areas) && areas.length > 0) {
+    const roles = areas
+      .map((area) => {
+        if (area == null || typeof area !== 'object') return null
+        const id = resolveRabotaProfessionalAreaId(area)
+        if (id == null) return null
+        const name = String(area.name ?? area.title ?? '').trim()
+        return { id, rabota_id: area.rabota_id ?? id, name: name || String(id) }
+      })
+      .filter(Boolean)
+    if (roles.length > 0) {
+      data.value.professional_roles = roles
+      validFields.value.professional_roles.status = true
+    }
+  }
+
+  const region =
+    (Array.isArray(pub.regions) && pub.regions.length > 0 ? pub.regions[0] : null) ??
+    (pub.region && typeof pub.region === 'object' ? pub.region : null)
+  const regionId = region?.id ?? pub.region_id
+  if (regionId != null) {
+    data.value.area = {
+      id: regionId,
+      name: String(region?.name ?? region?.title ?? '').trim(),
+    }
+  }
+
+  const place = Array.isArray(pub.places) && pub.places.length > 0 ? pub.places[0] : null
+  if (place != null && typeof place === 'object' && place.id != null) {
+    data.value.address = {
+      id: place.id,
+      name: String(place.name ?? place.address ?? place.title ?? '').trim(),
+    }
+  }
+
+  const employmentId = pub.employment_id
+  if (employmentId != null) {
+    const hit = findRabotaDictionaryOption(rabotaEmploymentTypes.value, employmentId)
+    data.value.employment_form = hit
+      ? {
+          id: hit.employment_type_id ?? hit.rabota_employment_id ?? hit.id,
+          name: hit.name ?? hit.title ?? String(employmentId),
+        }
+      : { id: employmentId, name: String(employmentId) }
+  }
+
+  const scheduleId = pub.work_schedule_id
+  if (scheduleId != null) {
+    const hit = findRabotaDictionaryOption(rabotaScheduleDropdownOptions.value, scheduleId)
+    data.value.work_schedule_by_days = hit
+      ? { id: hit.id ?? hit.work_schedule_id, name: hit.name ?? hit.title ?? String(scheduleId) }
+      : { id: scheduleId, name: String(scheduleId) }
+    syncRabotaScheduleSelectedOption()
+  }
+
+  const workHourId = pub.work_hour_id
+  if (workHourId != null) {
+    const hit = findRabotaDictionaryOption(rabotaWorkFormatOptions.value, workHourId)
+    data.value.work_format = hit
+      ? { id: hit.id ?? hit.work_hour_id, name: hit.name ?? hit.title ?? String(workHourId) }
+      : { id: workHourId, name: String(workHourId) }
+    syncRabotaWorkFormatSelectedOption()
+  }
+
+  const educationRaw = pub.education
+  const educationId =
+    educationRaw != null && typeof educationRaw === 'object'
+      ? educationRaw.id
+      : pub.education_id ?? educationRaw
+  if (educationId != null) {
+    const hit = findRabotaDictionaryOption(rabotaEducationLevels.value, educationId)
+    data.value.education_level = hit
+      ? { id: hit.id, name: hit.name ?? hit.title ?? String(educationId) }
+      : { id: educationId, name: String(educationId) }
+  }
+
+  const autofit =
+    pub.autofit_settings != null && typeof pub.autofit_settings === 'object'
+      ? pub.autofit_settings
+      : null
+  const categories = autofit?.applicant_categories ?? pub.applicant_categories
+  if (Array.isArray(categories) && categories.length > 0) {
+    data.value.rabota_work_categories = categories
+      .map((item) => (item != null && typeof item === 'object' ? item.id : item))
+      .filter((id) => id != null)
+  }
+
+  if (Array.isArray(pub.skills) && pub.skills.length > 0) {
+    data.value.key_skills = pub.skills
+      .map((skill) => {
+        if (typeof skill === 'string') {
+          const name = skill.trim()
+          return name ? { name } : null
+        }
+        if (skill != null && typeof skill === 'object') {
+          const name = String(skill.name ?? '').trim()
+          const id = skill.id
+          if (!name && id == null) return null
+          return id != null ? { id, ...(name ? { name } : {}) } : { name }
+        }
+        return null
+      })
+      .filter(Boolean)
+    validFields.value.key_skills.status = data.value.key_skills.length > 0
+  }
+
+  return true
+}
+
 async function applyRabotaActivePublicationToForm() {
   if (currentPlatform.value !== 'rabota') return
   if (rabotaActivePublicationApplied.value) return
+
+  const pubRaw = rabotaActivePublication.value
+  if (isEditingMode.value && pubRaw) {
+    applyRabotaPublicationToForm(pubRaw)
+    applyRabotaDefaultContactFromPlatformState()
+    rabotaActivePublicationApplied.value = true
+    void nextTick(() => emit('form-ready'))
+    return
+  }
 
   let vacancy = globCurrentVacancy.value
   if (!vacancy) {
@@ -5347,6 +5565,13 @@ function hasAvitoSecondaryDictionariesLoaded() {
 
 /** После восстановления справочников rabota из кэша — префилл полей, зависящих от списков. */
 async function applyRabotaPrefillAfterDictionariesLoaded() {
+  const pubRaw = rabotaActivePublication.value
+  if (isEditingMode.value && pubRaw) {
+    applyRabotaPublicationToForm(pubRaw)
+    rabotaActivePublicationApplied.value = true
+    return
+  }
+
   const vacancy = globCurrentVacancy.value || resolveCurrentJoblyVacancy()
   if (vacancy) {
     await applyRabotaEmploymentFromVacancy(vacancy)
@@ -6513,12 +6738,31 @@ async function loadInitialFormData() {
             )
             const poR = snapR?.data?.payload_original
             if (!snapR?.error && poR != null && typeof poR === 'object' && Object.keys(poR).length > 0) {
-              rabotaActivePublication.value = poR
+              rabotaActivePublication.value = unwrapRabotaPublicationPayload(poR) ?? poR
               filledRabota = true
               if (rabotaExperienceLevels.value.length > 0) {
                 applyRabotaExperienceFromPublication(poR)
               }
               applyRabotaShortDescriptionFromPublication(poR)
+            }
+          }
+          if (!filledRabota) {
+            const timeoutR = new Promise((resolve) => {
+              setTimeout(
+                () => resolve({ error: 'timeout', data: null, __timeout: true }),
+                PLATFORM_PUBLICATION_LIVE_FETCH_MS,
+              )
+            })
+            const platformVacancyId = String(platformData.platform_id)
+            const pubResR = await Promise.race([
+              getRabotaVacancyById(platformVacancyId),
+              timeoutR,
+            ])
+            if (pubResR?.__timeout) {
+              console.warn('Rabota: таймаут загрузки вакансии с API (GET /rabota/vacancy/{id})')
+            } else if (!pubResR?.error && pubResR?.data) {
+              rabotaActivePublication.value = pubResR.data
+              filledRabota = true
             }
           }
           if (!filledRabota) {
@@ -6538,10 +6782,13 @@ async function loadInitialFormData() {
               rabotaActivePublication.value = pubResR.data
             }
           }
-          if (rabotaActivePublication.value && rabotaExperienceLevels.value.length > 0) {
-            applyRabotaExperienceFromPublication(rabotaActivePublication.value)
-          }
           if (rabotaActivePublication.value) {
+            if (isEditingMode.value) {
+              rabotaActivePublicationApplied.value = false
+            }
+            if (rabotaExperienceLevels.value.length > 0) {
+              applyRabotaExperienceFromPublication(rabotaActivePublication.value)
+            }
             applyRabotaShortDescriptionFromPublication(rabotaActivePublication.value)
           }
         } catch (e) {
@@ -8130,20 +8377,12 @@ const savePublication = async () => {
           avitoRequestTimedOut = timedOut
           platformResponse = result
         } else if (platformId === 3) {
-          const payload = { ...data.value, vacancy_platform_id: String(vacancyPlatformId), publication_id: vacancyPlatformId };
-          platformResponse = await publishVacancyToRabota(payload);
-          if (!isDraft.value && !platformResponse?.error) {
-            const rabotaVacancyId =
-              extractRabotaCreatedVacancyId(platformResponse?.data) ?? vacancyPlatformId;
-            if (rabotaVacancyId != null && String(rabotaVacancyId).trim() !== '') {
-              const publishRes = await publishRabotaVacancies([rabotaVacancyId]);
-              if (publishRes?.error) {
-                platformResponse = { ...platformResponse, error: publishRes.error };
-              } else if (publishRes?.data != null) {
-                platformResponse = { ...platformResponse, data: publishRes.data };
-              }
-            }
+          const payload = {
+            ...data.value,
+            vacancy_platform_id: String(vacancyPlatformId),
+            publication_id: vacancyPlatformId,
           }
+          platformResponse = await updateVacancyToRabota(vacancyPlatformId, payload)
         } else if (platformId === 4) {
           const { data: currentSuperjobVacancy } = await getSuperjobVacancy(vacancyPlatformId);
           // SuperJob ожидает driving_licence: ['A','B',...]. Если в форме числовые id (из нашей БД), конвертируем в названия.

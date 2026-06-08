@@ -15,6 +15,8 @@ export interface RabotaProfessionSelection {
   name: string
   tree?: string
   local_id?: number
+  /** id профессии на rabota.ru (из rabota-professions-by-professional-role) */
+  rabota_id?: number
 }
 
 export interface RabotaProfessionsHierarchyMeta {
@@ -167,15 +169,27 @@ export interface RabotaProfessionByRoleItem {
   rabota_professional_group_id?: number
 }
 
+/** id профессиональной сферы rabota.ru для POST /me/vacancy/create.json → professional_areas[].id */
+export function resolveRabotaProfessionalAreaId(
+  role: { id?: unknown; rabota_id?: unknown; rabota_profession_id?: unknown } | null | undefined,
+): number | null {
+  if (!role || typeof role !== 'object') return null
+  const raw = role.rabota_id ?? role.rabota_profession_id ?? role.id
+  if (raw == null || String(raw).trim() === '') return null
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null
+}
+
 /** Первая сфера из ответа rabota-professions-by-professional-role. */
 export function mapRabotaProfessionByRoleItem(
   item: RabotaProfessionByRoleItem | null | undefined,
 ): RabotaProfessionSelection | null {
   if (!item) return null
-  const id = item.rabota_profession_id ?? item.rabota_id ?? item.id
-  if (id == null) return null
+  const rabotaId = resolveRabotaProfessionalAreaId(item)
+  if (rabotaId == null) return null
   return {
-    id,
+    id: rabotaId,
+    rabota_id: item.rabota_id != null ? Number(item.rabota_id) : rabotaId,
     name: item.name,
     tree: item.tree,
   }
